@@ -2,18 +2,21 @@ import React, { useState } from 'react';
 import { useAuth } from './auth';
 
 const Login: React.FC = () => {
-    const [username, setUsername] = useState('');
-    const [password, setPassword] = useState('');
+    const [email, setEmail] = useState('guilherme.andrei@example.com');
+    const [password, setPassword] = useState('123456');
     const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
     const { login } = useAuth();
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
-        const success = login(username, password);
-        if (!success) {
-            setError('Login ou senha inválidos.');
+        setLoading(true);
+        const { error } = await login(email, password);
+        if (error) {
+            setError('E-mail ou senha inválidos.');
         }
+        setLoading(false);
     };
 
     return (
@@ -26,17 +29,17 @@ const Login: React.FC = () => {
                 <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
                     <div className="rounded-md shadow-sm -space-y-px">
                         <div>
-                            <label htmlFor="username" className="sr-only">Login</label>
+                            <label htmlFor="email-address" className="sr-only">E-mail</label>
                             <input
-                                id="username"
-                                name="username"
-                                type="text"
-                                autoComplete="username"
+                                id="email-address"
+                                name="email"
+                                type="email"
+                                autoComplete="email"
                                 required
-                                value={username}
-                                onChange={e => setUsername(e.target.value)}
+                                value={email}
+                                onChange={e => setEmail(e.target.value)}
                                 className="appearance-none rounded-none relative block w-full px-3 py-3 border border-border-color bg-background placeholder-text-secondary text-text-primary rounded-t-md focus:outline-none focus:ring-primary focus:border-primary focus:z-10 sm:text-sm"
-                                placeholder="Login"
+                                placeholder="E-mail"
                             />
                         </div>
                         <div>
@@ -58,9 +61,10 @@ const Login: React.FC = () => {
                     <div>
                         <button
                             type="submit"
-                            className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-primary hover:bg-opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-dark transition-all duration-300 transform hover:scale-105"
+                            disabled={loading}
+                            className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-primary hover:bg-opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-dark transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-wait"
                         >
-                            Entrar no Sistema
+                            {loading ? 'Entrando...' : 'Entrar no Sistema'}
                         </button>
                     </div>
                 </form>

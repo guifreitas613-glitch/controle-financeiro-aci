@@ -1,10 +1,10 @@
-
 import React, { useState, useMemo, FC, ReactNode, useEffect, useRef } from 'react';
 import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, User, UserRole, Advisor, ExpenseCategory, ExpenseType, ActivityLog, ChatMessage } from './types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
 import { AuthProvider, useAuth } from './auth';
 import Login from './Login';
 import { generateFinancialInsights, getChatResponse } from './services/geminiService';
+import { supabase } from './services/supabaseClient';
 
 
 // --- ÍCONES ---
@@ -38,30 +38,6 @@ const HistoryIcon: FC<{ className?: string }> = ({ className }) => (<svg classNa
 declare var XLSX: any;
 declare var jspdf: any;
 
-// --- HOOKS ---
-function useLocalStorage<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
-    const [storedValue, setStoredValue] = useState<T>(() => {
-        try {
-            const item = window.localStorage.getItem(key);
-            return item ? JSON.parse(item) : initialValue;
-        } catch (error) {
-            console.error(`Error reading localStorage key “${key}”:`, error);
-            return initialValue;
-        }
-    });
-
-    useEffect(() => {
-        try {
-            window.localStorage.setItem(key, JSON.stringify(storedValue));
-        } catch (error) {
-            console.error(`Error writing to localStorage key “${key}”:`, error);
-        }
-    }, [key, storedValue]);
-
-    return [storedValue, setStoredValue];
-}
-
-
 // --- UTILITÁRIOS ---
 const formatCurrency = (amount: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(amount);
 const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
@@ -69,10 +45,7 @@ const formatDateTime = (dateString: string) => new Date(dateString).toLocaleStri
 const formatDateForInput = (dateString: string) => new Date(dateString).toISOString().split('T')[0];
 const getMonthYear = (dateString: string) => new Date(dateString).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric', timeZone: 'UTC' });
 
-// --- DADOS INICIAIS ---
-const getInitialTransactions = (): Transaction[] => ([]);
-const getInitialGoals = (): Goal[] => ([]);
-const getInitialLogs = (): ActivityLog[] => ([]);
+// --- DADOS INICIAIS (FALLBACKS) ---
 const initialIncomeCategories = ['Taxa de Consultoria', 'Taxa de Performance', 'Comissão sobre Ativos', 'Rendimento de Investimentos', 'Reembolso de Custos', 'Outros'];
 const initialExpenseCategories: ExpenseCategory[] = [
     { name: 'Remuneração de Assessores', type: ExpenseType.COST },
@@ -136,16 +109,16 @@ interface TransactionFormValues {
     date: string; // YYYY-MM-DD
     type: TransactionType;
     category: string;
-    clientSupplier: string;
-    paymentMethod: string;
+    client_supplier: string;
+    payment_method: string;
     status?: ExpenseStatus;
     nature?: ExpenseNature;
-    costCenter?: string;
-    taxAmount?: number;
+    cost_center?: string;
+    tax_amount?: number;
     // New fields
-    grossAmount?: number;
-    commissionAmount?: number;
-    advisorId?: string;
+    gross_amount?: number;
+    commission_amount?: number;
+    advisor_id?: string;
     recurringCount?: number;
 }
 interface TransactionFormProps { 
@@ -163,7 +136,7 @@ interface TransactionFormProps {
 const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialData, defaultType, incomeCategories, expenseCategories, paymentMethods, costCenters, advisors }) => {
     const [type, setType] = useState<TransactionType>(initialData?.type || defaultType || TransactionType.EXPENSE);
     const [nature, setNature] = useState<ExpenseNature>(initialData?.nature || ExpenseNature.VARIABLE);
-    const [advisorId, setAdvisorId] = useState(initialData?.advisorId || '');
+    const [advisor_id, setAdvisorId] = useState(initialData?.advisor_id || '');
     const [taxType, setTaxType] = useState<'percent' | 'fixed'>('percent');
     const [taxValue, setTaxValue] = useState('0');
     const [recurringCount, setRecurringCount] = useState('1');
@@ -179,51 +152,51 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     
     const [formData, setFormData] = useState({
         description: initialData?.description || '',
-        grossAmount: (initialData?.grossAmount ?? initialData?.amount)?.toString() || '',
+        gross_amount: (initialData?.gross_amount ?? initialData?.amount)?.toString() || '',
         date: initialData?.date ? formatDateForInput(initialData.date) : formatDateForInput(new Date().toISOString()),
         category: initialData?.category || (currentCategories.length > 0 ? currentCategories[0] : ''),
-        clientSupplier: initialData?.clientSupplier || '',
-        paymentMethod: initialData?.paymentMethod || (paymentMethods.length > 0 ? paymentMethods[0] : ''),
+        client_supplier: initialData?.client_supplier || '',
+        payment_method: initialData?.payment_method || (paymentMethods.length > 0 ? paymentMethods[0] : ''),
         status: initialData?.status || ExpenseStatus.PENDING,
-        costCenter: initialData?.costCenter || 'conta-pj',
+        cost_center: initialData?.cost_center || 'conta-pj',
     });
     
-    const [commissionAmount, setCommissionAmount] = useState(initialData?.commissionAmount || 0);
+    const [commission_amount, setCommissionAmount] = useState(initialData?.commission_amount || 0);
     const [netAmount, setNetAmount] = useState(initialData?.amount || 0);
     const [isCommissionManual, setIsCommissionManual] = useState(false);
 
     useEffect(() => {
         if (initialData) {
             // Set tax fields on edit
-            if (initialData.type === TransactionType.INCOME && initialData.taxAmount) {
+            if (initialData.type === TransactionType.INCOME && initialData.tax_amount) {
                 // If gross amount exists, try to calculate percentage, otherwise default to fixed
-                if(initialData.grossAmount && initialData.grossAmount > 0) {
-                     const percent = (initialData.taxAmount / initialData.grossAmount) * 100;
+                if(initialData.gross_amount && initialData.gross_amount > 0) {
+                     const percent = (initialData.tax_amount / initialData.gross_amount) * 100;
                      // Use a small tolerance for floating point issues
                      if(Math.abs(percent - Math.round(percent)) < 0.01) {
                          setTaxType('percent');
                          setTaxValue(percent.toFixed(2));
                      } else {
                         setTaxType('fixed');
-                        setTaxValue(initialData.taxAmount.toString());
+                        setTaxValue(initialData.tax_amount.toString());
                      }
                 } else {
                     setTaxType('fixed');
-                    setTaxValue(initialData.taxAmount.toString());
+                    setTaxValue(initialData.tax_amount.toString());
                 }
             }
 
             // Set commission fields on edit
-            if (initialData.type === TransactionType.INCOME && initialData.advisorId && initialData.commissionAmount) {
-                const selectedAdvisor = advisors.find(a => a.id === initialData.advisorId);
-                const gross = initialData.grossAmount ?? 0;
+            if (initialData.type === TransactionType.INCOME && initialData.advisor_id && initialData.commission_amount) {
+                const selectedAdvisor = advisors.find(a => a.id === initialData.advisor_id);
+                const gross = initialData.gross_amount ?? 0;
                 if (selectedAdvisor && gross > 0) {
                     const calculatedCommission = (gross * selectedAdvisor.commissionRate) / 100;
                     // If the stored commission is different from the calculated one, assume it was manual
-                    if (Math.abs(calculatedCommission - initialData.commissionAmount) > 0.01) {
+                    if (Math.abs(calculatedCommission - initialData.commission_amount) > 0.01) {
                         setIsCommissionManual(true);
                     }
-                } else if (initialData.commissionAmount > 0) {
+                } else if (initialData.commission_amount > 0) {
                     // If there's a commission but we can't calculate it (no advisor/gross), it must have been manual
                     setIsCommissionManual(true);
                 }
@@ -234,8 +207,8 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     useEffect(() => {
         if (isCommissionManual) return;
         
-        const gross = parseFloat(formData.grossAmount);
-        const selectedAdvisor = advisors.find(a => a.id === advisorId);
+        const gross = parseFloat(formData.gross_amount);
+        const selectedAdvisor = advisors.find(a => a.id === advisor_id);
 
         if (!isNaN(gross) && selectedAdvisor) {
             const commission = (gross * selectedAdvisor.commissionRate) / 100;
@@ -245,12 +218,12 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         } else {
             setCommissionAmount(0);
         }
-    }, [formData.grossAmount, advisorId, advisors, isCommissionManual]);
+    }, [formData.gross_amount, advisor_id, advisors, isCommissionManual]);
     
     useEffect(() => {
-        const gross = parseFloat(formData.grossAmount) || 0;
-        setNetAmount(gross - commissionAmount);
-    }, [formData.grossAmount, commissionAmount]);
+        const gross = parseFloat(formData.gross_amount) || 0;
+        setNetAmount(gross - commission_amount);
+    }, [formData.gross_amount, commission_amount]);
 
 
     useEffect(() => {
@@ -274,22 +247,22 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const { description, grossAmount, date, category, paymentMethod, status, costCenter, clientSupplier } = formData;
+        const { description, gross_amount, date, category, payment_method, status, cost_center, client_supplier } = formData;
         
-        if (!description || !grossAmount || !date || !category) {
+        if (!description || !gross_amount || !date || !category) {
             alert("Por favor, preencha todos os campos obrigatórios.");
             return;
         }
-        if (type === TransactionType.INCOME && !clientSupplier.trim()) {
+        if (type === TransactionType.INCOME && !client_supplier.trim()) {
             alert("O campo 'Cliente' é obrigatório para receitas.");
             return;
         }
-        if (type === TransactionType.EXPENSE && !paymentMethod) {
+        if (type === TransactionType.EXPENSE && !payment_method) {
             alert("O campo 'Forma de Pagamento' é obrigatório para despesas.");
             return;
         }
 
-        const parsedGrossAmount = parseFloat(grossAmount);
+        const parsedGrossAmount = parseFloat(gross_amount);
         if(isNaN(parsedGrossAmount)) {
              alert("O valor inserido é inválido.");
             return;
@@ -301,9 +274,9 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             date: new Date(date).toISOString(),
             type,
             category,
-            clientSupplier,
-            paymentMethod,
-            costCenter,
+            client_supplier,
+            payment_method,
+            cost_center,
         };
         
         if (type === TransactionType.INCOME) {
@@ -312,10 +285,10 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             if (!isNaN(parsedGrossAmount) && !isNaN(parsedTaxValue) && parsedTaxValue > 0) {
                 calculatedTax = taxType === 'percent' ? (parsedGrossAmount * parsedTaxValue) / 100 : parsedTaxValue;
             }
-            submissionData.taxAmount = calculatedTax;
-            submissionData.grossAmount = parsedGrossAmount;
-            submissionData.commissionAmount = commissionAmount;
-            submissionData.advisorId = advisorId;
+            submissionData.tax_amount = calculatedTax;
+            submissionData.gross_amount = parsedGrossAmount;
+            submissionData.commission_amount = commission_amount;
+            submissionData.advisor_id = advisor_id;
         }
 
         if (type === TransactionType.EXPENSE) {
@@ -351,7 +324,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label className="block text-sm font-medium text-text-secondary">{type === TransactionType.INCOME ? 'Valor Bruto (Repasse)' : 'Valor'}</label>
-                    <input type="number" step="0.01" name="grossAmount" value={formData.grossAmount} onChange={handleChange} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" required />
+                    <input type="number" step="0.01" name="gross_amount" value={formData.gross_amount} onChange={handleChange} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" required />
                 </div>
                 <div>
                     <label className="block text-sm font-medium text-text-secondary">Categoria</label>
@@ -362,7 +335,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             </div>
             <div>
                  <label className="block text-sm font-medium text-text-secondary">{type === TransactionType.INCOME ? 'Cliente' : 'Fornecedor (Opcional)'}</label>
-                 <input type="text" name="clientSupplier" value={formData.clientSupplier} onChange={handleChange} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" required={type === TransactionType.INCOME} />
+                 <input type="text" name="client_supplier" value={formData.client_supplier} onChange={handleChange} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" required={type === TransactionType.INCOME} />
             </div>
             
             {type === TransactionType.INCOME && (
@@ -370,7 +343,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                      <div>
                         <label className="block text-sm font-medium text-text-secondary">Assessor (Opcional)</label>
-                         <select value={advisorId} onChange={(e) => { setAdvisorId(e.target.value); setIsCommissionManual(false); }} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary">
+                         <select value={advisor_id} onChange={(e) => { setAdvisorId(e.target.value); setIsCommissionManual(false); }} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary">
                             <option value="">Sem Assessor</option>
                             {advisors.map(adv => <option key={adv.id} value={adv.id}>{adv.name}</option>)}
                         </select>
@@ -386,16 +359,16 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                         </div>
                     </div>
                 </div>
-                {advisorId && (
+                {advisor_id && (
                     <div className="bg-background p-3 rounded-lg border border-border-color">
                         <div className="grid grid-cols-3 gap-4 text-center mb-2">
                             <div>
                                 <p className="text-xs text-text-secondary">Valor Bruto</p>
-                                <p className="font-semibold">{formatCurrency(parseFloat(formData.grossAmount) || 0)}</p>
+                                <p className="font-semibold">{formatCurrency(parseFloat(formData.gross_amount) || 0)}</p>
                             </div>
                             <div>
                                 <p className="text-xs text-text-secondary">(-) Comissão</p>
-                                <p className="font-semibold text-danger">{formatCurrency(commissionAmount)}</p>
+                                <p className="font-semibold text-danger">{formatCurrency(commission_amount)}</p>
                             </div>
                             <div>
                                 <p className="text-xs text-text-secondary">(=) Valor Líquido</p>
@@ -408,7 +381,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                                     <label className="text-sm text-text-secondary">Editar Comissão (R$):</label>
                                     <input
                                         type="number" step="0.01"
-                                        value={commissionAmount.toFixed(2)}
+                                        value={commission_amount.toFixed(2)}
                                         onChange={(e) => {
                                             const val = parseFloat(e.target.value);
                                             if (!isNaN(val)) {
@@ -433,13 +406,13 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm font-medium text-text-secondary">Forma de Pagamento</label>
-                             <select name="paymentMethod" value={formData.paymentMethod} onChange={handleChange} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" required>
+                             <select name="payment_method" value={formData.payment_method} onChange={handleChange} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" required>
                                 {paymentMethods.map(pm => <option key={pm} value={pm}>{pm}</option>)}
                             </select>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-text-secondary">Centro de Custo</label>
-                             <select name="costCenter" value={formData.costCenter} onChange={handleChange} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" required>
+                             <select name="cost_center" value={formData.cost_center} onChange={handleChange} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" required>
                                 {costCenters.map(cc => <option key={cc.id} value={cc.id}>{cc.name}</option>)}
                             </select>
                         </div>
@@ -494,18 +467,18 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     );
 };
 
-interface GoalFormProps { onSubmit: (goal: Omit<Goal, 'id' | 'currentAmount'>) => void; onClose: () => void; initialData?: Goal | null; }
+interface GoalFormProps { onSubmit: (goal: Omit<Goal, 'id' | 'current_amount'>) => void; onClose: () => void; initialData?: Goal | null; }
 const GoalForm: FC<GoalFormProps> = ({ onSubmit, onClose, initialData }) => { 
     const [name, setName] = useState(initialData?.name || '');
-  const [targetAmount, setTargetAmount] = useState(initialData?.targetAmount.toString() || '');
+  const [target_amount, setTargetAmount] = useState(initialData?.target_amount.toString() || '');
   const [deadline, setDeadline] = useState(initialData?.deadline ? formatDateForInput(initialData.deadline) : '');
   
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !targetAmount) return;
+    if (!name || !target_amount) return;
     onSubmit({
       name,
-      targetAmount: parseFloat(targetAmount as string),
+      target_amount: parseFloat(target_amount as string),
       deadline: deadline ? new Date(deadline).toISOString() : undefined,
     });
   };
@@ -519,7 +492,7 @@ const GoalForm: FC<GoalFormProps> = ({ onSubmit, onClose, initialData }) => {
       <div className="grid grid-cols-2 gap-4">
         <div>
             <label className="block text-sm font-medium text-text-secondary">Valor Alvo</label>
-            <input type="number" step="0.01" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" required />
+            <input type="number" step="0.01" value={target_amount} onChange={(e) => setTargetAmount(e.target.value)} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" required />
         </div>
         <div>
             <label className="block text-sm font-medium text-text-secondary">Prazo (Opcional)</label>
@@ -684,11 +657,11 @@ const DashboardView: FC<{ transactions: Transaction[]; goals: Goal[] }> = ({ tra
             : "N/A";
             
         const totalProvisioned = filteredTransactions
-            .filter(t => t.type === TransactionType.INCOME && t.taxAmount)
-            .reduce((sum, t) => sum + t.taxAmount!, 0);
+            .filter(t => t.type === TransactionType.INCOME && t.tax_amount)
+            .reduce((sum, t) => sum + t.tax_amount!, 0);
 
         const totalTaxPaid = filteredTransactions
-            .filter(t => t.type === TransactionType.EXPENSE && t.costCenter === 'provisao-impostos')
+            .filter(t => t.type === TransactionType.EXPENSE && t.cost_center === 'provisao-impostos')
             .reduce((sum, t) => sum + t.amount, 0);
 
 
@@ -696,7 +669,7 @@ const DashboardView: FC<{ transactions: Transaction[]; goals: Goal[] }> = ({ tra
     }, [filteredTransactions]);
     
     const achievedGoals = useMemo(() => {
-         return goals.filter(g => g.currentAmount >= g.targetAmount).length;
+         return goals.filter(g => g.current_amount >= g.target_amount).length;
     }, [goals]);
 
     const upcomingBills = useMemo(() => {
@@ -754,12 +727,12 @@ const DashboardView: FC<{ transactions: Transaction[]; goals: Goal[] }> = ({ tra
             }
             const dayData = dataMap.get(date)!;
             if (t.type === TransactionType.INCOME) {
-                const netIncome = t.amount - (t.taxAmount || 0);
+                const netIncome = t.amount - (t.tax_amount || 0);
                 dayData.income += netIncome;
                 balance += netIncome;
             } else { // EXPENSE
                 // Only subtract from operational cash if not paid from tax provision
-                if (t.costCenter !== 'provisao-impostos') {
+                if (t.cost_center !== 'provisao-impostos') {
                     dayData.expense += t.amount;
                     balance -= t.amount;
                 }
@@ -908,7 +881,7 @@ interface TransactionsViewProps {
     incomeCategories: string[];
     expenseCategories: ExpenseCategory[];
     onEdit: (t: Transaction) => void;
-    onDelete: (id: string) => void;
+    onDelete: (id: string, recurringId?: string) => void;
     onAdd: (type: TransactionType) => void;
     onMarkAsPaid: (id: string) => void;
     onExport: (format: 'csv' | 'xlsx' | 'pdf', data: Transaction[]) => void;
@@ -978,7 +951,7 @@ const TransactionsView: FC<TransactionsViewProps> = ({
                 if (searchTerm && !(
                     t.description.toLowerCase().includes(lowercasedSearch) ||
                     t.category.toLowerCase().includes(lowercasedSearch) ||
-                    (t.clientSupplier && t.clientSupplier.toLowerCase().includes(lowercasedSearch)) ||
+                    (t.client_supplier && t.client_supplier.toLowerCase().includes(lowercasedSearch)) ||
                     t.amount.toString().includes(lowercasedSearch)
                 )) return false;
 
@@ -1214,7 +1187,7 @@ const TransactionsView: FC<TransactionsViewProps> = ({
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{formatDate(t.date)}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-text-primary">
                                                 {t.description}
-                                                <p className="text-xs text-text-secondary">{t.clientSupplier}</p>
+                                                <p className="text-xs text-text-secondary">{t.client_supplier}</p>
                                                 {t.type === TransactionType.EXPENSE && t.nature && (
                                                     <p className="text-xs text-text-secondary mt-1 italic">
                                                         Gasto {t.nature === ExpenseNature.FIXED ? 'Fixo' : 'Variável'}
@@ -1223,12 +1196,12 @@ const TransactionsView: FC<TransactionsViewProps> = ({
                                             </td>
                                             <td className={`px-6 py-4 whitespace-nowrap text-sm font-semibold ${t.type === TransactionType.INCOME ? 'text-green-400' : 'text-danger'}`}>
                                                 {formatCurrency(t.amount)}
-                                                {t.type === TransactionType.INCOME && t.grossAmount && (
-                                                    <p className="text-xs text-text-secondary">Bruto: {formatCurrency(t.grossAmount)}</p>
+                                                {t.type === TransactionType.INCOME && t.gross_amount && (
+                                                    <p className="text-xs text-text-secondary">Bruto: {formatCurrency(t.gross_amount)}</p>
                                                 )}
                                             </td>
-                                            {activeTab === 'income' && <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-400">{t.taxAmount ? formatCurrency(t.taxAmount) : '-'}</td>}
-                                            {activeTab === 'expense' && <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{costCenterMap.get(t.costCenter || '') || 'N/A'}</td>}
+                                            {activeTab === 'income' && <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-400">{t.tax_amount ? formatCurrency(t.tax_amount) : '-'}</td>}
+                                            {activeTab === 'expense' && <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{costCenterMap.get(t.cost_center || '') || 'N/A'}</td>}
                                             {activeTab === 'expense' && <td className="px-6 py-4 whitespace-nowrap text-sm">{statusContent}</td>}
                                             {permissions.canEditTransactions && (
                                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -1237,7 +1210,7 @@ const TransactionsView: FC<TransactionsViewProps> = ({
                                                             <button onClick={() => onMarkAsPaid(t.id)} title="Marcar como Paga" className="text-green-400 hover:text-green-300"><PaidIcon className="w-5 h-5"/></button>
                                                         )}
                                                         <button onClick={() => onEdit(t)} className="text-blue-400 hover:text-blue-300"><EditIcon className="w-5 h-5"/></button>
-                                                        <button onClick={() => onDelete(t.id)} className="text-red-500 hover:text-red-400"><TrashIcon className="w-5 h-5"/></button>
+                                                        <button onClick={() => onDelete(t.id, t.recurring_id)} className="text-red-500 hover:text-red-400"><TrashIcon className="w-5 h-5"/></button>
                                                     </div>
                                                 </td>
                                             )}
@@ -1269,7 +1242,7 @@ const GoalsView: FC<{ goals: Goal[]; onEdit: (g: Goal) => void; onDelete: (id: s
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {goals.map(goal => {
-                const progress = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount) * 100 : 0;
+                const progress = goal.target_amount > 0 ? (goal.current_amount / goal.target_amount) * 100 : 0;
                 return (
                     <Card key={goal.id}>
                         <div className="flex justify-between items-start">
@@ -1283,11 +1256,11 @@ const GoalsView: FC<{ goals: Goal[]; onEdit: (g: Goal) => void; onDelete: (id: s
                             )}
                         </div>
                         <div className="space-y-3">
-                            <p className="text-2xl font-bold text-primary">{formatCurrency(goal.targetAmount)}</p>
+                            <p className="text-2xl font-bold text-primary">{formatCurrency(goal.target_amount)}</p>
                             <div>
                                 <div className="flex justify-between items-center mb-1 text-sm">
                                     <span className="font-semibold text-text-secondary">Progresso</span>
-                                    <span className="font-semibold text-accent">{formatCurrency(goal.currentAmount)} ({Math.round(progress)}%)</span>
+                                    <span className="font-semibold text-accent">{formatCurrency(goal.current_amount)} ({Math.round(progress)}%)</span>
                                 </div>
                                 <ProgressBar progress={progress} />
                             </div>
@@ -1335,8 +1308,8 @@ const ReportsView: FC<{transactions: Transaction[], expenseCategories: ExpenseCa
         const revenue = filteredTransactions.filter(t => t.type === TransactionType.INCOME);
         const expenses = filteredTransactions.filter(t => t.type === TransactionType.EXPENSE);
 
-        const receitaBruta = revenue.reduce((sum, t) => sum + (t.grossAmount || t.amount), 0);
-        const deducoes = revenue.reduce((sum, t) => sum + (t.taxAmount || 0), 0);
+        const receitaBruta = revenue.reduce((sum, t) => sum + (t.gross_amount || t.amount), 0);
+        const deducoes = revenue.reduce((sum, t) => sum + (t.tax_amount || 0), 0);
         const receitaLiquida = receitaBruta - deducoes;
         
         const custos = expenses
@@ -1435,6 +1408,7 @@ const ReportsView: FC<{transactions: Transaction[], expenseCategories: ExpenseCa
                         <XAxis dataKey="month" stroke="#A0AEC0" tick={{ fontSize: 12 }} />
                         {/* FIX: Explicitly typed the 'value' parameter as number to allow arithmetic operation. */}
                         <YAxis stroke="#A0AEC0" tickFormatter={(value: number) => `R$${value/1000}k`} tick={{ fontSize: 12 }} />
+                        {/* FIX: Explicitly typed the 'value' parameter as number for the formatter, as its type can be uncertain from the library. */}
                         <Tooltip contentStyle={{ backgroundColor: '#1A214A', border: '1px solid #2D376A', color: '#F0F2F5' }} formatter={(value: number, name: string) => [formatCurrency(value), name === 'income' ? 'Receita Líq.' : 'Despesa Total']} cursor={{ fill: 'rgba(209, 130, 42, 0.1)' }} />
                         <Legend wrapperStyle={{ fontSize: '14px' }} />
                         <Bar dataKey="income" fill="#10B981" name="Receita Líq." radius={[4, 4, 0, 0]} />
@@ -1726,69 +1700,6 @@ const CostCenterSettings: FC<{ items: CostCenter[]; onAddItem: (name: string) =>
     );
 };
 
-const UserSettings: FC = () => {
-    const { users, addUser, deleteUser } = useAuth();
-    const [username, setUsername] = useState('');
-    const [password, setPassword] = useState('');
-    const [role, setRole] = useState<UserRole>(UserRole.OPERATIONAL);
-
-    const handleAddUser = (e: React.FormEvent) => {
-        e.preventDefault();
-        if(!username || !password) {
-            alert("Login e senha são obrigatórios.");
-            return;
-        }
-        const success = addUser({ username, password, role });
-        if(success) {
-            setUsername('');
-            setPassword('');
-            setRole(UserRole.OPERATIONAL);
-        }
-    }
-
-    return (
-        <Card className="lg:col-span-2">
-            <h3 className="text-xl font-bold mb-4">Gerenciamento de Usuários</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <h4 className="font-semibold text-text-primary mb-2">Usuários Atuais</h4>
-                    <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
-                        {users.map(user => (
-                            <div key={user.id} className="flex justify-between items-center bg-background p-2 rounded-md">
-                                <div>
-                                    <p className="text-sm font-medium">{user.username}</p>
-                                    <p className="text-xs text-text-secondary">{user.role}</p>
-                                </div>
-                                <button onClick={() => deleteUser(user.id)} className="text-red-500 hover:text-red-400">
-                                    <TrashIcon className="w-4 h-4" />
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-                <form onSubmit={handleAddUser} className="space-y-4">
-                     <h4 className="font-semibold text-text-primary">Adicionar Novo Usuário</h4>
-                    <div>
-                        <label className="block text-sm font-medium text-text-secondary">Login</label>
-                        <input type="text" value={username} onChange={e => setUsername(e.target.value)} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2" required />
-                    </div>
-                     <div>
-                        <label className="block text-sm font-medium text-text-secondary">Senha</label>
-                        <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2" required />
-                    </div>
-                     <div>
-                        <label className="block text-sm font-medium text-text-secondary">Nível de Acesso</label>
-                        <select value={role} onChange={e => setRole(e.target.value as UserRole)} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2">
-                            {Object.values(UserRole).map(r => <option key={r} value={r}>{r}</option>)}
-                        </select>
-                    </div>
-                    <Button type="submit" className="w-full"><PlusIcon className="w-5 h-5"/> Adicionar Usuário</Button>
-                </form>
-            </div>
-        </Card>
-    )
-}
-
 const BackupSettings: FC<{ onBackup: () => void; onRestore: (e: React.ChangeEvent<HTMLInputElement>) => void; }> = ({ onBackup, onRestore }) => {
     const { permissions } = useAuth();
     const restoreInputRef = useRef<HTMLInputElement>(null);
@@ -1796,8 +1707,8 @@ const BackupSettings: FC<{ onBackup: () => void; onRestore: (e: React.ChangeEven
     
     return (
         <Card>
-            <h3 className="text-xl font-bold mb-4">Backup e Restauração</h3>
-            <p className="text-sm text-text-secondary mb-4">Salve todos os seus dados em um arquivo ou restaure a partir de um backup anterior. A restauração substituirá todos os dados atuais.</p>
+            <h3 className="text-xl font-bold mb-4">Backup e Restauração (LocalStorage)</h3>
+            <p className="text-sm text-text-secondary mb-4">Salve os dados atualmente no navegador em um arquivo ou restaure-os. Isso não afeta o banco de dados Supabase.</p>
             <div className="flex flex-col sm:flex-row gap-4">
                 <Button onClick={onBackup} variant="secondary" className="w-full">Fazer Backup</Button>
                 <Button onClick={() => restoreInputRef.current?.click()} variant="secondary" className="w-full">Restaurar de Backup</Button>
@@ -1828,7 +1739,7 @@ const ActivityLogSettings: FC<{ logs: ActivityLog[] }> = ({ logs }) => {
                         {logs.map(log => (
                             <tr key={log.id} className="hover:bg-background">
                                 <td className="px-4 py-2 whitespace-nowrap text-text-secondary">{formatDateTime(log.timestamp)}</td>
-                                <td className="px-4 py-2 text-text-primary font-medium">{log.user}</td>
+                                <td className="px-4 py-2 text-text-primary font-medium">{log.user_display_name}</td>
                                 <td className="px-4 py-2 text-text-secondary">{log.action}</td>
                                 <td className="px-4 py-2 text-text-secondary">{log.details}</td>
                             </tr>
@@ -1852,29 +1763,18 @@ const SettingsView: FC<{
     costCenters: CostCenter[];
     advisors: Advisor[];
     logs: ActivityLog[];
-    onAddItem: (setter: React.Dispatch<React.SetStateAction<string[]>>, item: string) => void;
-    onDeleteItem: (setter: React.Dispatch<React.SetStateAction<string[]>>, item: string) => void;
-    onAddCostCenter: (name: string) => void;
-    onDeleteCostCenter: (id: string) => void;
-    onAddExpenseCategory: (name: string, type: ExpenseType) => void;
-    onDeleteExpenseCategory: (name: string) => void;
-    onAddAdvisor: (name: string, commissionRate: number) => void;
-    onDeleteAdvisor: (id: string) => void;
-    setIncomeCategories: React.Dispatch<React.SetStateAction<string[]>>;
-    setExpenseCategories: React.Dispatch<React.SetStateAction<ExpenseCategory[]>>;
-    setPaymentMethods: React.Dispatch<React.SetStateAction<string[]>>;
-    setCostCenters: React.Dispatch<React.SetStateAction<CostCenter[]>>;
-    setAdvisors: React.Dispatch<React.SetStateAction<Advisor[]>>;
+    onSettingsUpdate: (settings: any) => void;
     onBackup: () => void;
     onRestore: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }> = (props) => {
-    const { permissions } = useAuth();
     const { 
         incomeCategories, expenseCategories, paymentMethods, costCenters, advisors, logs,
-        onAddItem, onDeleteItem, onAddCostCenter, onDeleteCostCenter, onAddExpenseCategory, 
-        onDeleteExpenseCategory, onAddAdvisor, onDeleteAdvisor, setIncomeCategories, setExpenseCategories,
-        setPaymentMethods, setCostCenters, setAdvisors, onBackup, onRestore 
+        onSettingsUpdate, onBackup, onRestore 
     } = props;
+
+    const handleUpdate = (key: string, value: any) => {
+        onSettingsUpdate({ [key]: value });
+    }
     
     return (
         <div className="space-y-6">
@@ -1883,36 +1783,35 @@ const SettingsView: FC<{
                  <SettingsList 
                     title="Categorias de Receita"
                     items={incomeCategories}
-                    onAddItem={(item) => onAddItem(setIncomeCategories, item)}
-                    onDeleteItem={(item) => onDeleteItem(setIncomeCategories, item)}
-                    onReorder={setIncomeCategories}
+                    onAddItem={(item) => handleUpdate('income_categories', [...incomeCategories, item])}
+                    onDeleteItem={(item) => handleUpdate('income_categories', incomeCategories.filter(i => i !== item))}
+                    onReorder={(items) => handleUpdate('income_categories', items)}
                 />
                 <ExpenseCategorySettings 
                     items={expenseCategories}
-                    onAddItem={onAddExpenseCategory}
-                    onDeleteItem={onDeleteExpenseCategory}
-                    onReorder={setExpenseCategories}
+                    onAddItem={(name, type) => handleUpdate('expense_categories', [...expenseCategories, { name, type }])}
+                    onDeleteItem={(name) => handleUpdate('expense_categories', expenseCategories.filter(c => c.name !== name))}
+                    onReorder={(items) => handleUpdate('expense_categories', items)}
                 />
                 <AdvisorSettings
                     items={advisors}
-                    onAddItem={onAddAdvisor}
-                    onDeleteItem={onDeleteAdvisor}
-                    onReorder={setAdvisors}
+                    onAddItem={(name, commissionRate) => handleUpdate('advisors', [...advisors, { id: crypto.randomUUID(), name, commissionRate }])}
+                    onDeleteItem={(id) => handleUpdate('advisors', advisors.filter(a => a.id !== id))}
+                    onReorder={(items) => handleUpdate('advisors', items)}
                 />
                 <SettingsList 
                     title="Formas de Pagamento"
                     items={paymentMethods}
-                    onAddItem={(item) => onAddItem(setPaymentMethods, item)}
-                    onDeleteItem={(item) => onDeleteItem(setPaymentMethods, item)}
-                    onReorder={setPaymentMethods}
+                    onAddItem={(item) => handleUpdate('payment_methods', [...paymentMethods, item])}
+                    onDeleteItem={(item) => handleUpdate('payment_methods', paymentMethods.filter(i => i !== item))}
+                    onReorder={(items) => handleUpdate('payment_methods', items)}
                 />
                 <CostCenterSettings
                     items={costCenters}
-                    onAddItem={onAddCostCenter}
-                    onDeleteItem={onDeleteCostCenter}
-                    onReorder={setCostCenters}
+                    onAddItem={(name) => handleUpdate('cost_centers', [...costCenters, { id: crypto.randomUUID(), name, isDefault: false }])}
+                    onDeleteItem={(id) => handleUpdate('cost_centers', costCenters.filter(c => c.id !== id))}
+                    onReorder={(items) => handleUpdate('cost_centers', items)}
                 />
-                {permissions.canManageUsers && <UserSettings />}
                 <div className="lg:col-span-2">
                     <BackupSettings onBackup={onBackup} onRestore={onRestore} />
                 </div>
@@ -1999,8 +1898,8 @@ const CSVMapModal: FC<CSVMapModalProps> = ({ isOpen, onClose, csvData, onConfirm
                 amount: Math.abs(parsedAmount),
                 type: parsedAmount >= 0 ? TransactionType.INCOME : TransactionType.EXPENSE,
                 category: 'Importado (CSV)',
-                clientSupplier: 'Extrato Bancário',
-                paymentMethod: 'N/A',
+                client_supplier: 'Extrato Bancário',
+                payment_method: 'N/A',
                 status: ExpenseStatus.PAID,
             }
         }).filter((t): t is Partial<Transaction> => t !== null);
@@ -2085,7 +1984,7 @@ const InsightsView: FC<{ transactions: Transaction[] }> = ({ transactions }) => 
         const dailyBurnRate = netChange / 30;
         
         const currentBalance = transactions.reduce((acc, t) => {
-            if (t.costCenter === 'provisao-impostos') return acc; // Exclude tax provision from operational cash
+            if (t.cost_center === 'provisao-impostos') return acc; // Exclude tax provision from operational cash
              const amount = t.type === TransactionType.INCOME ? t.amount : -t.amount;
             return acc + amount;
         }, 0);
@@ -2157,7 +2056,7 @@ ${topExpensesList}
             // Prepare a simplified version of transactions for the prompt
             const transactionDataString = transactions
                 .slice(-100) // Limit to last 100 transactions to manage token count
-                .map(t => `${formatDate(t.date)}, ${t.type}, ${formatCurrency(t.amount)}, ${t.category}, ${t.description}, ${t.clientSupplier}`)
+                .map(t => `${formatDate(t.date)}, ${t.type}, ${formatCurrency(t.amount)}, ${t.category}, ${t.description}, ${t.client_supplier}`)
                 .join('\n');
             
             const aiResponseText = await getChatResponse(newUserMessage.text, transactionDataString);
@@ -2252,14 +2151,14 @@ ${topExpensesList}
 // --- COMPONENTE PRINCIPAL ---
 const MainApp: FC = () => {
     const { currentUser, permissions } = useAuth();
-    const [transactions, setTransactions] = useLocalStorage<Transaction[]>('transactions', getInitialTransactions());
-    const [goals, setGoals] = useLocalStorage<Goal[]>('goals', getInitialGoals());
-    const [activityLogs, setActivityLogs] = useLocalStorage<ActivityLog[]>('activityLogs', getInitialLogs());
-    const [incomeCategories, setIncomeCategories] = useLocalStorage<string[]>('incomeCategories', initialIncomeCategories);
-    const [expenseCategories, setExpenseCategories] = useLocalStorage<ExpenseCategory[]>('expenseCategories', initialExpenseCategories);
-    const [paymentMethods, setPaymentMethods] = useLocalStorage<string[]>('paymentMethods', initialPaymentMethods);
-    const [costCenters, setCostCenters] = useLocalStorage<CostCenter[]>('costCenters', initialCostCenters);
-    const [advisors, setAdvisors] = useLocalStorage<Advisor[]>('advisors', initialAdvisors);
+    const [transactions, setTransactions] = useState<Transaction[]>([]);
+    const [goals, setGoals] = useState<Goal[]>([]);
+    const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+    const [incomeCategories, setIncomeCategories] = useState<string[]>(initialIncomeCategories);
+    const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>(initialExpenseCategories);
+    const [paymentMethods, setPaymentMethods] = useState<string[]>(initialPaymentMethods);
+    const [costCenters, setCostCenters] = useState<CostCenter[]>(initialCostCenters);
+    const [advisors, setAdvisors] = useState<Advisor[]>(initialAdvisors);
     const [activeView, setActiveView] = useState<View>('dashboard');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     
@@ -2282,16 +2181,56 @@ const MainApp: FC = () => {
     const importFileRef = useRef<HTMLInputElement>(null);
     const importFileTypeRef = useRef<'ofx' | 'csv' | null>(null);
 
-    const logActivity = (action: string, details: string) => {
+    // --- DATA FETCHING ---
+    const fetchTransactions = async () => {
+        const { data, error } = await supabase.from('transactions').select('*').order('date', { ascending: false });
+        if (error) console.error("Error fetching transactions:", error);
+        else setTransactions(data || []);
+    };
+    const fetchGoals = async () => {
+        const { data, error } = await supabase.from('goals').select('*');
+        if (error) console.error("Error fetching goals:", error);
+        else setGoals(data || []);
+    };
+    const fetchLogs = async () => {
+        const { data, error } = await supabase.from('activity_logs').select('*').order('timestamp', { ascending: false }).limit(200);
+        if (error) console.error("Error fetching logs:", error);
+        else setActivityLogs(data as ActivityLog[] || []);
+    };
+    const fetchSettings = async () => {
         if (!currentUser) return;
-        const newLog: ActivityLog = {
-            id: crypto.randomUUID(),
-            timestamp: new Date().toISOString(),
-            user: currentUser.username,
+        const { data, error } = await supabase.from('settings').select('*').eq('user_id', currentUser.id).single();
+        if (data) {
+            setIncomeCategories(data.income_categories || initialIncomeCategories);
+            setExpenseCategories(data.expense_categories || initialExpenseCategories);
+            setPaymentMethods(data.payment_methods || initialPaymentMethods);
+            setCostCenters(data.cost_centers || initialCostCenters);
+            setAdvisors(data.advisors || initialAdvisors);
+        } else if (error && error.code !== 'PGRST116') { // Ignore 'no rows found' error, use defaults
+             console.error("Error fetching settings:", error);
+        }
+    };
+
+    useEffect(() => {
+        if (currentUser) {
+            fetchTransactions();
+            fetchGoals();
+            fetchLogs();
+            fetchSettings();
+        }
+    }, [currentUser]);
+    
+
+    const logActivity = async (action: string, details: string) => {
+        if (!currentUser) return;
+        const newLog = {
+            user_display_name: currentUser.username,
             action,
             details
         };
-        setActivityLogs(prev => [newLog, ...prev.slice(0, 199)]); // Keep last 200 logs
+        const { error } = await supabase.from('activity_logs').insert(newLog);
+        if (error) console.error('Error logging activity:', error);
+        else await fetchLogs(); // Refresh logs
     };
 
     const pageTitle = useMemo(() => {
@@ -2306,227 +2245,151 @@ const MainApp: FC = () => {
         return titles[activeView];
     }, [activeView]);
 
-    const handleAddTransaction = (data: TransactionFormValues) => {
-        const isRevenueWithCommission = data.type === TransactionType.INCOME && data.advisorId && data.commissionAmount && data.commissionAmount > 0;
+    const handleAddTransaction = async (data: TransactionFormValues) => {
+        const isRevenueWithCommission = data.type === TransactionType.INCOME && data.advisor_id && data.commission_amount && data.commission_amount > 0;
         const isRecurringExpense = data.type === TransactionType.EXPENSE && data.nature === ExpenseNature.FIXED && data.recurringCount && data.recurringCount > 0;
 
-        logActivity(
+        await logActivity(
             'Criar Transação',
             `${data.type === 'income' ? 'Receita' : 'Despesa'}: ${data.description} - ${formatCurrency(data.amount)}` +
             (isRecurringExpense ? ` (recorrente ${data.recurringCount}x)` : '')
         );
         
-        setTransactions(prev => {
-            const newTransactions = [...prev];
-
-            if (isRevenueWithCommission) {
-                const recurringId = crypto.randomUUID();
-                const advisor = advisors.find(a => a.id === data.advisorId);
-    
-                const revenueTransaction: Transaction = { ...data, id: crypto.randomUUID(), amount: data.amount, recurringId };
-                const commissionExpense: Transaction = {
-                    id: crypto.randomUUID(),
-                    recurringId: recurringId,
-                    date: data.date,
-                    description: `Comissão ${advisor?.name} - ${data.description}`,
-                    amount: data.commissionAmount!,
-                    type: TransactionType.EXPENSE,
-                    category: 'Remuneração de Assessores',
-                    clientSupplier: advisor?.name || 'N/A',
-                    paymentMethod: data.paymentMethod,
-                    status: ExpenseStatus.PENDING,
-                    nature: ExpenseNature.VARIABLE,
-                    costCenter: data.costCenter
-                };
-                newTransactions.push(revenueTransaction, commissionExpense);
-            } else if (isRecurringExpense) {
-                const recurringId = crypto.randomUUID();
-                const originalDate = new Date(data.date);
-                const count = data.recurringCount!;
-
-                for (let i = 0; i < count; i++) {
-                    const newDate = new Date(originalDate);
-                    newDate.setUTCMonth(originalDate.getUTCMonth() + i);
-
-                    const newTransaction: Transaction = {
-                        ...(data as Omit<TransactionFormValues, 'recurringCount'>),
-                        amount: data.amount,
-                        id: crypto.randomUUID(),
-                        date: newDate.toISOString(),
-                        description: data.description,
-                        recurringId: recurringId,
-                    };
-                    newTransactions.push(newTransaction);
-                }
-            } else {
-                const newTransaction: Transaction = { ...(data as Omit<TransactionFormValues, 'recurringCount'>), amount: data.amount, id: crypto.randomUUID() };
-                newTransactions.push(newTransaction);
-            }
-            return newTransactions;
-        });
-
-        closeTransactionModal();
-    };
-    
-    const handleEditTransaction = (data: TransactionFormValues) => {
-        if (!editingTransaction) return;
+        const transactionsToInsert: Omit<Transaction, 'id'>[] = [];
         
-        logActivity('Editar Transação', `De: "${editingTransaction.description}" Para: "${data.description}" - ${formatCurrency(data.amount)}`);
-    
-        // --- Logic to find future matching expenses based on recurringId ---
-        let futureMatches: Transaction[] = [];
-        if (editingTransaction.type === TransactionType.EXPENSE && editingTransaction.recurringId) {
-            const originalDate = new Date(editingTransaction.date);
-            futureMatches = transactions.filter(t =>
-                t.recurringId === editingTransaction.recurringId &&
-                new Date(t.date) > originalDate
-            );
-        }
-        
-        let updateFuture = false;
-        if (futureMatches.length > 0) {
-            updateFuture = window.confirm(
-                `Encontramos ${futureMatches.length} despesa(s) futura(s) semelhante(s). Deseja aplicar as alterações a esta e a todas as futuras despesas correspondentes?\n\n- Clique em 'OK' para alterar todas.\n- Clique em 'Cancelar' para alterar apenas esta.`
-            );
-        }
-    
-        // --- Update State ---
-        setTransactions(prev => {
-            // --- Handle EXPENSE edits ---
-            if (editingTransaction.type === TransactionType.EXPENSE) {
-                const idsToUpdate = new Set([editingTransaction.id]);
-                if (updateFuture && editingTransaction.recurringId) {
-                    futureMatches.forEach(t => idsToUpdate.add(t.id));
-                }
-    
-                return prev.map(t => {
-                    if (idsToUpdate.has(t.id)) {
-                        const isOriginal = t.id === editingTransaction.id;
-                        return {
-                            ...t,
-                            ...data,
-                            date: isOriginal ? data.date : t.date, // Preserve date for future items
-                            description: data.description, // Use the new description directly
-                        };
-                    }
-                    return t;
+        if (isRevenueWithCommission) {
+            const recurring_id = crypto.randomUUID();
+            const advisor = advisors.find(a => a.id === data.advisor_id);
+            transactionsToInsert.push({ ...data, amount: data.amount, recurring_id });
+            transactionsToInsert.push({
+                recurring_id,
+                date: data.date,
+                description: `Comissão ${advisor?.name} - ${data.description}`,
+                amount: data.commission_amount!,
+                type: TransactionType.EXPENSE,
+                category: 'Remuneração de Assessores',
+                client_supplier: advisor?.name || 'N/A',
+                payment_method: data.payment_method,
+                status: ExpenseStatus.PENDING,
+                nature: ExpenseNature.VARIABLE,
+                cost_center: data.cost_center
+            });
+        } else if (isRecurringExpense) {
+            const recurring_id = crypto.randomUUID();
+            const originalDate = new Date(data.date);
+            for (let i = 0; i < data.recurringCount!; i++) {
+                const newDate = new Date(originalDate);
+                newDate.setUTCMonth(originalDate.getUTCMonth() + i);
+                transactionsToInsert.push({
+                    ...(data as Omit<TransactionFormValues, 'recurringCount'>),
+                    amount: data.amount,
+                    date: newDate.toISOString(),
+                    description: data.description,
+                    recurring_id,
                 });
             }
-            
-            // --- Handle INCOME edits ---
-            if (editingTransaction.type === TransactionType.INCOME) {
-                const isRevenueWithCommission = data.advisorId && data.commissionAmount && data.commissionAmount > 0;
-                const hadCommission = !!editingTransaction.recurringId;
-                
-                let filtered = prev;
-                if (hadCommission) {
-                    filtered = prev.filter(t => t.recurringId !== editingTransaction.recurringId);
-                } else {
-                    filtered = prev.filter(t => t.id !== editingTransaction.id);
-                }
+        } else {
+             transactionsToInsert.push({ ...(data as Omit<TransactionFormValues, 'recurringCount'>), amount: data.amount });
+        }
+        
+        const { error } = await supabase.from('transactions').insert(transactionsToInsert.map(t => ({ ...t, user_id: currentUser?.id })));
+        if (error) console.error('Error adding transaction:', error);
+        else await fetchTransactions();
+
+        closeTransactionModal();
+    };
     
-                if (isRevenueWithCommission) {
-                    const recurringId = editingTransaction.recurringId || crypto.randomUUID();
-                    const advisor = advisors.find(a => a.id === data.advisorId);
-                    const updatedRevenue: Transaction = {
-                        ...editingTransaction,
-                        ...data,
-                        recurringId,
-                    };
-                    const commissionExpense: Transaction = {
-                        id: crypto.randomUUID(),
-                        recurringId: recurringId,
-                        date: data.date,
-                        description: `Comissão ${advisor?.name} - ${data.description}`,
-                        amount: data.commissionAmount!,
-                        type: TransactionType.EXPENSE,
-                        category: 'Remuneração de Assessores',
-                        clientSupplier: advisor?.name || 'N/A',
-                        paymentMethod: data.paymentMethod,
-                        status: ExpenseStatus.PENDING,
-                        nature: ExpenseNature.VARIABLE,
-                        costCenter: data.costCenter
-                    };
-                    return [...filtered, updatedRevenue, commissionExpense];
-                } else {
-                    const updatedTransaction: Transaction = {
-                        ...editingTransaction,
-                        ...data,
-                        recurringId: undefined, 
-                    };
-                    return [...filtered, updatedTransaction];
-                }
-            }
-            
-            return prev;
-        });
+    const handleEditTransaction = async (data: TransactionFormValues) => {
+        if (!editingTransaction) return;
+        
+        await logActivity('Editar Transação', `De: "${editingTransaction.description}" Para: "${data.description}" - ${formatCurrency(data.amount)}`);
     
+        const { error } = await supabase
+            .from('transactions')
+            .update({ ...data })
+            .eq('id', editingTransaction.id);
+        
+        if (error) console.error("Error updating transaction:", error);
+        else await fetchTransactions();
+
         closeTransactionModal();
     };
 
-    const handleDeleteTransaction = (id: string) => {
+    const handleDeleteTransaction = async (id: string, recurring_id?: string) => {
         const transactionToDelete = transactions.find(t => t.id === id);
-        if (window.confirm("Tem certeza que deseja excluir esta transação? Se ela tiver uma comissão vinculada, a comissão também será excluída.")) {
+        if (window.confirm("Tem certeza que deseja excluir esta transação? Se ela tiver uma comissão ou recorrência vinculada, tudo será excluído.")) {
             if (transactionToDelete) {
-                logActivity('Excluir Transação', `"${transactionToDelete.description}" - ${formatCurrency(transactionToDelete.amount)}`);
-                if (transactionToDelete.recurringId) {
-                    setTransactions(prev => prev.filter(t => t.recurringId !== transactionToDelete.recurringId));
+                await logActivity('Excluir Transação', `"${transactionToDelete.description}" - ${formatCurrency(transactionToDelete.amount)}`);
+                
+                let query = supabase.from('transactions');
+                if (recurring_id) {
+                    query = query.delete().eq('recurring_id', recurring_id);
                 } else {
-                    setTransactions(prev => prev.filter(t => t.id !== id));
+                    query = query.delete().eq('id', id);
                 }
+                const { error } = await query;
+
+                if (error) console.error('Error deleting transaction:', error);
+                else await fetchTransactions();
             }
         }
     };
 
-    const handleBulkDeleteTransactions = (idsToDelete: Set<string>) => {
+    const handleBulkDeleteTransactions = async (idsToDelete: Set<string>) => {
         if (window.confirm(`Tem certeza que deseja excluir os ${idsToDelete.size} lançamentos selecionados? Esta ação não pode ser desfeita e excluirá quaisquer comissões ou receitas vinculadas.`)) {
             
-            logActivity('Excluir Transações em Massa', `${idsToDelete.size} itens excluídos.`);
+            await logActivity('Excluir Transações em Massa', `${idsToDelete.size} itens excluídos.`);
             const recurringIdsFromSelection = new Set<string>();
             transactions.forEach(t => {
-                if (idsToDelete.has(t.id) && t.recurringId) {
-                    recurringIdsFromSelection.add(t.recurringId);
+                if (idsToDelete.has(t.id) && t.recurring_id) {
+                    recurringIdsFromSelection.add(t.recurring_id);
                 }
             });
+            
+            const { error: errorRecurring } = await supabase.from('transactions').delete().in('recurring_id', Array.from(recurringIdsFromSelection));
+            const { error: errorSingle } = await supabase.from('transactions').delete().in('id', Array.from(idsToDelete));
 
-            setTransactions(prev => 
-                prev.filter(t => {
-                    const isDirectlySelected = idsToDelete.has(t.id);
-                    const isLinkedToSelection = t.recurringId && recurringIdsFromSelection.has(t.recurringId);
-                    return !isDirectlySelected && !isLinkedToSelection;
-                })
-            );
+            if (errorRecurring || errorSingle) console.error("Error bulk deleting:", { errorRecurring, errorSingle });
+            else await fetchTransactions();
             
             setSelectedTransactionIds(new Set());
         }
     };
 
-    const handleMarkAsPaid = (id: string) => {
+    const handleMarkAsPaid = async (id: string) => {
         const transaction = transactions.find(t => t.id === id);
-        if(transaction) logActivity('Marcar como Pago', `"${transaction.description}" - ${formatCurrency(transaction.amount)}`);
-        setTransactions(prev => prev.map(t => t.id === id ? {...t, status: ExpenseStatus.PAID} : t));
+        if(transaction) await logActivity('Marcar como Pago', `"${transaction.description}" - ${formatCurrency(transaction.amount)}`);
+        
+        const { error } = await supabase.from('transactions').update({ status: ExpenseStatus.PAID }).eq('id', id);
+        if (error) console.error("Error marking as paid:", error);
+        else await fetchTransactions();
     };
 
-    const handleAddGoal = (goalData: Omit<Goal, 'id' | 'currentAmount'>) => {
-        logActivity('Criar Meta', `"${goalData.name}" - ${formatCurrency(goalData.targetAmount)}`);
-        const newGoal: Goal = { ...goalData, id: crypto.randomUUID(), currentAmount: 0 };
-        setGoals(prev => [...prev, newGoal]);
+    const handleAddGoal = async (goalData: Omit<Goal, 'id' | 'current_amount'>) => {
+        await logActivity('Criar Meta', `"${goalData.name}" - ${formatCurrency(goalData.target_amount)}`);
+        const { error } = await supabase.from('goals').insert({ ...goalData, current_amount: 0, user_id: currentUser?.id });
+        if(error) console.error("Error adding goal:", error);
+        else await fetchGoals();
         setIsGoalModalOpen(false);
     };
     
-    const handleEditGoal = (goalData: Omit<Goal, 'id' | 'currentAmount'>) => {
+    const handleEditGoal = async (goalData: Omit<Goal, 'id' | 'current_amount'>) => {
         if (!editingGoal) return;
-        logActivity('Editar Meta', `De: "${editingGoal.name}" Para: "${goalData.name}"`);
-        setGoals(prev => prev.map(g => g.id === editingGoal.id ? { ...editingGoal, ...goalData } : g));
+        await logActivity('Editar Meta', `De: "${editingGoal.name}" Para: "${goalData.name}"`);
+        const { error } = await supabase.from('goals').update(goalData).eq('id', editingGoal.id);
+        if(error) console.error("Error updating goal:", error);
+        else await fetchGoals();
         setEditingGoal(null);
         setIsGoalModalOpen(false);
     };
     
-    const handleDeleteGoal = (id: string) => {
+    const handleDeleteGoal = async (id: string) => {
         const goalToDelete = goals.find(g => g.id === id);
         if (window.confirm("Tem certeza que deseja excluir esta meta?")) {
-            if(goalToDelete) logActivity('Excluir Meta', `"${goalToDelete.name}"`);
-            setGoals(prev => prev.filter(g => g.id !== id));
+            if(goalToDelete) await logActivity('Excluir Meta', `"${goalToDelete.name}"`);
+            const { error } = await supabase.from('goals').delete().eq('id', id);
+            if(error) console.error("Error deleting goal:", error);
+            else await fetchGoals();
         }
     };
 
@@ -2551,89 +2414,12 @@ const MainApp: FC = () => {
     };
     const closeGoalModal = () => { setEditingGoal(null); setIsGoalModalOpen(false); };
     
-    const handleAddItem = (setter: React.Dispatch<React.SetStateAction<string[]>>, item: string) => {
-        if (item && item.trim() !== "") {
-            setter(prev => {
-                if(prev.find(i => i.toLowerCase() === item.trim().toLowerCase())) {
-                    alert("Este item já existe na lista.");
-                    return prev;
-                }
-                logActivity('Adicionar Item de Configuração', `Item: "${item}"`);
-                return [...prev, item.trim()]
-            });
-        }
-    };
-
-    const handleDeleteItem = (setter: React.Dispatch<React.SetStateAction<string[]>>, itemToDelete: string) => {
-        if (window.confirm("Tem certeza que deseja excluir este item? Esta ação não pode ser desfeita.")) {
-            logActivity('Excluir Item de Configuração', `Item: "${itemToDelete}"`);
-            setter(prev => prev.filter(item => item !== itemToDelete));
-        }
-    };
-    
-    const handleAddCostCenter = (name: string) => {
-        if (costCenters.find(cc => cc.name.toLowerCase() === name.toLowerCase())) {
-            alert("Um centro de custo com este nome já existe.");
-            return;
-        }
-        logActivity('Adicionar Centro de Custo', `Nome: "${name}"`);
-        const newCostCenter: CostCenter = { id: crypto.randomUUID(), name, isDefault: false };
-        setCostCenters(prev => [...prev, newCostCenter]);
-    };
-
-    const handleDeleteCostCenter = (id: string) => {
-        const itemToDelete = costCenters.find(c => c.id === id);
-        if (transactions.some(t => t.costCenter === id)) {
-            alert("Não é possível excluir este centro de custo, pois ele está sendo usado em uma ou mais transações.");
-            return;
-        }
-        if (window.confirm("Tem certeza que deseja excluir este centro de custo?")) {
-            if(itemToDelete) logActivity('Excluir Centro de Custo', `Nome: "${itemToDelete.name}"`);
-            setCostCenters(prev => prev.filter(cc => cc.id !== id));
-        }
-    };
-    
-    const handleAddAdvisor = (name: string, commissionRate: number) => {
-        if (advisors.find(a => a.name.toLowerCase() === name.toLowerCase())) {
-            alert("Um assessor com este nome já existe.");
-            return;
-        }
-        logActivity('Adicionar Assessor', `Nome: "${name}", Comissão: ${commissionRate}%`);
-        const newAdvisor: Advisor = { id: crypto.randomUUID(), name, commissionRate };
-        setAdvisors(prev => [...prev, newAdvisor]);
-    };
-
-    const handleDeleteAdvisor = (id: string) => {
-        const itemToDelete = advisors.find(a => a.id === id);
-        if (transactions.some(t => t.advisorId === id)) {
-            alert("Não é possível excluir este assessor, pois ele está vinculado a uma ou mais transações.");
-            return;
-        }
-        if (window.confirm("Tem certeza que deseja excluir este assessor?")) {
-            if(itemToDelete) logActivity('Excluir Assessor', `Nome: "${itemToDelete.name}"`);
-            setAdvisors(prev => prev.filter(a => a.id !== id));
-        }
-    };
-
-    const handleAddExpenseCategory = (name: string, type: ExpenseType) => {
-        if (expenseCategories.find(c => c.name.toLowerCase() === name.toLowerCase())) {
-            alert("Uma categoria de despesa com este nome já existe.");
-            return;
-        }
-        logActivity('Adicionar Categoria de Despesa', `Nome: "${name}", Tipo: ${type}`);
-        const newCategory: ExpenseCategory = { name, type };
-        setExpenseCategories(prev => [...prev, newCategory]);
-    };
-
-    const handleDeleteExpenseCategory = (name: string) => {
-        if (transactions.some(t => t.category === name)) {
-            alert("Não é possível excluir esta categoria, pois ela está sendo usada em uma ou mais transações.");
-            return;
-        }
-         if (window.confirm("Tem certeza que deseja excluir esta categoria?")) {
-            logActivity('Excluir Categoria de Despesa', `Nome: "${name}"`);
-            setExpenseCategories(prev => prev.filter(c => c.name !== name));
-        }
+    const handleSettingsUpdate = async (settingsToUpdate: any) => {
+        if (!currentUser) return;
+        await logActivity('Atualizar Configurações', `Chaves: ${Object.keys(settingsToUpdate).join(', ')}`);
+        const { error } = await supabase.from('settings').upsert({ ...settingsToUpdate, user_id: currentUser.id });
+        if (error) console.error('Error updating settings:', error);
+        else await fetchSettings();
     };
 
     const handleExport = (format: 'csv' | 'xlsx' | 'pdf', data: Transaction[]) => {
@@ -2644,7 +2430,7 @@ const MainApp: FC = () => {
             Valor: t.amount,
             Tipo: t.type === 'income' ? 'Receita' : 'Despesa',
             Categoria: t.category,
-            "Cliente/Fornecedor": t.clientSupplier,
+            "Cliente/Fornecedor": t.client_supplier,
             Status: t.status || 'N/A'
         }));
 
@@ -2720,8 +2506,8 @@ const MainApp: FC = () => {
                     amount: Math.abs(amount),
                     type: amount >= 0 ? TransactionType.INCOME : TransactionType.EXPENSE,
                     category: 'Importado',
-                    clientSupplier: 'Extrato Bancário',
-                    paymentMethod: 'N/A',
+                    client_supplier: 'Extrato Bancário',
+                    payment_method: 'N/A',
                     status: ExpenseStatus.PAID,
                 });
             }
@@ -2767,23 +2553,24 @@ const MainApp: FC = () => {
     };
 
 
-    const handleConfirmImport = () => {
+    const handleConfirmImport = async () => {
         const transactionsToAdd = parsedTransactions
             .filter((_, index) => selectedForImport.has(index))
-            .map(t => ({
-                ...t,
-                id: crypto.randomUUID(),
-            } as Transaction));
+            .map(t => ({ ...t, user_id: currentUser?.id }));
         
-        logActivity('Confirmar Importação', `${transactionsToAdd.length} transações importadas.`);
-        setTransactions(prev => [...prev, ...transactionsToAdd]);
+        await logActivity('Confirmar Importação', `${transactionsToAdd.length} transações importadas.`);
+        
+        const { error } = await supabase.from('transactions').insert(transactionsToAdd);
+        if (error) console.error("Error confirming import:", error);
+        else await fetchTransactions();
+        
         setIsImportReviewModalOpen(false);
         setParsedTransactions([]);
         setSelectedForImport(new Set());
     };
     
     const handleBackup = () => {
-        logActivity('Fazer Backup', 'Dados exportados para arquivo JSON.');
+        logActivity('Fazer Backup', 'Dados do LocalStorage exportados para arquivo JSON.');
         const backupData = {
             transactions,
             goals,
@@ -2803,11 +2590,11 @@ const MainApp: FC = () => {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        alert("Backup criado com sucesso!");
+        alert("Backup do LocalStorage criado com sucesso!");
     };
     
     const handleRestore = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!window.confirm("Atenção: Restaurar um backup substituirá todos os dados atuais. Deseja continuar?")) {
+        if (!window.confirm("Atenção: Restaurar um backup substituirá todos os dados do NAVEGADOR. Isso não afeta o banco de dados. Deseja continuar?")) {
             e.target.value = '';
             return;
         }
@@ -2817,7 +2604,6 @@ const MainApp: FC = () => {
             reader.onload = (event) => {
                 try {
                     const data = JSON.parse(event.target?.result as string);
-                    // Basic validation
                     if (data.transactions && data.goals && data.incomeCategories) {
                         setTransactions(data.transactions);
                         setGoals(data.goals);
@@ -2827,17 +2613,11 @@ const MainApp: FC = () => {
                         setPaymentMethods(data.paymentMethods);
                         setCostCenters(data.costCenters);
                         setAdvisors(data.advisors || []);
-                        logActivity('Restaurar Backup', `Dados restaurados do arquivo: ${file.name}`);
-                        alert("Dados restaurados com sucesso!");
-                    } else {
-                        throw new Error("Formato de arquivo inválido.");
-                    }
+                        alert("Dados locais restaurados com sucesso!");
+                    } else { throw new Error("Formato de arquivo inválido."); }
                 } catch (error) {
                     alert("Erro ao restaurar backup: O arquivo está corrompido ou não é um backup válido.");
-                    console.error("Restore error:", error);
-                } finally {
-                    e.target.value = '';
-                }
+                } finally { e.target.value = ''; }
             };
             reader.readAsText(file);
         }
@@ -2848,16 +2628,15 @@ const MainApp: FC = () => {
         setIsProgressModalOpen(true);
     };
 
-    const handleAddProgress = (amount: number) => {
+    const handleAddProgress = async (amount: number) => {
         if (!selectedGoal) return;
-        logActivity('Adicionar Progresso a Meta', `Meta: "${selectedGoal.name}", Valor: ${formatCurrency(amount)}`);
-        setGoals(prevGoals =>
-            prevGoals.map(g =>
-                g.id === selectedGoal.id
-                    ? { ...g, currentAmount: g.currentAmount + amount }
-                    : g
-            )
-        );
+        await logActivity('Adicionar Progresso a Meta', `Meta: "${selectedGoal.name}", Valor: ${formatCurrency(amount)}`);
+        
+        const newAmount = selectedGoal.current_amount + amount;
+        const { error } = await supabase.from('goals').update({ current_amount: newAmount }).eq('id', selectedGoal.id);
+        if (error) console.error("Error adding progress:", error);
+        else await fetchGoals();
+        
         setIsProgressModalOpen(false);
         setSelectedGoal(null);
     };
@@ -2896,19 +2675,7 @@ const MainApp: FC = () => {
                 costCenters={costCenters}
                 advisors={advisors}
                 logs={activityLogs}
-                onAddItem={handleAddItem}
-                onDeleteItem={handleDeleteItem}
-                onAddCostCenter={handleAddCostCenter}
-                onDeleteCostCenter={handleDeleteCostCenter}
-                onAddExpenseCategory={handleAddExpenseCategory}
-                onDeleteExpenseCategory={handleDeleteExpenseCategory}
-                onAddAdvisor={handleAddAdvisor}
-                onDeleteAdvisor={handleDeleteAdvisor}
-                setIncomeCategories={setIncomeCategories}
-                setExpenseCategories={setExpenseCategories}
-                setPaymentMethods={setPaymentMethods}
-                setAdvisors={setAdvisors}
-                setCostCenters={setCostCenters}
+                onSettingsUpdate={handleSettingsUpdate}
                 onBackup={handleBackup}
                 onRestore={handleRestore}
             />;
@@ -3026,8 +2793,16 @@ const App: FC = () => {
 }
 
 const AppContent: FC = () => {
-    const { currentUser } = useAuth();
-    if (!currentUser) {
+    const { session, loading } = useAuth();
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-background">
+                <div className="text-text-primary text-xl">Carregando...</div>
+            </div>
+        )
+    }
+    
+    if (!session) {
         return <Login />;
     }
     return <MainApp />;

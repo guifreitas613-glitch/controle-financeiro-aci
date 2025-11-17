@@ -1,5 +1,7 @@
 import React, { createContext, useState, useContext, useMemo, useEffect } from 'react';
 import { User, UserRole } from './types';
+import { supabase } from './services/supabaseClient';
+import { AuthChangeEvent, Session, User as SupabaseUser } from '@supabase/supabase-js';
 
 // --- PERMISSIONS ---
 export const PERMISSIONS: Record<UserRole, {
@@ -62,95 +64,100 @@ export const PERMISSIONS: Record<UserRole, {
 // --- AUTH CONTEXT ---
 interface AuthContextType {
     currentUser: User | null;
-    users: User[];
+    session: Session | null;
+    loading: boolean;
     permissions: typeof PERMISSIONS[UserRole];
-    login: (username: string, password_raw: string) => boolean;
-    logout: () => void;
-    addUser: (user: Omit<User, 'id'>) => boolean;
-    deleteUser: (userId: string) => void;
+    login: (email: string, password_raw: string) => Promise<{ error: any }>;
+    logout: () => Promise<void>;
+    signUp: (params: {email: string, password_raw: string, username: string, role: UserRole}) => Promise<{ error: any }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const defaultAdmin: User = {
-    id: 'admin-default',
-    username: 'guilherme.andrei',
-    password: '1234', // In a real app, this should be a hash
-    role: UserRole.ADMIN,
-};
-
-function useLocalStorage<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
-    const [storedValue, setStoredValue] = useState<T>(() => {
-        try {
-            const item = window.localStorage.getItem(key);
-            return item ? JSON.parse(item) : initialValue;
-        } catch (error) {
-            console.error(`Error reading localStorage key “${key}”:`, error);
-            return initialValue;
-        }
-    });
-
-    useEffect(() => {
-        try {
-            window.localStorage.setItem(key, JSON.stringify(storedValue));
-        } catch (error) {
-            console.error(`Error writing to localStorage key “${key}”:`, error);
-        }
-    }, [key, storedValue]);
-
-    return [storedValue, setStoredValue];
-}
-
-
 // --- AUTH PROVIDER ---
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [users, setUsers] = useLocalStorage<User[]>('users', []);
-    const [currentUser, setCurrentUser] = useLocalStorage<User | null>('currentUser', null);
-    
-    // Initialize default admin if no users exist
-    useEffect(() => {
-        if (users.length === 0) {
-            setUsers([defaultAdmin]);
-        }
-    }, [users, setUsers]);
+    const [currentUser, setCurrentUser] = useState<User | null>(null);
+    const [session, setSession] = useState<Session | null>(null);
+    const [loading, setLoading] = useState(true);
 
-    const login = (username: string, password_raw: string): boolean => {
-        const user = users.find(u => u.username === username && u.password === password_raw);
-        if (user) {
-            const { password, ...userToStore } = user; // Don't store password in currentUser
-            setCurrentUser(userToStore);
-            return true;
+    useEffect(() => {
+        const fetchSession = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            setSession(session);
+            if (session?.user) {
+                await fetchUserProfile(session.user);
+            }
+            setLoading(false);
+        };
+
+        fetchSession();
+
+        const { data: authListener } = supabase.auth.onAuthStateChange(
+            async (event: AuthChangeEvent, session: Session | null) => {
+                setSession(session);
+                if (session?.user) {
+                    await fetchUserProfile(session.user);
+                } else {
+                    setCurrentUser(null);
+                }
+            }
+        );
+
+        return () => {
+            authListener.subscription.unsubscribe();
+        };
+    }, []);
+
+    const fetchUserProfile = async (supabaseUser: SupabaseUser) => {
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('username, role')
+            .eq('id', supabaseUser.id)
+            .single();
+
+        if (data) {
+            setCurrentUser({
+                id: supabaseUser.id,
+                email: supabaseUser.email,
+                username: data.username,
+                role: data.role as UserRole,
+            });
+        } else if (error) {
+            console.error('Error fetching user profile:', error);
+            // Handle case where profile might not exist yet
+            setCurrentUser({
+                id: supabaseUser.id,
+                email: supabaseUser.email,
+                username: supabaseUser.email?.split('@')[0] || 'Usuário',
+                role: UserRole.OPERATIONAL, // Default role
+            });
         }
-        return false;
+    };
+    
+    const login = async (email: string, password_raw: string) => {
+        const { error } = await supabase.auth.signInWithPassword({ email, password: password_raw });
+        return { error };
     };
 
-    const logout = () => {
+    const logout = async () => {
+        await supabase.auth.signOut();
         setCurrentUser(null);
     };
-
-    const addUser = (user: Omit<User, 'id'>): boolean => {
-        if (users.some(u => u.username === user.username)) {
-            alert('Um usuário com este nome de login já existe.');
-            return false;
-        }
-        const newUser: User = { ...user, id: crypto.randomUUID() };
-        setUsers(prev => [...prev, newUser]);
-        return true;
+    
+    const signUp = async ({email, password_raw, username, role}: {email: string, password_raw: string, username: string, role: UserRole}) => {
+         const { error } = await supabase.auth.signUp({
+            email,
+            password: password_raw,
+            options: {
+                data: {
+                    username: username,
+                    role: role,
+                }
+            }
+        });
+        return { error };
     };
 
-    const deleteUser = (userId: string) => {
-        if (userId === currentUser?.id) {
-            alert('Você não pode excluir a si mesmo.');
-            return;
-        }
-        if (userId === defaultAdmin.id) {
-            alert('O administrador padrão não pode ser excluído.');
-            return;
-        }
-        if (window.confirm("Tem certeza que deseja excluir este usuário?")) {
-            setUsers(prev => prev.filter(u => u.id !== userId));
-        }
-    };
 
     const permissions = useMemo(() => {
         return currentUser ? PERMISSIONS[currentUser.role] : PERMISSIONS[UserRole.GUEST];
@@ -158,15 +165,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const value = {
         currentUser,
-        users,
+        session,
+        loading,
         permissions,
         login,
         logout,
-        addUser,
-        deleteUser,
+        signUp,
     };
 
-    // FIX: Replaced JSX with React.createElement to resolve parsing error in .ts file.
     return React.createElement(AuthContext.Provider, { value: value }, children);
 };
 
