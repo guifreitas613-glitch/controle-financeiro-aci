@@ -4,7 +4,8 @@ import { auth } from "./firebase";
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
-  signOut 
+  signOut,
+  sendPasswordResetEmail
 } from "firebase/auth";
 
 export function loginUser(email: string, password: string) {
@@ -17,4 +18,8 @@ export function registerUser(email: string, password: string) {
 
 export function logoutUser() {
   return signOut(auth);
+}
+
+export function resetUserPassword(email: string) {
+  return sendPasswordResetEmail(auth, email);
 }

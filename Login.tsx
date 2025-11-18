@@ -1,14 +1,17 @@
+
 import React, { useState } from 'react';
-import { loginUser, registerUser } from './auth';
+import { loginUser, resetUserPassword } from './auth';
 
 const Login: React.FC = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [message, setMessage] = useState('');
 
     const handleLogin = (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+        setMessage('');
         loginUser(email, password)
             .catch(err => {
                  switch (err.code) {
@@ -27,31 +30,32 @@ const Login: React.FC = () => {
             });
     };
 
-    const handleRegister = (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleForgotPassword = () => {
+        if (!email) {
+            setError('Por favor, digite seu e-mail para redefinir a senha.');
+            return;
+        }
         setError('');
-        registerUser(email, password)
+        setMessage('');
+        
+        resetUserPassword(email)
             .then(() => {
-                alert("Cadastro realizado com sucesso! Faça o login para continuar.");
+                setMessage('Um link para redefinição de senha foi enviado para o seu e-mail.');
             })
             .catch(err => {
                 switch (err.code) {
-                    case 'auth/email-already-in-use':
-                        setError('Este e-mail já está em uso.');
-                        break;
-                    case 'auth/weak-password':
-                        setError('A senha deve ter pelo menos 6 caracteres.');
+                    case 'auth/user-not-found':
+                        setError('Usuário não encontrado.');
                         break;
                     case 'auth/invalid-email':
                         setError('O formato do e-mail é inválido.');
                         break;
                     default:
-                        setError('Ocorreu um erro ao tentar se cadastrar.');
+                        setError('Erro ao enviar e-mail de redefinição.');
                         break;
                 }
             });
     };
-
 
     return (
         <div className="flex items-center justify-center min-h-screen bg-background">
@@ -60,7 +64,7 @@ const Login: React.FC = () => {
                     <h1 className="text-4xl font-bold text-text-primary">ACI<span className="text-primary">Capital</span></h1>
                     <p className="mt-2 text-text-secondary">Seu assistente financeiro empresarial</p>
                 </div>
-                <form className="mt-8 space-y-6">
+                <form className="mt-8 space-y-6" onSubmit={handleLogin}>
                     <div className="rounded-md shadow-sm -space-y-px">
                         <div>
                             <label htmlFor="email" className="sr-only">E-mail</label>
@@ -91,21 +95,26 @@ const Login: React.FC = () => {
                             />
                         </div>
                     </div>
+
+                    <div className="flex items-center justify-end">
+                        <button
+                            type="button"
+                            onClick={handleForgotPassword}
+                            className="text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                        >
+                            Esqueci a senha
+                        </button>
+                    </div>
+
                     {error && <p className="text-sm text-center text-danger">{error}</p>}
+                    {message && <p className="text-sm text-center text-green-400">{message}</p>}
+
                     <div className="flex flex-col space-y-4">
                          <button
-                            type="button"
-                            onClick={handleLogin}
+                            type="submit"
                             className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-primary hover:bg-opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-dark transition-all duration-300 transform hover:scale-105"
                         >
                             Entrar
-                        </button>
-                         <button
-                            type="button"
-                            onClick={handleRegister}
-                            className="group relative w-full flex justify-center py-3 px-4 border border-primary text-sm font-medium rounded-md text-primary bg-transparent hover:bg-primary hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-dark transition-all duration-300 transform hover:scale-105"
-                        >
-                            Cadastrar
                         </button>
                     </div>
                 </form>
