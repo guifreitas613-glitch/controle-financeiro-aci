@@ -1,5 +1,3 @@
-
-
 import React, { useState, useMemo, FC, ReactNode, useEffect } from 'react';
 import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType } from './types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
@@ -1581,7 +1579,7 @@ const SettingsView: FC<SettingsViewProps> = ({
                             >
                                 <span className="cursor-grab p-2 text-text-secondary"><DragHandleIcon className="w-5 h-5"/></span>
                                 <input type="text" value={cat} onChange={(e) => updateListItem(setIncomeCategories, i, e.target.value)} className="flex-grow bg-background border-border-color rounded-md shadow-sm p-2"/>
-                                <Button variant="secondary" onClick={() => deleteListItem(setIncomeCategories, i)} className="px-3 py-1 text-xs hover:bg-danger hover:text-white">Remover</Button>
+                                <Button variant="secondary" onClick={() => deleteListItem(setIncomeCategories, i)} className="p-2 h-9 w-9 hover:bg-danger"><TrashIcon className="w-5 h-5"/></Button>
                             </li>
                         ))}
                     </ul>
@@ -1607,7 +1605,7 @@ const SettingsView: FC<SettingsViewProps> = ({
                                     <option value={ExpenseType.COST}>Custo</option>
                                     <option value={ExpenseType.EXPENSE}>Despesa</option>
                                 </select>
-                                <Button variant="secondary" onClick={() => deleteListItem(setExpenseCategories, i)} className="px-3 py-1 text-xs hover:bg-danger hover:text-white">Remover</Button>
+                                <Button variant="secondary" onClick={() => deleteListItem(setExpenseCategories, i)} className="p-2 h-9 w-9 hover:bg-danger"><TrashIcon className="w-5 h-5"/></Button>
                             </li>
                         ))}
                     </ul>
@@ -1629,7 +1627,7 @@ const SettingsView: FC<SettingsViewProps> = ({
                              >
                                 <span className="cursor-grab p-2 text-text-secondary"><DragHandleIcon className="w-5 h-5"/></span>
                                 <input type="text" value={method} onChange={(e) => updateListItem(setPaymentMethods, i, e.target.value)} className="flex-grow bg-background border-border-color rounded-md shadow-sm p-2"/>
-                                <Button variant="secondary" onClick={() => deleteListItem(setPaymentMethods, i)} className="px-3 py-1 text-xs hover:bg-danger hover:text-white">Remover</Button>
+                                <Button variant="secondary" onClick={() => deleteListItem(setPaymentMethods, i)} className="p-2 h-9 w-9 hover:bg-danger"><TrashIcon className="w-5 h-5"/></Button>
                             </li>
                         ))}
                     </ul>
@@ -1651,7 +1649,7 @@ const SettingsView: FC<SettingsViewProps> = ({
                             >
                                 <span className="cursor-grab p-2 text-text-secondary"><DragHandleIcon className="w-5 h-5"/></span>
                                 <input type="text" value={center.name} onChange={(e) => updateListItem(setCostCenters, i, { ...center, name: e.target.value })} className="flex-grow bg-background border-border-color rounded-md shadow-sm p-2"/>
-                                <Button variant="secondary" onClick={() => deleteListItem(setCostCenters, i)} className="px-3 py-1 text-xs hover:bg-danger hover:text-white">Remover</Button>
+                                <Button variant="secondary" onClick={() => deleteListItem(setCostCenters, i)} className="p-2 h-9 w-9 hover:bg-danger"><TrashIcon className="w-5 h-5"/></Button>
                             </li>
                         ))}
                     </ul>
@@ -1677,7 +1675,7 @@ const SettingsView: FC<SettingsViewProps> = ({
                                     <input type="number" placeholder="Comissão" value={advisor.commissionRate} onChange={(e) => updateListItem(setAdvisors, i, { ...advisor, commissionRate: parseFloat(e.target.value) || 0 })} className="w-24 bg-surface border-border-color rounded-md shadow-sm p-2"/>
                                     <span className="text-text-secondary">%</span>
                                 </div>
-                                <Button variant="secondary" onClick={() => deleteListItem(setAdvisors, i)} className="px-3 py-1 text-xs hover:bg-danger hover:text-white">Remover</Button>
+                                <Button variant="secondary" onClick={() => deleteListItem(setAdvisors, i)} className="p-2 h-9 w-9 hover:bg-danger"><TrashIcon className="w-5 h-5"/></Button>
                             </li>
                         ))}
                     </ul>
@@ -1762,94 +1760,89 @@ const App: React.FC = () => {
 
     const addTransaction = async (data: TransactionFormValues) => {
         if (!currentUser) return;
+        
+        const recurringCount = data.recurringCount || 1;
+        const baseDate = new Date(data.date);
+
+        const transactionsToSave = [];
+        const batchRecurringId = recurringCount > 1 ? crypto.randomUUID() : undefined;
+
+        for (let i = 0; i < recurringCount; i++) {
+            const transactionDate = new Date(baseDate);
+            // We add to UTC month to avoid timezone issues
+            transactionDate.setUTCMonth(baseDate.getUTCMonth() + i);
+            
+            // Helper to ensure undefined becomes null for Firestore
+            const safeValue = <T,>(val: T | undefined) => val === undefined ? null : val;
+
+            const newTransactionData: Omit<Transaction, 'id'> = {
+                date: transactionDate.toISOString(),
+                description: data.description,
+                amount: data.amount,
+                type: data.type,
+                category: data.category,
+                clientSupplier: data.clientSupplier,
+                paymentMethod: data.paymentMethod,
+                status: safeValue(data.status),
+                nature: safeValue(data.nature),
+                costCenter: safeValue(data.costCenter),
+                taxAmount: safeValue(data.taxAmount),
+                grossAmount: safeValue(data.grossAmount),
+                commissionAmount: safeValue(data.commissionAmount),
+                advisorId: safeValue(data.advisorId),
+                recurringId: batchRecurringId ?? undefined, // If undefined, key will be omitted in cleanData if we were using JSON.stringify but here we are constructing object
+            };
+            
+            // Sanitize object to ensure no undefined values are passed to Firestore
+            const cleanData = Object.entries(newTransactionData).reduce((acc, [key, value]) => {
+                if (value !== undefined) {
+                    acc[key] = value;
+                }
+                return acc;
+            }, {} as any);
+
+            transactionsToSave.push(saveTransaction(cleanData, currentUser.uid));
+        }
 
         try {
-            const recurringCount = data.recurringCount || 1;
-            const isRecurring = recurringCount > 1;
-            const recurringId = isRecurring ? crypto.randomUUID() : undefined;
-            const baseDate = new Date(data.date);
-
-            const transactionPayloads: Omit<Transaction, 'id'>[] = [];
-            const transactionPromises = [];
-
-            for (let i = 0; i < recurringCount; i++) {
-                const transactionDate = new Date(baseDate);
-                transactionDate.setUTCMonth(baseDate.getUTCMonth() + i);
-
-                const newTransactionData: Omit<Transaction, 'id'> = {
-                    date: transactionDate.toISOString(),
-                    description: data.description,
-                    amount: data.amount,
-                    type: data.type,
-                    category: data.category,
-                    clientSupplier: data.clientSupplier,
-                    paymentMethod: data.paymentMethod,
-                    status: data.status,
-                    nature: data.nature,
-                    costCenter: data.costCenter,
-                    taxAmount: data.taxAmount,
-                    grossAmount: data.grossAmount,
-                    commissionAmount: data.commissionAmount,
-                    advisorId: data.advisorId,
-                    recurringId: recurringId,
-                };
-                transactionPayloads.push(newTransactionData);
-                transactionPromises.push(saveTransaction(newTransactionData, currentUser.uid));
-            }
-
-            const docRefs = await Promise.all(transactionPromises);
-
-            const newTransactions: Transaction[] = docRefs.map((docRef, index) => ({
-                ...transactionPayloads[index],
-                id: docRef.id,
-            }));
-
-            setTransactions(prev => [...newTransactions, ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+            await Promise.all(transactionsToSave);
         } catch (error) {
             console.error("Error adding transaction(s): ", error);
-            alert("Ocorreu um erro ao salvar a transação. Por favor, tente novamente.");
+            // Optionally, show an error message to the user
+            const errorMessage = (error as any).message || "Erro desconhecido";
+            alert(`Erro ao salvar transação: ${errorMessage}`);
         }
+        
+        // Refetch all transactions to update the UI
+        const snapshot = await getTransactions(currentUser.uid);
+        const updatedData = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as Omit<Transaction, 'id'>) })) as Transaction[];
+        setTransactions(updatedData);
     };
 
     const editTransaction = async (id: string, data: TransactionFormValues) => {
-        try {
-            const transactionToUpdate: Partial<Omit<Transaction, 'id'>> = {
-                ...data,
-                date: new Date(data.date).toISOString(),
-            };
-            delete (transactionToUpdate as any).recurringCount;
+        const transactionToUpdate: Partial<Omit<Transaction, 'id'>> = {
+            ...data,
+            date: new Date(data.date).toISOString(),
+        };
+        delete (transactionToUpdate as any).recurringCount;
 
-            await updateTransaction(id, transactionToUpdate);
+        await updateTransaction(id, transactionToUpdate);
 
-            setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...transactionToUpdate, id } : t));
-        } catch (error) {
-            console.error("Error updating transaction: ", error);
-            alert("Ocorreu um erro ao atualizar a transação. Por favor, tente novamente.");
-        }
+        setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...transactionToUpdate, id } : t));
     };
 
     const deleteTransaction = async (id: string) => {
         if (window.confirm("Tem certeza que deseja excluir esta transação?")) {
-            try {
-                await deleteTransactionFromDb(id);
-                setTransactions(prev => prev.filter(t => t.id !== id));
-            } catch (error) {
-                console.error("Error deleting transaction: ", error);
-                alert("Ocorreu um erro ao excluir a transação. Por favor, tente novamente.");
-            }
+            await deleteTransactionFromDb(id);
+            setTransactions(prev => prev.filter(t => t.id !== id));
         }
     };
     
     const setExpenseAsPaid = async (id: string) => {
         const transaction = transactions.find(t => t.id === id);
         if (transaction && transaction.type === TransactionType.EXPENSE) {
-            try {
-                await updateTransaction(id, { status: ExpenseStatus.PAID });
-                setTransactions(prev => prev.map(t => t.id === id ? { ...t, status: ExpenseStatus.PAID } : t));
-            } catch (error) {
-                console.error("Error setting transaction as paid: ", error);
-                alert("Ocorreu um erro ao marcar a despesa como paga. Por favor, tente novamente.");
-            }
+             await updateTransaction(id, { status: ExpenseStatus.PAID });
+             setTransactions(prev => prev.map(t => t.id === id ? { ...t, status: ExpenseStatus.PAID } : t));
         }
     };
 
