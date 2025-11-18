@@ -70,6 +70,60 @@ const formatDateTime = (dateString: string) => new Date(dateString).toLocaleStri
 const formatDateForInput = (dateString: string) => new Date(dateString).toISOString().split('T')[0];
 const getMonthYear = (dateString: string) => new Date(dateString).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric', timeZone: 'UTC' });
 
+// Extending Transaction for Import Preview (internal use only)
+type ImportableTransaction = Partial<Transaction> & {
+    tempId: string;
+    selected: boolean;
+};
+
+const parseOFX = (content: string): ImportableTransaction[] => {
+    const transactions: ImportableTransaction[] = [];
+    // Find all STMTTRN blocks. Regex is greedy but splitting by tag is safer for large files
+    const transactionBlocks = content.split('<STMTTRN>');
+
+    transactionBlocks.forEach(block => {
+        if (!block.includes('</STMTTRN>')) return;
+
+        // Extract basic fields using regex. 
+        // OFX tags can be <TAG>VALUE or <TAG>VALUE</TAG> or <TAG>VALUE (newline)
+        const amountMatch = block.match(/<TRNAMT>([\d.-]+)/);
+        const dateMatch = block.match(/<DTPOSTED>\s*(\d{8})/); // Just take first 8 digits (YYYYMMDD)
+        const memoMatch = block.match(/<MEMO>(.*?)(\n|<)/);
+        const nameMatch = block.match(/<NAME>(.*?)(\n|<)/);
+
+        if (dateMatch && amountMatch) {
+            const rawDate = dateMatch[1];
+            const year = rawDate.substring(0, 4);
+            const month = rawDate.substring(4, 6);
+            const day = rawDate.substring(6, 8);
+            // Set time to noon to avoid timezone rollover issues when converting to ISO date only
+            const dateIso = `${year}-${month}-${day}T12:00:00.000Z`;
+
+            const amount = parseFloat(amountMatch[1]);
+            const description = (memoMatch ? memoMatch[1] : (nameMatch ? nameMatch[1] : 'Importação OFX')).trim();
+
+            const type = amount >= 0 ? TransactionType.INCOME : TransactionType.EXPENSE;
+            const absAmount = Math.abs(amount);
+
+            transactions.push({
+                tempId: crypto.randomUUID(),
+                selected: true, // Select by default
+                date: dateIso,
+                amount: absAmount,
+                description: description || 'Transação OFX',
+                type: type,
+                category: 'Outros', // Default category
+                status: ExpenseStatus.PAID, // Bank transactions are already processed
+                paymentMethod: 'Transferência Bancária', // Default
+                clientSupplier: 'Importação Bancária',
+                nature: ExpenseNature.VARIABLE,
+                costCenter: 'conta-pj',
+            });
+        }
+    });
+    return transactions;
+};
+
 // --- DADOS INICIAIS ---
 const getInitialGoals = (): Goal[] => ([]);
 const initialIncomeCategories = ['Taxa de Consultoria', 'Taxa de Performance', 'Comissão sobre Ativos', 'Rendimento de Investimentos', 'Reembolso de Custos', 'Outros'];
@@ -121,7 +175,7 @@ const Modal: FC<{ isOpen: boolean; onClose: () => void; title: string; children:
   }
   return (
     <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 animate-fade-in" onClick={onClose}>
-      <div className={`bg-surface rounded-lg shadow-xl w-full p-6 m-4 ${sizeClasses[size]}`} onClick={(e) => e.stopPropagation()}>
+      <div className={`bg-surface rounded-lg shadow-xl w-full p-6 m-4 ${sizeClasses[size]} max-h-[90vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold text-text-primary">{title}</h2>
           <button onClick={onClose} className="text-text-secondary hover:text-text-primary"><CloseIcon className="w-6 h-6"/></button>
@@ -1014,8 +1068,9 @@ interface TransactionsViewProps {
     paymentMethods: string[];
     costCenters: CostCenter[];
     advisors: Advisor[];
+    onImportTransactions: (data: any[]) => Promise<void>;
 }
-const TransactionsView: FC<TransactionsViewProps> = ({ transactions, onAdd, onEdit, onDelete, onSetPaid, incomeCategories, expenseCategories, paymentMethods, costCenters, advisors }) => {
+const TransactionsView: FC<TransactionsViewProps> = ({ transactions, onAdd, onEdit, onDelete, onSetPaid, incomeCategories, expenseCategories, paymentMethods, costCenters, advisors, onImportTransactions }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
     const [activeTab, setActiveTab] = useState<TransactionType>(TransactionType.EXPENSE);
@@ -1026,6 +1081,10 @@ const TransactionsView: FC<TransactionsViewProps> = ({ transactions, onAdd, onEd
     const [filterYear, setFilterYear] = useState<'all' | number>('all');
     const [filterMonth, setFilterMonth] = useState<'all' | number>('all');
     
+    // OFX Import State
+    const [isOfxModalOpen, setIsOfxModalOpen] = useState(false);
+    const [pendingOfxTransactions, setPendingOfxTransactions] = useState<ImportableTransaction[]>([]);
+
     const openModal = (transaction: Transaction | null = null) => {
         setEditingTransaction(transaction);
         setIsModalOpen(true);
@@ -1151,8 +1210,73 @@ const TransactionsView: FC<TransactionsViewProps> = ({ transactions, onAdd, onEd
         
         doc.save('transacoes.pdf');
     };
+
+    const handleOFXImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                const text = e.target?.result;
+                if (typeof text !== 'string') throw new Error("File content is not text");
+                
+                const data = parseOFX(text);
+
+                if (data.length === 0) {
+                     alert("Nenhuma transação válida encontrada no arquivo OFX.");
+                     return;
+                }
+
+                setPendingOfxTransactions(data);
+                setIsOfxModalOpen(true);
+            } catch (error) {
+                console.error("Error importing OFX:", error);
+                alert("Ocorreu um erro ao importar o arquivo OFX. Verifique se o formato é válido.");
+            } finally {
+                event.target.value = '';
+            }
+        };
+        reader.readAsText(file);
+    };
+    
+    const handleToggleOfxSelection = (tempId: string) => {
+        setPendingOfxTransactions(prev => prev.map(t => t.tempId === tempId ? { ...t, selected: !t.selected } : t));
+    };
+
+    const handleToggleAllOfx = () => {
+        const allSelected = pendingOfxTransactions.every(t => t.selected);
+        setPendingOfxTransactions(prev => prev.map(t => ({ ...t, selected: !allSelected })));
+    };
+
+    const handleUpdateOfxTransaction = (tempId: string, field: keyof ImportableTransaction, value: any) => {
+        setPendingOfxTransactions(prev => prev.map(t => {
+             if (t.tempId !== tempId) return t;
+             return { ...t, [field]: value };
+        }));
+    };
+
+    const handleConfirmImport = async () => {
+        const selected = pendingOfxTransactions.filter(t => t.selected);
+        if (selected.length === 0) {
+            alert("Selecione pelo menos uma transação para importar.");
+            return;
+        }
+
+        // Remove temp properties
+        const cleanData = selected.map(({ tempId, selected, ...rest }) => rest);
+        
+        await onImportTransactions(cleanData);
+        setIsOfxModalOpen(false);
+        setPendingOfxTransactions([]);
+        alert(`${selected.length} transações importadas com sucesso!`);
+    };
     
     const currentCategories = activeTab === TransactionType.INCOME ? incomeCategories : expenseCategories.map(c => c.name);
+    const allCategories = useMemo(() => ({
+        income: incomeCategories,
+        expense: expenseCategories.map(c => c.name)
+    }), [incomeCategories, expenseCategories]);
 
     return (
         <div className="space-y-6 animate-fade-in">
@@ -1169,9 +1293,20 @@ const TransactionsView: FC<TransactionsViewProps> = ({ transactions, onAdd, onEd
                              <button onClick={() => setActiveTab(TransactionType.INCOME)} className={`px-4 py-2 font-semibold ${activeTab === TransactionType.INCOME ? 'border-b-2 border-primary text-primary' : 'text-text-secondary'}`}>Receitas</button>
                          </div>
                      </div>
-                      <div className="flex gap-2">
-                        <Button onClick={exportToExcel} variant="secondary"><ExportIcon className="w-4 h-4"/> XLSX</Button>
-                        <Button onClick={exportToPdf} variant="secondary"><ExportIcon className="w-4 h-4"/> PDF</Button>
+                      <div className="flex gap-2 items-center">
+                        <Button onClick={exportToExcel} variant="secondary" className="whitespace-nowrap"><ExportIcon className="w-4 h-4"/> XLSX</Button>
+                        <Button onClick={exportToPdf} variant="secondary" className="whitespace-nowrap"><ExportIcon className="w-4 h-4"/> PDF</Button>
+                        
+                        <input
+                            type="file"
+                            id="import-ofx"
+                            className="hidden"
+                            accept=".ofx,.ofx.sgml"
+                            onChange={handleOFXImport}
+                        />
+                        <Button as="label" htmlFor="import-ofx" variant="secondary" className="whitespace-nowrap" title="Importar Extrato Bancário (OFX)">
+                            <UploadIcon className="w-4 h-4" /> OFX
+                        </Button>
                     </div>
                 </div>
 
@@ -1272,6 +1407,7 @@ const TransactionsView: FC<TransactionsViewProps> = ({ transactions, onAdd, onEd
                 </div>
             </Card>
 
+            {/* Modais */}
             <Modal isOpen={isModalOpen} onClose={closeModal} title={editingTransaction ? 'Editar Transação' : 'Adicionar Transação'}>
                 <TransactionForm
                     onSubmit={handleSubmit}
@@ -1284,6 +1420,94 @@ const TransactionsView: FC<TransactionsViewProps> = ({ transactions, onAdd, onEd
                     costCenters={costCenters}
                     advisors={advisors}
                 />
+            </Modal>
+            
+            {/* OFX Preview Modal */}
+            <Modal isOpen={isOfxModalOpen} onClose={() => setIsOfxModalOpen(false)} title="Importar Extrato (Pré-visualização)" size="xl">
+                <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                        <p className="text-text-secondary text-sm">Selecione e ajuste as transações antes de confirmar.</p>
+                        <div className="flex gap-2">
+                             <Button onClick={handleToggleAllOfx} variant="secondary" className="text-xs py-1">
+                                {pendingOfxTransactions.every(t => t.selected) ? "Desmarcar Todos" : "Marcar Todos"}
+                            </Button>
+                        </div>
+                    </div>
+                    <div className="overflow-x-auto max-h-[60vh] border border-border-color rounded-lg">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-background sticky top-0 z-10">
+                                <tr className="border-b border-border-color text-text-secondary">
+                                    <th className="p-3 w-10 text-center">#</th>
+                                    <th className="p-3">Data</th>
+                                    <th className="p-3">Descrição</th>
+                                    <th className="p-3">Valor</th>
+                                    <th className="p-3">Tipo</th>
+                                    <th className="p-3">Categoria</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {pendingOfxTransactions.map((t) => (
+                                    <tr key={t.tempId} className={`border-b border-border-color/50 hover:bg-background/50 ${!t.selected ? 'opacity-50' : ''}`}>
+                                        <td className="p-3 text-center">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={t.selected} 
+                                                onChange={() => handleToggleOfxSelection(t.tempId)}
+                                                className="w-4 h-4 rounded border-border-color text-primary focus:ring-primary bg-surface"
+                                            />
+                                        </td>
+                                        <td className="p-3 whitespace-nowrap">{formatDate(t.date!)}</td>
+                                        <td className="p-3">
+                                            <input 
+                                                type="text" 
+                                                value={t.description} 
+                                                onChange={(e) => handleUpdateOfxTransaction(t.tempId, 'description', e.target.value)}
+                                                className="bg-transparent border-b border-transparent focus:border-primary focus:outline-none w-full"
+                                            />
+                                        </td>
+                                        <td className={`p-3 font-bold ${t.type === TransactionType.INCOME ? 'text-green-400' : 'text-danger'}`}>
+                                            {formatCurrency(t.amount!)}
+                                        </td>
+                                        <td className="p-3">
+                                             <select 
+                                                value={t.type} 
+                                                onChange={(e) => {
+                                                    const newType = e.target.value as TransactionType;
+                                                    // Reset category to default of new type if changed
+                                                    const defaultCat = newType === TransactionType.INCOME ? allCategories.income[0] : allCategories.expense[0];
+                                                    handleUpdateOfxTransaction(t.tempId, 'type', newType);
+                                                    handleUpdateOfxTransaction(t.tempId, 'category', defaultCat);
+                                                }} 
+                                                className="bg-surface border-border-color rounded px-2 py-1 text-xs"
+                                            >
+                                                <option value={TransactionType.INCOME}>Receita</option>
+                                                <option value={TransactionType.EXPENSE}>Despesa</option>
+                                            </select>
+                                        </td>
+                                        <td className="p-3">
+                                             <select 
+                                                value={t.category} 
+                                                onChange={(e) => handleUpdateOfxTransaction(t.tempId, 'category', e.target.value)}
+                                                className="bg-surface border-border-color rounded px-2 py-1 text-xs w-full max-w-[150px]"
+                                            >
+                                                {(t.type === TransactionType.INCOME ? allCategories.income : allCategories.expense).map(cat => (
+                                                    <option key={cat} value={cat}>{cat}</option>
+                                                ))}
+                                            </select>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                     <div className="flex justify-end gap-4 pt-2 border-t border-border-color">
+                        <div className="mr-auto text-sm text-text-secondary flex items-center">
+                             {pendingOfxTransactions.filter(t => t.selected).length} selecionados
+                        </div>
+                        <Button onClick={() => setIsOfxModalOpen(false)} variant="secondary">Cancelar</Button>
+                        <Button onClick={handleConfirmImport}>Confirmar Importação</Button>
+                    </div>
+                </div>
             </Modal>
         </div>
     );
@@ -2102,7 +2326,7 @@ const App: React.FC = () => {
         }
         switch (view) {
             case 'dashboard': return <DashboardView transactions={transactions} goals={goals} onSetPaid={setExpenseAsPaid}/>;
-            case 'transactions': return <TransactionsView transactions={transactions} onAdd={addTransaction} onEdit={editTransaction} onDelete={deleteTransaction} onSetPaid={setExpenseAsPaid} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors}/>;
+            case 'transactions': return <TransactionsView transactions={transactions} onAdd={addTransaction} onEdit={editTransaction} onDelete={deleteTransaction} onSetPaid={setExpenseAsPaid} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} onImportTransactions={importTransactions}/>;
             case 'goals': return <GoalsView goals={goals} onAddGoal={addGoal} onEditGoal={editGoal} onDeleteGoal={deleteGoal} onAddProgress={addProgressToGoal}/>;
             case 'reports': return <ReportsView transactions={transactions} expenseCategories={expenseCategories} />;
             case 'settings': return <SettingsView incomeCategories={incomeCategories} setIncomeCategories={setIncomeCategories} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} paymentMethods={paymentMethods} setPaymentMethods={setPaymentMethods} costCenters={costCenters} setCostCenters={setCostCenters} advisors={advisors} setAdvisors={setAdvisors} goals={goals} setGoals={setGoals} transactions={transactions} onImportTransactions={importTransactions} />;
