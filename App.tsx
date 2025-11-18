@@ -1762,68 +1762,94 @@ const App: React.FC = () => {
 
     const addTransaction = async (data: TransactionFormValues) => {
         if (!currentUser) return;
-        
-        const recurringCount = data.recurringCount || 1;
-        const baseDate = new Date(data.date);
 
-        const transactionsToSave = [];
+        try {
+            const recurringCount = data.recurringCount || 1;
+            const isRecurring = recurringCount > 1;
+            const recurringId = isRecurring ? crypto.randomUUID() : undefined;
+            const baseDate = new Date(data.date);
 
-        for (let i = 0; i < recurringCount; i++) {
-            const transactionDate = new Date(baseDate);
-            // We add to UTC month to avoid timezone issues
-            transactionDate.setUTCMonth(baseDate.getUTCMonth() + i);
-            
-            const newTransactionData: Omit<Transaction, 'id'> = {
-                date: transactionDate.toISOString(),
-                description: data.description,
-                amount: data.amount,
-                type: data.type,
-                category: data.category,
-                clientSupplier: data.clientSupplier,
-                paymentMethod: data.paymentMethod,
-                status: data.status,
-                nature: data.nature,
-                costCenter: data.costCenter,
-                taxAmount: data.taxAmount,
-                grossAmount: data.grossAmount,
-                commissionAmount: data.commissionAmount,
-                advisorId: data.advisorId,
-            };
-            transactionsToSave.push(saveTransaction(newTransactionData, currentUser.uid));
+            const transactionPayloads: Omit<Transaction, 'id'>[] = [];
+            const transactionPromises = [];
+
+            for (let i = 0; i < recurringCount; i++) {
+                const transactionDate = new Date(baseDate);
+                transactionDate.setUTCMonth(baseDate.getUTCMonth() + i);
+
+                const newTransactionData: Omit<Transaction, 'id'> = {
+                    date: transactionDate.toISOString(),
+                    description: data.description,
+                    amount: data.amount,
+                    type: data.type,
+                    category: data.category,
+                    clientSupplier: data.clientSupplier,
+                    paymentMethod: data.paymentMethod,
+                    status: data.status,
+                    nature: data.nature,
+                    costCenter: data.costCenter,
+                    taxAmount: data.taxAmount,
+                    grossAmount: data.grossAmount,
+                    commissionAmount: data.commissionAmount,
+                    advisorId: data.advisorId,
+                    recurringId: recurringId,
+                };
+                transactionPayloads.push(newTransactionData);
+                transactionPromises.push(saveTransaction(newTransactionData, currentUser.uid));
+            }
+
+            const docRefs = await Promise.all(transactionPromises);
+
+            const newTransactions: Transaction[] = docRefs.map((docRef, index) => ({
+                ...transactionPayloads[index],
+                id: docRef.id,
+            }));
+
+            setTransactions(prev => [...newTransactions, ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+        } catch (error) {
+            console.error("Error adding transaction(s): ", error);
+            alert("Ocorreu um erro ao salvar a transação. Por favor, tente novamente.");
         }
-
-        await Promise.all(transactionsToSave);
-        
-        // Refetch all transactions to update the UI
-        const snapshot = await getTransactions(currentUser.uid);
-        const updatedData = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as Omit<Transaction, 'id'>) })) as Transaction[];
-        setTransactions(updatedData);
     };
 
     const editTransaction = async (id: string, data: TransactionFormValues) => {
-        const transactionToUpdate: Partial<Omit<Transaction, 'id'>> = {
-            ...data,
-            date: new Date(data.date).toISOString(),
-        };
-        delete (transactionToUpdate as any).recurringCount;
+        try {
+            const transactionToUpdate: Partial<Omit<Transaction, 'id'>> = {
+                ...data,
+                date: new Date(data.date).toISOString(),
+            };
+            delete (transactionToUpdate as any).recurringCount;
 
-        await updateTransaction(id, transactionToUpdate);
+            await updateTransaction(id, transactionToUpdate);
 
-        setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...transactionToUpdate, id } : t));
+            setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...transactionToUpdate, id } : t));
+        } catch (error) {
+            console.error("Error updating transaction: ", error);
+            alert("Ocorreu um erro ao atualizar a transação. Por favor, tente novamente.");
+        }
     };
 
     const deleteTransaction = async (id: string) => {
         if (window.confirm("Tem certeza que deseja excluir esta transação?")) {
-            await deleteTransactionFromDb(id);
-            setTransactions(prev => prev.filter(t => t.id !== id));
+            try {
+                await deleteTransactionFromDb(id);
+                setTransactions(prev => prev.filter(t => t.id !== id));
+            } catch (error) {
+                console.error("Error deleting transaction: ", error);
+                alert("Ocorreu um erro ao excluir a transação. Por favor, tente novamente.");
+            }
         }
     };
     
     const setExpenseAsPaid = async (id: string) => {
         const transaction = transactions.find(t => t.id === id);
         if (transaction && transaction.type === TransactionType.EXPENSE) {
-             await updateTransaction(id, { status: ExpenseStatus.PAID });
-             setTransactions(prev => prev.map(t => t.id === id ? { ...t, status: ExpenseStatus.PAID } : t));
+            try {
+                await updateTransaction(id, { status: ExpenseStatus.PAID });
+                setTransactions(prev => prev.map(t => t.id === id ? { ...t, status: ExpenseStatus.PAID } : t));
+            } catch (error) {
+                console.error("Error setting transaction as paid: ", error);
+                alert("Ocorreu um erro ao marcar a despesa como paga. Por favor, tente novamente.");
+            }
         }
     };
 
