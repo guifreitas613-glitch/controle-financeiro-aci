@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, FC, ReactNode, useEffect } from 'react';
 import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType } from './types';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area } from 'recharts';
 import Login from './Login';
 import { auth } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -30,6 +30,8 @@ const ArrowUpIcon: FC<{ className?: string }> = ({ className }) => (<svg classNa
 const ArrowDownIcon: FC<{ className?: string}> = ({className}) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>);
 const HistoryIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>);
 const DragHandleIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M9.5 13a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0-5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0-5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm-5 5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0-5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0 10a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z"/></svg>);
+const AlertCircleIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>);
+const CheckCircleIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>);
 
 
 // --- DECLARAÇÕES DE BIBLIOTECAS GLOBAIS ---
@@ -91,12 +93,13 @@ const initialAdvisors: Advisor[] = [];
 
 // --- COMPONENTES DE UI REUTILIZÁVEIS ---
 const Card: FC<{ children: ReactNode; className?: string }> = ({ children, className = '' }) => (<div className={`bg-surface rounded-xl shadow-lg p-4 sm:p-6 ${className}`}>{children}</div>);
-const Button: FC<{ onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void; children: ReactNode; variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'ghostDanger'; className?: string; type?: "button" | "submit" | "reset"; disabled?: boolean; as?: 'button' | 'label'; htmlFor?: string; title?: string }> = ({ onClick, children, variant = 'primary', className = '', type = 'button', disabled = false, as = 'button', htmlFor, title }) => {
+const Button: FC<{ onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void; children: ReactNode; variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'ghostDanger' | 'success'; className?: string; type?: "button" | "submit" | "reset"; disabled?: boolean; as?: 'button' | 'label'; htmlFor?: string; title?: string }> = ({ onClick, children, variant = 'primary', className = '', type = 'button', disabled = false, as = 'button', htmlFor, title }) => {
   const baseClasses = 'px-4 py-2 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transform';
   const variantClasses = {
     primary: 'bg-primary hover:bg-opacity-90 text-white shadow-md shadow-primary/30 hover:scale-105',
     secondary: 'bg-text-secondary bg-opacity-20 hover:bg-opacity-30 text-text-primary hover:scale-105',
     danger: 'bg-danger hover:bg-red-500 text-white hover:scale-105',
+    success: 'bg-green-500 hover:bg-green-600 text-white hover:scale-105',
     ghost: 'bg-transparent hover:bg-white/5 text-text-secondary hover:text-text-primary',
     ghostDanger: 'bg-transparent hover:bg-red-500/10 text-text-secondary hover:text-danger',
   };
@@ -645,7 +648,7 @@ const CustomPieTooltip: FC<any> = ({ active, payload }) => {
     return null;
 };
 
-const DashboardView: FC<{ transactions: Transaction[]; goals: Goal[] }> = ({ transactions, goals }) => {
+const DashboardView: FC<{ transactions: Transaction[]; goals: Goal[]; onSetPaid: (id: string) => void }> = ({ transactions, goals, onSetPaid }) => {
     const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
     const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all');
 
@@ -707,18 +710,19 @@ const DashboardView: FC<{ transactions: Transaction[]; goals: Goal[] }> = ({ tra
          return goals.filter(g => g.currentAmount >= g.targetAmount).length;
     }, [goals]);
 
+    // New Logic for Upcoming Bills (Pending expenses <= 5 days from now)
     const upcomingBills = useMemo(() => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        const twoDaysFromNow = new Date(today);
-        twoDaysFromNow.setDate(today.getDate() + 2);
+        const fiveDaysFromNow = new Date(today);
+        fiveDaysFromNow.setDate(today.getDate() + 5);
 
         return transactions
             .filter(t =>
                 t.type === TransactionType.EXPENSE &&
                 t.status === ExpenseStatus.PENDING &&
-                new Date(t.date) <= twoDaysFromNow
+                new Date(t.date) <= fiveDaysFromNow
             )
             .sort((a: Transaction, b: Transaction) => new Date(a.date).getTime() - new Date(b.date).getTime());
     }, [transactions]);
@@ -757,6 +761,8 @@ const DashboardView: FC<{ transactions: Transaction[]; goals: Goal[] }> = ({ tra
             return {
                 date: formatDate(t.date),
                 balance,
+                // Just for sorting/key purposes
+                rawDate: t.date
             };
         });
 
@@ -766,6 +772,7 @@ const DashboardView: FC<{ transactions: Transaction[]; goals: Goal[] }> = ({ tra
             return acc;
         }, {} as Record<string, number>);
 
+        // Convert back to array
         return Object.entries(groupedData).map(([date, balance]) => ({ date, balance }));
     }, [transactions]);
     
@@ -792,109 +799,205 @@ const DashboardView: FC<{ transactions: Transaction[]; goals: Goal[] }> = ({ tra
 
             {/* Cards de Métricas */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-                <Card className="transform hover:scale-105 transition-transform duration-300">
-                    <h3 className="text-text-secondary font-semibold">Receita Líquida</h3>
-                    <p className="text-3xl font-bold text-green-400">{formatCurrency(totalIncome)}</p>
+                <Card className="transform hover:scale-105 transition-transform duration-300 border-l-4 border-green-400">
+                    <h3 className="text-text-secondary font-semibold text-sm uppercase tracking-wider">Receita Líquida</h3>
+                    <p className="text-3xl font-bold text-green-400 mt-1">{formatCurrency(totalIncome)}</p>
                 </Card>
-                 <Card className="transform hover:scale-105 transition-transform duration-300">
-                    <h3 className="text-text-secondary font-semibold">Despesa Total</h3>
-                    <p className="text-3xl font-bold text-danger">{formatCurrency(totalExpense)}</p>
+                 <Card className="transform hover:scale-105 transition-transform duration-300 border-l-4 border-danger">
+                    <h3 className="text-text-secondary font-semibold text-sm uppercase tracking-wider">Despesa Total</h3>
+                    <p className="text-3xl font-bold text-danger mt-1">{formatCurrency(totalExpense)}</p>
                 </Card>
-                 <Card className="transform hover:scale-105 transition-transform duration-300">
-                    <h3 className="text-text-secondary font-semibold">Lucro Líquido</h3>
-                    <p className={`text-3xl font-bold ${netProfit >= 0 ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(netProfit)}</p>
+                 <Card className="transform hover:scale-105 transition-transform duration-300 border-l-4 border-primary">
+                    <h3 className="text-text-secondary font-semibold text-sm uppercase tracking-wider">Lucro Líquido</h3>
+                    <p className={`text-3xl font-bold mt-1 ${netProfit >= 0 ? 'text-text-primary' : 'text-danger'}`}>{formatCurrency(netProfit)}</p>
                 </Card>
-                 <Card className="transform hover:scale-105 transition-transform duration-300">
-                    <h3 className="text-text-secondary font-semibold">Metas Atingidas</h3>
-                    <p className="text-3xl font-bold text-primary">{achievedGoals} / {goals.length}</p>
+                 <Card className="transform hover:scale-105 transition-transform duration-300 border-l-4 border-blue-400">
+                    <h3 className="text-text-secondary font-semibold text-sm uppercase tracking-wider">Metas Atingidas</h3>
+                    <p className="text-3xl font-bold text-blue-400 mt-1">{achievedGoals} <span className="text-lg text-text-secondary font-normal">/ {goals.length}</span></p>
                 </Card>
             </div>
+
+            {/* Próximos Pagamentos - High Priority Section */}
+            {upcomingBills.length > 0 && (
+                <div className="bg-surface border border-danger/30 rounded-xl shadow-lg p-4 sm:p-6">
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="bg-danger/10 p-2 rounded-full">
+                            <AlertCircleIcon className="w-6 h-6 text-danger" />
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-bold text-text-primary">Contas a Pagar (Próximos 5 Dias)</h3>
+                            <p className="text-sm text-text-secondary">Atenção aos vencimentos próximos e contas em atraso.</p>
+                        </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="text-text-secondary text-sm border-b border-border-color">
+                                    <th className="py-2 font-medium">Vencimento</th>
+                                    <th className="py-2 font-medium">Descrição</th>
+                                    <th className="py-2 font-medium">Fornecedor</th>
+                                    <th className="py-2 font-medium">Valor</th>
+                                    <th className="py-2 font-medium text-right">Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {upcomingBills.map(bill => {
+                                    const billDate = new Date(bill.date);
+                                    const today = new Date();
+                                    today.setHours(0,0,0,0);
+                                    const isOverdue = billDate < today;
+                                    const isToday = billDate.getTime() === today.getTime();
+                                    
+                                    return (
+                                        <tr key={bill.id} className="border-b border-border-color/50 last:border-0 hover:bg-background/50 transition-colors">
+                                            <td className="py-3">
+                                                <span className={`px-2 py-1 rounded text-xs font-bold ${isOverdue ? 'bg-danger text-white' : (isToday ? 'bg-yellow-500 text-black' : 'bg-background text-text-secondary')}`}>
+                                                    {isOverdue ? 'Atrasado' : (isToday ? 'Hoje' : formatDate(bill.date))}
+                                                </span>
+                                            </td>
+                                            <td className="py-3 font-medium">{bill.description}</td>
+                                            <td className="py-3 text-sm text-text-secondary">{bill.clientSupplier || '-'}</td>
+                                            <td className="py-3 font-bold text-danger">{formatCurrency(bill.amount)}</td>
+                                            <td className="py-3 text-right">
+                                                <Button 
+                                                    onClick={() => onSetPaid(bill.id)} 
+                                                    variant="success" 
+                                                    className="py-1 px-3 text-xs ml-auto"
+                                                    title="Marcar como Pago"
+                                                >
+                                                    <CheckCircleIcon className="w-4 h-4" /> Pagar
+                                                </Button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
             
              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <Card className="lg:col-span-2">
-                    <h3 className="text-lg font-bold text-text-primary mb-4">Fluxo de Caixa</h3>
-                    <ResponsiveContainer width="100%" height={300}>
-                        <LineChart data={cashFlowData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#2D376A" />
-                            <XAxis dataKey="date" stroke="#A0AEC0" tick={{ fontSize: 10 }} />
-                            <YAxis 
-                                stroke="#A0AEC0" 
-                                tickFormatter={(value: number) => `R$${value/1000}k`} 
-                                tick={{ fontSize: 10 }}
-                                width={80}
-                            />
-                            <Tooltip contentStyle={{ backgroundColor: '#1A214A', border: '1px solid #2D376A', color: '#F0F2F5' }} formatter={(value: any) => formatCurrency(Number(value))} />
-                            <Legend />
-                            <Line type="monotone" dataKey="balance" name="Saldo" stroke="#D1822A" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 8 }} />
-                        </LineChart>
-                    </ResponsiveContainer>
-                </Card>
-                <Card>
-                    <h3 className="text-lg font-bold text-text-primary mb-4">Natureza das Despesas</h3>
-                    {expenseSubcategoryData.length > 0 ? (
-                        <ResponsiveContainer width="100%" height={300}>
-                            <PieChart>
-                                <Pie data={expenseSubcategoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={110} fill="#8884d8" labelLine={false}>
-                                    {expenseSubcategoryData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
-                                </Pie>
-                                <Tooltip content={<CustomPieTooltip />} />
-                                <Legend />
-                            </PieChart>
+                <Card className="lg:col-span-2 h-[400px] flex flex-col">
+                    <h3 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
+                        <span className="w-2 h-6 bg-primary rounded-sm"></span>
+                        Fluxo de Caixa
+                    </h3>
+                    <div className="flex-grow">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={cashFlowData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                                <defs>
+                                    <linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#D1822A" stopOpacity={0.8}/>
+                                        <stop offset="95%" stopColor="#D1822A" stopOpacity={0}/>
+                                    </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2D376A" opacity={0.5} />
+                                <XAxis 
+                                    dataKey="date" 
+                                    stroke="#A0AEC0" 
+                                    tick={{ fontSize: 11 }} 
+                                    tickLine={false}
+                                    axisLine={false}
+                                    minTickGap={30}
+                                />
+                                <YAxis 
+                                    stroke="#A0AEC0" 
+                                    tickFormatter={(value: number) => `R$${value/1000}k`} 
+                                    tick={{ fontSize: 11 }}
+                                    width={60}
+                                    tickLine={false}
+                                    axisLine={false}
+                                />
+                                <Tooltip 
+                                    contentStyle={{ backgroundColor: '#1A214A', border: 'none', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.5)', color: '#F0F2F5' }} 
+                                    itemStyle={{ color: '#D1822A' }}
+                                    formatter={(value: any) => [formatCurrency(Number(value)), 'Saldo']} 
+                                    cursor={{ stroke: '#D1822A', strokeWidth: 1, strokeDasharray: '5 5' }}
+                                />
+                                <Area 
+                                    type="monotone" 
+                                    dataKey="balance" 
+                                    stroke="#D1822A" 
+                                    strokeWidth={3}
+                                    fillOpacity={1} 
+                                    fill="url(#colorBalance)" 
+                                />
+                            </AreaChart>
                         </ResponsiveContainer>
-                    ) : (
-                         <div className="flex items-center justify-center h-full text-text-secondary">
-                             <p>Sem dados de despesas para exibir.</p>
-                         </div>
-                    )}
+                    </div>
+                </Card>
+                <Card className="h-[400px] flex flex-col">
+                    <h3 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
+                        <span className="w-2 h-6 bg-secondary rounded-sm"></span>
+                        Natureza das Despesas
+                    </h3>
+                    <div className="flex-grow relative">
+                        {expenseSubcategoryData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie 
+                                        data={expenseSubcategoryData} 
+                                        dataKey="value" 
+                                        nameKey="name" 
+                                        cx="50%" 
+                                        cy="50%" 
+                                        innerRadius={60}
+                                        outerRadius={100} 
+                                        fill="#8884d8" 
+                                        paddingAngle={5}
+                                        stroke="none"
+                                    >
+                                        {expenseSubcategoryData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                                    </Pie>
+                                    <Tooltip content={<CustomPieTooltip />} />
+                                    <Legend 
+                                        verticalAlign="bottom" 
+                                        height={36} 
+                                        iconType="circle"
+                                        formatter={(value) => <span className="text-text-secondary ml-1">{value}</span>}
+                                    />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        ) : (
+                             <div className="flex items-center justify-center h-full text-text-secondary">
+                                 <p>Sem dados de despesas para exibir.</p>
+                             </div>
+                        )}
+                        {/* Donut Center Text */}
+                        {expenseSubcategoryData.length > 0 && (
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none pb-8">
+                                <div className="text-center">
+                                    <p className="text-xs text-text-secondary">Total</p>
+                                    <p className="text-lg font-bold text-text-primary">100%</p>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </Card>
             </div>
             
-             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                 <Card>
-                    <h3 className="text-lg font-bold text-text-primary mb-4">Informações Rápidas</h3>
-                     <div className="space-y-4">
-                        <div className="flex justify-between items-center p-3 bg-background rounded-lg">
-                            <span className="text-text-secondary">Mês mais lucrativo:</span>
-                            <span className="font-bold text-primary">{mostProfitableMonth}</span>
-                        </div>
-                        <div className="flex justify-between items-center p-3 bg-background rounded-lg">
-                            <span className="text-text-secondary">Maior despesa única:</span>
-                            {largestExpense ? (
-                                <span className="font-bold text-danger">{largestExpense.description} ({formatCurrency(largestExpense.amount)})</span>
-                            ) : (
-                                <span className="font-bold text-text-secondary">N/A</span>
-                            )}
-                        </div>
-                         <div className="flex justify-between items-center p-3 bg-background rounded-lg">
-                            <span className="text-text-secondary">Saldo Provisão de Impostos:</span>
-                            <span className={`font-bold ${taxProvisionBalanceForPeriod >= 0 ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(taxProvisionBalanceForPeriod)}</span>
-                        </div>
-                     </div>
-                </Card>
-                 <Card>
-                    <h3 className="text-lg font-bold text-text-primary mb-4">Contas a Pagar Próximas</h3>
-                     {upcomingBills.length > 0 ? (
-                        <ul className="space-y-2">
-                             {upcomingBills.map(bill => (
-                                <li key={bill.id} className="flex justify-between items-center p-2 bg-background rounded-lg">
-                                    <div>
-                                        <p className="font-semibold">{bill.description}</p>
-                                        <p className="text-xs text-text-secondary">{bill.clientSupplier}</p>
-                                    </div>
-                                    <div className="text-right">
-                                         <p className="font-bold text-danger">{formatCurrency(bill.amount)}</p>
-                                         <p className="text-xs text-yellow-400">Vence em: {formatDate(bill.date)}</p>
-                                    </div>
-                                </li>
-                            ))}
-                        </ul>
-                    ) : (
-                        <div className="flex items-center justify-center h-full text-text-secondary">
-                            <p>Nenhuma conta pendente próxima.</p>
-                        </div>
-                    )}
-                </Card>
-             </div>
+             <Card>
+                <h3 className="text-lg font-bold text-text-primary mb-4">Informações Rápidas</h3>
+                 <div className="space-y-4">
+                    <div className="flex justify-between items-center p-3 bg-background rounded-lg border border-border-color/50">
+                        <span className="text-text-secondary">Mês mais lucrativo:</span>
+                        <span className="font-bold text-primary">{mostProfitableMonth}</span>
+                    </div>
+                    <div className="flex justify-between items-center p-3 bg-background rounded-lg border border-border-color/50">
+                        <span className="text-text-secondary">Maior despesa única:</span>
+                        {largestExpense ? (
+                            <span className="font-bold text-danger text-right">{largestExpense.description}<br/><span className="text-sm">{formatCurrency(largestExpense.amount)}</span></span>
+                        ) : (
+                            <span className="font-bold text-text-secondary">N/A</span>
+                        )}
+                    </div>
+                     <div className="flex justify-between items-center p-3 bg-background rounded-lg border border-border-color/50">
+                        <span className="text-text-secondary">Saldo Provisão de Impostos:</span>
+                        <span className={`font-bold ${taxProvisionBalanceForPeriod >= 0 ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(taxProvisionBalanceForPeriod)}</span>
+                    </div>
+                 </div>
+            </Card>
         </div>
     );
 };
@@ -1981,12 +2084,12 @@ const App: React.FC = () => {
              return <div className="flex items-center justify-center h-full"><p>Carregando dados...</p></div>;
         }
         switch (view) {
-            case 'dashboard': return <DashboardView transactions={transactions} goals={goals}/>;
+            case 'dashboard': return <DashboardView transactions={transactions} goals={goals} onSetPaid={setExpenseAsPaid}/>;
             case 'transactions': return <TransactionsView transactions={transactions} onAdd={addTransaction} onEdit={editTransaction} onDelete={deleteTransaction} onSetPaid={setExpenseAsPaid} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors}/>;
             case 'goals': return <GoalsView goals={goals} onAddGoal={addGoal} onEditGoal={editGoal} onDeleteGoal={deleteGoal} onAddProgress={addProgressToGoal}/>;
             case 'reports': return <ReportsView transactions={transactions} expenseCategories={expenseCategories} />;
             case 'settings': return <SettingsView incomeCategories={incomeCategories} setIncomeCategories={setIncomeCategories} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} paymentMethods={paymentMethods} setPaymentMethods={setPaymentMethods} costCenters={costCenters} setCostCenters={setCostCenters} advisors={advisors} setAdvisors={setAdvisors} goals={goals} setGoals={setGoals} transactions={transactions} onImportTransactions={importTransactions} />;
-            default: return <DashboardView transactions={transactions} goals={goals} />;
+            default: return <DashboardView transactions={transactions} goals={goals} onSetPaid={setExpenseAsPaid} />;
         }
     };
     
