@@ -1581,7 +1581,7 @@ const SettingsView: FC<SettingsViewProps> = ({
                             >
                                 <span className="cursor-grab p-2 text-text-secondary"><DragHandleIcon className="w-5 h-5"/></span>
                                 <input type="text" value={cat} onChange={(e) => updateListItem(setIncomeCategories, i, e.target.value)} className="flex-grow bg-background border-border-color rounded-md shadow-sm p-2"/>
-                                <Button variant="secondary" onClick={() => deleteListItem(setIncomeCategories, i)} className="p-2 h-9 w-9 hover:bg-danger"><TrashIcon className="w-5 h-5"/></Button>
+                                <Button variant="secondary" onClick={() => deleteListItem(setIncomeCategories, i)} className="px-3 py-1 text-xs hover:bg-danger hover:text-white">Remover</Button>
                             </li>
                         ))}
                     </ul>
@@ -1607,7 +1607,7 @@ const SettingsView: FC<SettingsViewProps> = ({
                                     <option value={ExpenseType.COST}>Custo</option>
                                     <option value={ExpenseType.EXPENSE}>Despesa</option>
                                 </select>
-                                <Button variant="secondary" onClick={() => deleteListItem(setExpenseCategories, i)} className="p-2 h-9 w-9 hover:bg-danger"><TrashIcon className="w-5 h-5"/></Button>
+                                <Button variant="secondary" onClick={() => deleteListItem(setExpenseCategories, i)} className="px-3 py-1 text-xs hover:bg-danger hover:text-white">Remover</Button>
                             </li>
                         ))}
                     </ul>
@@ -1629,7 +1629,7 @@ const SettingsView: FC<SettingsViewProps> = ({
                              >
                                 <span className="cursor-grab p-2 text-text-secondary"><DragHandleIcon className="w-5 h-5"/></span>
                                 <input type="text" value={method} onChange={(e) => updateListItem(setPaymentMethods, i, e.target.value)} className="flex-grow bg-background border-border-color rounded-md shadow-sm p-2"/>
-                                <Button variant="secondary" onClick={() => deleteListItem(setPaymentMethods, i)} className="p-2 h-9 w-9 hover:bg-danger"><TrashIcon className="w-5 h-5"/></Button>
+                                <Button variant="secondary" onClick={() => deleteListItem(setPaymentMethods, i)} className="px-3 py-1 text-xs hover:bg-danger hover:text-white">Remover</Button>
                             </li>
                         ))}
                     </ul>
@@ -1651,7 +1651,7 @@ const SettingsView: FC<SettingsViewProps> = ({
                             >
                                 <span className="cursor-grab p-2 text-text-secondary"><DragHandleIcon className="w-5 h-5"/></span>
                                 <input type="text" value={center.name} onChange={(e) => updateListItem(setCostCenters, i, { ...center, name: e.target.value })} className="flex-grow bg-background border-border-color rounded-md shadow-sm p-2"/>
-                                <Button variant="secondary" onClick={() => deleteListItem(setCostCenters, i)} className="p-2 h-9 w-9 hover:bg-danger"><TrashIcon className="w-5 h-5"/></Button>
+                                <Button variant="secondary" onClick={() => deleteListItem(setCostCenters, i)} className="px-3 py-1 text-xs hover:bg-danger hover:text-white">Remover</Button>
                             </li>
                         ))}
                     </ul>
@@ -1677,7 +1677,7 @@ const SettingsView: FC<SettingsViewProps> = ({
                                     <input type="number" placeholder="Comissão" value={advisor.commissionRate} onChange={(e) => updateListItem(setAdvisors, i, { ...advisor, commissionRate: parseFloat(e.target.value) || 0 })} className="w-24 bg-surface border-border-color rounded-md shadow-sm p-2"/>
                                     <span className="text-text-secondary">%</span>
                                 </div>
-                                <Button variant="secondary" onClick={() => deleteListItem(setAdvisors, i)} className="p-2 h-9 w-9 hover:bg-danger"><TrashIcon className="w-5 h-5"/></Button>
+                                <Button variant="secondary" onClick={() => deleteListItem(setAdvisors, i)} className="px-3 py-1 text-xs hover:bg-danger hover:text-white">Remover</Button>
                             </li>
                         ))}
                     </ul>
