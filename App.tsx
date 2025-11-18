@@ -1454,6 +1454,7 @@ interface SettingsViewProps {
   goals: Goal[];
   setGoals: React.Dispatch<React.SetStateAction<Goal[]>>;
   transactions: Transaction[];
+  onImportTransactions: (data: any[]) => Promise<void>;
 }
 
 const SettingsView: FC<SettingsViewProps> = ({
@@ -1463,7 +1464,8 @@ const SettingsView: FC<SettingsViewProps> = ({
     costCenters, setCostCenters,
     advisors, setAdvisors,
     goals, setGoals,
-    transactions
+    transactions,
+    onImportTransactions
 }) => {
 
     const draggedItem = React.useRef<{ list: string; index: number } | null>(null);
@@ -1540,7 +1542,7 @@ const SettingsView: FC<SettingsViewProps> = ({
         if (!file) return;
 
         const reader = new FileReader();
-        reader.onload = (e) => {
+        reader.onload = async (e) => {
             try {
                 const text = e.target?.result;
                 if (typeof text !== 'string') throw new Error("File content is not text");
@@ -1549,7 +1551,7 @@ const SettingsView: FC<SettingsViewProps> = ({
 
                 if (!data || typeof data !== 'object') throw new Error("Invalid JSON structure");
 
-                if (window.confirm("Isso irá sobrescrever suas configurações e metas. A importação de transações não é suportada nesta versão. Deseja continuar?")) {
+                if (window.confirm("Isso irá sobrescrever suas configurações e metas e ADICIONAR as transações do backup. Deseja continuar?")) {
                     if (Array.isArray(data.incomeCategories)) setIncomeCategories(data.incomeCategories);
                     if (Array.isArray(data.expenseCategories)) setExpenseCategories(data.expenseCategories);
                     if (Array.isArray(data.paymentMethods)) setPaymentMethods(data.paymentMethods);
@@ -1557,11 +1559,15 @@ const SettingsView: FC<SettingsViewProps> = ({
                     if (Array.isArray(data.advisors)) setAdvisors(data.advisors);
                     if (Array.isArray(data.goals)) setGoals(data.goals);
                     
-                    alert("Configurações e metas importadas com sucesso!");
+                    if (Array.isArray(data.transactions)) {
+                         await onImportTransactions(data.transactions);
+                    }
+                    
+                    alert("Dados importados com sucesso!");
                 }
             } catch (error) {
                 console.error("Error importing data:", error);
-                alert("Ocorreu um erro ao importar o arquivo. Verifique se o formato é um JSON válido.");
+                alert("Ocorreu um erro ao importar o arquivo. Verifique o console.");
             } finally {
                 event.target.value = '';
             }
@@ -1759,7 +1765,7 @@ const SettingsView: FC<SettingsViewProps> = ({
                         </div>
                     </div>
                     <p className="text-xs text-text-secondary mt-4">
-                        Exporte seus dados (configurações, metas, transações) para um arquivo de backup. A importação restaurará configurações e metas.
+                        Exporte seus dados (configurações, metas, transações) para um arquivo de backup. A importação restaurará configurações e metas e adicionará as transações.
                     </p>
                 </Card>
             </div>
@@ -1924,6 +1930,43 @@ const App: React.FC = () => {
         setGoals(prev => prev.map(g => g.id === id ? { ...g, currentAmount: g.currentAmount + amount } : g));
     };
 
+    // New function to handle transaction import
+    const importTransactions = async (importedTransactions: any[]) => {
+        if (!currentUser) return;
+        setLoadingTransactions(true);
+        try {
+            // Filter out potentially invalid transactions and sanitize data
+            const validTransactions = importedTransactions.filter(t => t.description && t.amount && t.date);
+            
+            const promises = validTransactions.map(t => {
+                // Exclude ID to create new records and let Firestore generate new IDs
+                const { id, ...rest } = t;
+                
+                // Ensure no undefined values are passed to Firestore
+                const cleanData = Object.entries(rest).reduce((acc, [key, value]) => {
+                    if (value !== undefined) {
+                        acc[key] = value;
+                    }
+                    return acc;
+                }, {} as any);
+                
+                return saveTransaction(cleanData, currentUser.uid);
+            });
+
+            await Promise.all(promises);
+
+            // Reload transactions from Firestore to reflect changes
+            const snapshot = await getTransactions(currentUser.uid);
+            const updatedData = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as Omit<Transaction, 'id'>) })) as Transaction[];
+            setTransactions(updatedData);
+        } catch (error) {
+            console.error("Error importing transactions:", error);
+            throw error; // Allow SettingsView to handle alert if needed, or handle here
+        } finally {
+            setLoadingTransactions(false);
+        }
+    };
+
 
     const pageTitles: Record<View, string> = {
         dashboard: 'Dashboard',
@@ -1942,7 +1985,7 @@ const App: React.FC = () => {
             case 'transactions': return <TransactionsView transactions={transactions} onAdd={addTransaction} onEdit={editTransaction} onDelete={deleteTransaction} onSetPaid={setExpenseAsPaid} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors}/>;
             case 'goals': return <GoalsView goals={goals} onAddGoal={addGoal} onEditGoal={editGoal} onDeleteGoal={deleteGoal} onAddProgress={addProgressToGoal}/>;
             case 'reports': return <ReportsView transactions={transactions} expenseCategories={expenseCategories} />;
-            case 'settings': return <SettingsView incomeCategories={incomeCategories} setIncomeCategories={setIncomeCategories} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} paymentMethods={paymentMethods} setPaymentMethods={setPaymentMethods} costCenters={costCenters} setCostCenters={setCostCenters} advisors={advisors} setAdvisors={setAdvisors} goals={goals} setGoals={setGoals} transactions={transactions} />;
+            case 'settings': return <SettingsView incomeCategories={incomeCategories} setIncomeCategories={setIncomeCategories} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} paymentMethods={paymentMethods} setPaymentMethods={setPaymentMethods} costCenters={costCenters} setCostCenters={setCostCenters} advisors={advisors} setAdvisors={setAdvisors} goals={goals} setGoals={setGoals} transactions={transactions} onImportTransactions={importTransactions} />;
             default: return <DashboardView transactions={transactions} goals={goals} />;
         }
     };
