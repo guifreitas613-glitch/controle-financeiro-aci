@@ -817,30 +817,30 @@ const DashboardView: FC<{ transactions: Transaction[]; goals: Goal[]; onSetPaid:
                 </Card>
             </div>
 
-            {/* Próximos Pagamentos - High Priority Section */}
+            {/* Próximos Pagamentos - High Priority Section - Compact Version */}
             {upcomingBills.length > 0 && (
-                <div className="bg-surface border border-danger/30 rounded-xl shadow-lg p-4 sm:p-6">
-                    <div className="flex items-center gap-3 mb-4">
+                <div className="bg-surface border border-danger/30 rounded-xl shadow-lg p-3 sm:p-6">
+                    <div className="flex items-center gap-3 mb-3">
                         <div className="bg-danger/10 p-2 rounded-full">
-                            <AlertCircleIcon className="w-6 h-6 text-danger" />
+                            <AlertCircleIcon className="w-5 h-5 text-danger" />
                         </div>
                         <div>
-                            <h3 className="text-lg font-bold text-text-primary">Contas a Pagar (Próximos 5 Dias)</h3>
-                            <p className="text-sm text-text-secondary">Atenção aos vencimentos próximos e contas em atraso.</p>
+                            <h3 className="text-base sm:text-lg font-bold text-text-primary">Contas a Pagar (Próximos 5 Dias)</h3>
+                            <p className="text-xs sm:text-sm text-text-secondary">Atenção aos vencimentos próximos.</p>
                         </div>
                     </div>
-                    <div className="overflow-x-auto">
+                    <div className="overflow-hidden">
                         <table className="w-full text-left border-collapse">
                             <thead>
-                                <tr className="text-text-secondary text-sm border-b border-border-color">
-                                    <th className="py-2 font-medium">Vencimento</th>
-                                    <th className="py-2 font-medium">Descrição</th>
-                                    <th className="py-2 font-medium">Fornecedor</th>
-                                    <th className="py-2 font-medium">Valor</th>
-                                    <th className="py-2 font-medium text-right">Ação</th>
+                                <tr className="text-text-secondary text-xs border-b border-border-color">
+                                    <th className="py-2 px-1 font-medium whitespace-nowrap">Vencimento</th>
+                                    <th className="py-2 px-1 font-medium">Descrição</th>
+                                    <th className="py-2 px-1 font-medium hidden sm:table-cell">Fornecedor</th>
+                                    <th className="py-2 px-1 font-medium">Valor</th>
+                                    <th className="py-2 px-1 font-medium text-right">Ação</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody className="text-xs sm:text-sm">
                                 {upcomingBills.map(bill => {
                                     const billDate = new Date(bill.date);
                                     const today = new Date();
@@ -850,22 +850,22 @@ const DashboardView: FC<{ transactions: Transaction[]; goals: Goal[]; onSetPaid:
                                     
                                     return (
                                         <tr key={bill.id} className="border-b border-border-color/50 last:border-0 hover:bg-background/50 transition-colors">
-                                            <td className="py-3">
-                                                <span className={`px-2 py-1 rounded text-xs font-bold ${isOverdue ? 'bg-danger text-white' : (isToday ? 'bg-yellow-500 text-black' : 'bg-background text-text-secondary')}`}>
+                                            <td className="py-2 px-1 whitespace-nowrap">
+                                                <span className={`px-1.5 py-0.5 rounded text-[10px] sm:text-xs font-bold ${isOverdue ? 'bg-danger text-white' : (isToday ? 'bg-yellow-500 text-black' : 'bg-background text-text-secondary')}`}>
                                                     {isOverdue ? 'Atrasado' : (isToday ? 'Hoje' : formatDate(bill.date))}
                                                 </span>
                                             </td>
-                                            <td className="py-3 font-medium">{bill.description}</td>
-                                            <td className="py-3 text-sm text-text-secondary">{bill.clientSupplier || '-'}</td>
-                                            <td className="py-3 font-bold text-danger">{formatCurrency(bill.amount)}</td>
-                                            <td className="py-3 text-right">
+                                            <td className="py-2 px-1 font-medium truncate max-w-[100px] sm:max-w-none" title={bill.description}>{bill.description}</td>
+                                            <td className="py-2 px-1 text-text-secondary hidden sm:table-cell truncate max-w-[150px]" title={bill.clientSupplier || ''}>{bill.clientSupplier || '-'}</td>
+                                            <td className="py-2 px-1 font-bold text-danger whitespace-nowrap">{formatCurrency(bill.amount)}</td>
+                                            <td className="py-2 px-1 text-right">
                                                 <Button 
                                                     onClick={() => onSetPaid(bill.id)} 
                                                     variant="success" 
-                                                    className="py-1 px-3 text-xs ml-auto"
+                                                    className="py-1 px-2 text-[10px] sm:text-xs ml-auto gap-1"
                                                     title="Marcar como Pago"
                                                 >
-                                                    <CheckCircleIcon className="w-4 h-4" /> Pagar
+                                                    <CheckCircleIcon className="w-3 h-3 sm:w-4 sm:h-4" /> <span className="hidden sm:inline">Pagar</span>
                                                 </Button>
                                             </td>
                                         </tr>
