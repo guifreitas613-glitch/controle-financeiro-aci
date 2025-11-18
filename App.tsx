@@ -1,7 +1,5 @@
 
 
-
-
 import React, { useState, useMemo, FC, ReactNode, useEffect } from 'react';
 import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType } from './types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
@@ -32,6 +30,8 @@ const LogoutIcon: FC<{ className?: string }> = ({ className }) => (<svg classNam
 const ArrowUpIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>);
 const ArrowDownIcon: FC<{ className?: string}> = ({className}) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>);
 const HistoryIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>);
+const DragHandleIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M9.5 13a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0-5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0-5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm-5 5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0-5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0 10a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z"/></svg>);
+
 
 // --- DECLARAÇÕES DE BIBLIOTECAS GLOBAIS ---
 declare var XLSX: any;
@@ -92,13 +92,18 @@ const initialAdvisors: Advisor[] = [];
 
 // --- COMPONENTES DE UI REUTILIZÁVEIS ---
 const Card: FC<{ children: ReactNode; className?: string }> = ({ children, className = '' }) => (<div className={`bg-surface rounded-xl shadow-lg p-4 sm:p-6 ${className}`}>{children}</div>);
-const Button: FC<{ onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void; children: ReactNode; variant?: 'primary' | 'secondary' | 'danger'; className?: string; type?: "button" | "submit" | "reset"; disabled?: boolean }> = ({ onClick, children, variant = 'primary', className = '', type = 'button', disabled = false }) => {
+const Button: FC<{ onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void; children: ReactNode; variant?: 'primary' | 'secondary' | 'danger'; className?: string; type?: "button" | "submit" | "reset"; disabled?: boolean; as?: 'button' | 'label'; htmlFor?: string }> = ({ onClick, children, variant = 'primary', className = '', type = 'button', disabled = false, as = 'button', htmlFor }) => {
   const baseClasses = 'px-4 py-2 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105';
   const variantClasses = {
     primary: 'bg-primary hover:bg-opacity-90 text-white shadow-md shadow-primary/30',
     secondary: 'bg-text-secondary bg-opacity-20 hover:bg-opacity-30 text-text-primary',
     danger: 'bg-danger hover:bg-red-500 text-white',
   };
+  
+  if (as === 'label') {
+    return <label htmlFor={htmlFor} className={`${baseClasses} ${variantClasses[variant]} ${className} cursor-pointer`}>{children}</label>
+  }
+
   return <button type={type} onClick={onClick} className={`${baseClasses} ${variantClasses[variant]} ${className}`} disabled={disabled}>{children}</button>;
 };
 const Modal: FC<{ isOpen: boolean; onClose: () => void; title: string; children: ReactNode, size?: 'sm' | 'md' | 'lg' | 'xl' }> = ({ isOpen, onClose, title, children, size = 'lg' }) => {
@@ -572,6 +577,17 @@ const AddProgressForm: FC<AddProgressFormProps> = ({ onSubmit, onClose }) => {
 // --- ESTRUTURA E LAYOUT ---
 const Sidebar: FC<{ activeView: View; setActiveView: (view: View) => void; isSidebarOpen: boolean; user: User | null; }> = ({ activeView, setActiveView, isSidebarOpen, user }) => {
     
+    const getUserDisplayName = (user: User | null) => {
+        if (!user) return "";
+        if (user.displayName) return user.displayName;
+        if (user.email) {
+            const namePart = user.email.split('@')[0];
+            // Capitalize first letter of each part separated by dot or underscore or hyphen
+            return namePart.replace(/[._-]/g, ' ').split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+        }
+        return "Usuário";
+    }
+
     const allNavItems: { view: View; label: string; icon: ReactNode; }[] = [
         { view: 'dashboard', label: 'Dashboard', icon: <DashboardIcon className="w-5 h-5"/> },
         { view: 'transactions', label: 'Transações', icon: <TransactionsIcon className="w-5 h-5"/> },
@@ -595,8 +611,8 @@ const Sidebar: FC<{ activeView: View; setActiveView: (view: View) => void; isSid
                 ))}
             </nav>
             <div className="border-t border-border-color pt-4 mt-4">
-                 <div className="text-center mb-4">
-                    <p className="text-sm font-semibold text-text-primary">{user?.email}</p>
+                 <div className="px-2 mb-4">
+                    <p className="text-sm font-semibold text-text-primary truncate" title={getUserDisplayName(user)}>{getUserDisplayName(user)}</p>
                  </div>
                  <button
                     onClick={logoutUser}
@@ -897,6 +913,8 @@ const TransactionsView: FC<TransactionsViewProps> = ({ transactions, onAdd, onEd
     const [sortConfig, setSortConfig] = useState<{ key: keyof Transaction; direction: 'asc' | 'desc' } | null>({ key: 'date', direction: 'desc' });
     const [filterStatus, setFilterStatus] = useState<'all' | ExpenseStatus>('all');
     const [filterCategory, setFilterCategory] = useState<string>('all');
+    const [filterYear, setFilterYear] = useState<'all' | number>('all');
+    const [filterMonth, setFilterMonth] = useState<'all' | number>('all');
     
     const openModal = (transaction: Transaction | null = null) => {
         setEditingTransaction(transaction);
@@ -917,6 +935,17 @@ const TransactionsView: FC<TransactionsViewProps> = ({ transactions, onAdd, onEd
         closeModal();
     };
 
+    const availableYears = useMemo(() => {
+        const years = [...new Set(transactions.map(t => new Date(t.date).getFullYear()))];
+        const currentYear = new Date().getFullYear();
+        if (!years.includes(currentYear)) {
+            years.push(currentYear);
+        }
+        return years.sort((a, b) => b - a);
+    }, [transactions]);
+
+    const months = useMemo(() => ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'], []);
+
     const filteredTransactions = useMemo(() => {
         let items = transactions.filter(t => t.type === activeTab);
         
@@ -936,9 +965,17 @@ const TransactionsView: FC<TransactionsViewProps> = ({ transactions, onAdd, onEd
         if (filterCategory !== 'all') {
             items = items.filter(t => t.category === filterCategory);
         }
+
+        if (filterYear !== 'all') {
+            items = items.filter(t => new Date(t.date).getFullYear() === filterYear);
+        }
+
+        if (filterMonth !== 'all') {
+            items = items.filter(t => new Date(t.date).getMonth() === filterMonth);
+        }
         
         return items;
-    }, [transactions, activeTab, searchTerm, filterStatus, filterCategory]);
+    }, [transactions, activeTab, searchTerm, filterStatus, filterCategory, filterYear, filterMonth]);
     
     const sortedTransactions = useMemo(() => {
         let sortableItems = [...filteredTransactions];
@@ -1025,8 +1062,8 @@ const TransactionsView: FC<TransactionsViewProps> = ({ transactions, onAdd, onEd
                 </div>
 
                 {/* Filtros */}
-                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4 p-4 bg-background rounded-lg">
-                    <div className="relative">
+                 <div className="flex flex-wrap gap-4 mb-4 p-4 bg-background rounded-lg">
+                    <div className="relative flex-grow min-w-[250px]">
                         <input 
                             type="text" 
                             placeholder="Buscar por descrição..."
@@ -1036,12 +1073,20 @@ const TransactionsView: FC<TransactionsViewProps> = ({ transactions, onAdd, onEd
                         />
                         <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-text-secondary"/>
                     </div>
-                     <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="bg-surface border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2">
+                     <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="bg-surface border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2 flex-grow min-w-[180px]">
                          <option value="all">Todas as Categorias</option>
                          {currentCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                      </select>
+                     <select value={filterYear} onChange={e => setFilterYear(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-surface border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2 flex-grow min-w-[120px]">
+                         <option value="all">Todos os Anos</option>
+                         {availableYears.map(year => <option key={year} value={year}>{year}</option>)}
+                     </select>
+                    <select value={filterMonth} onChange={e => setFilterMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-surface border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2 flex-grow min-w-[150px]">
+                        <option value="all">Todos os Meses</option>
+                        {months.map((month, index) => <option key={month} value={index}>{month}</option>)}
+                    </select>
                     {activeTab === TransactionType.EXPENSE && (
-                         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as 'all' | ExpenseStatus)} className="bg-surface border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2">
+                         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as 'all' | ExpenseStatus)} className="bg-surface border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2 flex-grow min-w-[150px]">
                              <option value="all">Todos os Status</option>
                              <option value={ExpenseStatus.PAID}>Paga</option>
                              <option value={ExpenseStatus.PENDING}>Pendente</option>
@@ -1394,6 +1439,9 @@ interface SettingsViewProps {
   setCostCenters: React.Dispatch<React.SetStateAction<CostCenter[]>>;
   advisors: Advisor[];
   setAdvisors: React.Dispatch<React.SetStateAction<Advisor[]>>;
+  goals: Goal[];
+  setGoals: React.Dispatch<React.SetStateAction<Goal[]>>;
+  transactions: Transaction[];
 }
 
 const SettingsView: FC<SettingsViewProps> = ({
@@ -1401,21 +1449,47 @@ const SettingsView: FC<SettingsViewProps> = ({
     expenseCategories, setExpenseCategories,
     paymentMethods, setPaymentMethods,
     costCenters, setCostCenters,
-    advisors, setAdvisors
+    advisors, setAdvisors,
+    goals, setGoals,
+    transactions
 }) => {
 
-    const [editingCategory, setEditingCategory] = useState<{ type: 'income' | 'expense', index: number, value: string | ExpenseCategory } | null>(null);
-    const [editingMethod, setEditingMethod] = useState<{ index: number, value: string } | null>(null);
-    const [editingCenter, setEditingCenter] = useState<{ index: number, value: CostCenter } | null>(null);
-    const [editingAdvisor, setEditingAdvisor] = useState<{ index: number, value: Advisor } | null>(null);
+    const draggedItem = React.useRef<{ list: string; index: number } | null>(null);
+    const dragOverItem = React.useRef<{ list: string; index: number } | null>(null);
+    const [dragActive, setDragActive] = useState(false);
 
+    const handleDragStart = (e: React.DragEvent, list: string, index: number) => {
+        draggedItem.current = { list, index };
+        setDragActive(true);
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleDragEnter = (e: React.DragEvent, list: string, index: number) => {
+        if (draggedItem.current && draggedItem.current.list === list) {
+            dragOverItem.current = { list, index };
+        }
+    };
+    
+    const handleDragEnd = () => {
+        draggedItem.current = null;
+        dragOverItem.current = null;
+        setDragActive(false);
+    };
+
+    const handleDrop = (setter: React.Dispatch<React.SetStateAction<any[]>>) => {
+        if (!draggedItem.current || !dragOverItem.current || draggedItem.current.index === dragOverItem.current.index) return;
+        
+        setter(prev => {
+            const newItems = [...prev];
+            const [reorderedItem] = newItems.splice(draggedItem.current!.index, 1);
+            newItems.splice(dragOverItem.current!.index, 0, reorderedItem);
+            return newItems;
+        });
+    };
+    
     const handleSave = () => {
         // This is now handled by useLocalStorage automatically.
         alert('Configurações salvas!');
-        setEditingCategory(null);
-        setEditingMethod(null);
-        setEditingCenter(null);
-        setEditingAdvisor(null);
     };
 
     const addListItem = (setter: React.Dispatch<React.SetStateAction<any[]>>, defaultValue: any) => {
@@ -1430,6 +1504,59 @@ const SettingsView: FC<SettingsViewProps> = ({
         setter(prev => prev.filter((_, i) => i !== index));
     };
     
+    const handleExport = () => {
+        const dataToExport = {
+            incomeCategories,
+            expenseCategories,
+            paymentMethods,
+            costCenters,
+            advisors,
+            goals,
+            transactions,
+        };
+        const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(
+            JSON.stringify(dataToExport, null, 2)
+        )}`;
+        const link = document.createElement("a");
+        link.href = jsonString;
+        link.download = `acicapital_backup_${new Date().toISOString().split('T')[0]}.json`;
+        link.click();
+    };
+
+    const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const text = e.target?.result;
+                if (typeof text !== 'string') throw new Error("File content is not text");
+                
+                const data = JSON.parse(text);
+
+                if (!data || typeof data !== 'object') throw new Error("Invalid JSON structure");
+
+                if (window.confirm("Isso irá sobrescrever suas configurações e metas. A importação de transações não é suportada nesta versão. Deseja continuar?")) {
+                    if (Array.isArray(data.incomeCategories)) setIncomeCategories(data.incomeCategories);
+                    if (Array.isArray(data.expenseCategories)) setExpenseCategories(data.expenseCategories);
+                    if (Array.isArray(data.paymentMethods)) setPaymentMethods(data.paymentMethods);
+                    if (Array.isArray(data.costCenters)) setCostCenters(data.costCenters);
+                    if (Array.isArray(data.advisors)) setAdvisors(data.advisors);
+                    if (Array.isArray(data.goals)) setGoals(data.goals);
+                    
+                    alert("Configurações e metas importadas com sucesso!");
+                }
+            } catch (error) {
+                console.error("Error importing data:", error);
+                alert("Ocorreu um erro ao importar o arquivo. Verifique se o formato é um JSON válido.");
+            } finally {
+                event.target.value = '';
+            }
+        };
+        reader.readAsText(file);
+    };
+
     return (
         <div className="space-y-6 animate-fade-in">
              <div className="flex justify-between items-center">
@@ -1439,10 +1566,20 @@ const SettingsView: FC<SettingsViewProps> = ({
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                  <Card>
-                    <h3 className="text-lg font-bold mb-4">Categorias de Receita</h3>
+                    <h3 className="text-lg font-bold mb-1">Categorias de Receita</h3>
+                    <p className="text-xs text-text-secondary mb-4">Arraste os itens para reordenar.</p>
                     <ul className="space-y-2">
                         {incomeCategories.map((cat, i) => (
-                            <li key={i} className="flex items-center gap-2">
+                            <li key={i} 
+                                className={`flex items-center gap-2 transition-all duration-200 ${dragActive && draggedItem.current?.list === 'income' && draggedItem.current?.index === i ? 'opacity-50' : ''}`}
+                                draggable
+                                onDragStart={(e) => handleDragStart(e, 'income', i)}
+                                onDragEnter={(e) => handleDragEnter(e, 'income', i)}
+                                onDragEnd={handleDragEnd}
+                                onDragOver={(e) => e.preventDefault()}
+                                onDrop={() => handleDrop(setIncomeCategories)}
+                            >
+                                <span className="cursor-grab p-2 text-text-secondary"><DragHandleIcon className="w-5 h-5"/></span>
                                 <input type="text" value={cat} onChange={(e) => updateListItem(setIncomeCategories, i, e.target.value)} className="flex-grow bg-background border-border-color rounded-md shadow-sm p-2"/>
                                 <Button variant="secondary" onClick={() => deleteListItem(setIncomeCategories, i)} className="p-2 h-9 w-9 hover:bg-danger"><TrashIcon className="w-5 h-5"/></Button>
                             </li>
@@ -1451,12 +1588,22 @@ const SettingsView: FC<SettingsViewProps> = ({
                      <Button onClick={() => addListItem(setIncomeCategories, 'Nova Categoria')} className="mt-4 text-sm" variant="secondary">Adicionar Categoria</Button>
                 </Card>
                  <Card>
-                    <h3 className="text-lg font-bold mb-4">Categorias de Despesa</h3>
+                    <h3 className="text-lg font-bold mb-1">Categorias de Despesa</h3>
+                    <p className="text-xs text-text-secondary mb-4">Arraste os itens para reordenar.</p>
                      <ul className="space-y-2">
                         {expenseCategories.map((cat, i) => (
-                            <li key={i} className="flex items-center gap-2">
+                            <li key={i} 
+                                className={`flex items-center gap-2 transition-all duration-200 ${dragActive && draggedItem.current?.list === 'expense' && draggedItem.current?.index === i ? 'opacity-50' : ''}`}
+                                draggable
+                                onDragStart={(e) => handleDragStart(e, 'expense', i)}
+                                onDragEnter={(e) => handleDragEnter(e, 'expense', i)}
+                                onDragEnd={handleDragEnd}
+                                onDragOver={(e) => e.preventDefault()}
+                                onDrop={() => handleDrop(setExpenseCategories)}
+                            >
+                                <span className="cursor-grab p-2 text-text-secondary"><DragHandleIcon className="w-5 h-5"/></span>
                                 <input type="text" value={cat.name} onChange={(e) => updateListItem(setExpenseCategories, i, { ...cat, name: e.target.value })} className="flex-grow bg-background border-border-color rounded-md shadow-sm p-2"/>
-                                 <select value={cat.type} onChange={(e) => updateListItem(setExpenseCategories, i, { ...cat, type: e.target.value as ExpenseType })} className="bg-background border-border-color rounded-md shadow-sm p-2">
+                                <select value={cat.type} onChange={(e) => updateListItem(setExpenseCategories, i, { ...cat, type: e.target.value as ExpenseType })} className="bg-background border-border-color rounded-md shadow-sm p-2">
                                     <option value={ExpenseType.COST}>Custo</option>
                                     <option value={ExpenseType.EXPENSE}>Despesa</option>
                                 </select>
@@ -1467,10 +1614,20 @@ const SettingsView: FC<SettingsViewProps> = ({
                      <Button onClick={() => addListItem(setExpenseCategories, { name: 'Nova Categoria', type: ExpenseType.EXPENSE })} className="mt-4 text-sm" variant="secondary">Adicionar Categoria</Button>
                 </Card>
                  <Card>
-                    <h3 className="text-lg font-bold mb-4">Formas de Pagamento</h3>
+                    <h3 className="text-lg font-bold mb-1">Formas de Pagamento</h3>
+                    <p className="text-xs text-text-secondary mb-4">Arraste os itens para reordenar.</p>
                      <ul className="space-y-2">
                         {paymentMethods.map((method, i) => (
-                             <li key={i} className="flex items-center gap-2">
+                             <li key={i}
+                                className={`flex items-center gap-2 transition-all duration-200 ${dragActive && draggedItem.current?.list === 'payment' && draggedItem.current?.index === i ? 'opacity-50' : ''}`}
+                                draggable
+                                onDragStart={(e) => handleDragStart(e, 'payment', i)}
+                                onDragEnter={(e) => handleDragEnter(e, 'payment', i)}
+                                onDragEnd={handleDragEnd}
+                                onDragOver={(e) => e.preventDefault()}
+                                onDrop={() => handleDrop(setPaymentMethods)}
+                             >
+                                <span className="cursor-grab p-2 text-text-secondary"><DragHandleIcon className="w-5 h-5"/></span>
                                 <input type="text" value={method} onChange={(e) => updateListItem(setPaymentMethods, i, e.target.value)} className="flex-grow bg-background border-border-color rounded-md shadow-sm p-2"/>
                                 <Button variant="secondary" onClick={() => deleteListItem(setPaymentMethods, i)} className="p-2 h-9 w-9 hover:bg-danger"><TrashIcon className="w-5 h-5"/></Button>
                             </li>
@@ -1479,10 +1636,20 @@ const SettingsView: FC<SettingsViewProps> = ({
                     <Button onClick={() => addListItem(setPaymentMethods, 'Novo Método')} className="mt-4 text-sm" variant="secondary">Adicionar Método</Button>
                 </Card>
                  <Card>
-                    <h3 className="text-lg font-bold mb-4">Centros de Custo</h3>
+                    <h3 className="text-lg font-bold mb-1">Centros de Custo</h3>
+                    <p className="text-xs text-text-secondary mb-4">Arraste os itens para reordenar.</p>
                      <ul className="space-y-2">
                         {costCenters.map((center, i) => (
-                             <li key={i} className="flex items-center gap-2">
+                             <li key={i}
+                                className={`flex items-center gap-2 transition-all duration-200 ${dragActive && draggedItem.current?.list === 'cost' && draggedItem.current?.index === i ? 'opacity-50' : ''}`}
+                                draggable
+                                onDragStart={(e) => handleDragStart(e, 'cost', i)}
+                                onDragEnter={(e) => handleDragEnter(e, 'cost', i)}
+                                onDragEnd={handleDragEnd}
+                                onDragOver={(e) => e.preventDefault()}
+                                onDrop={() => handleDrop(setCostCenters)}
+                            >
+                                <span className="cursor-grab p-2 text-text-secondary"><DragHandleIcon className="w-5 h-5"/></span>
                                 <input type="text" value={center.name} onChange={(e) => updateListItem(setCostCenters, i, { ...center, name: e.target.value })} className="flex-grow bg-background border-border-color rounded-md shadow-sm p-2"/>
                                 <Button variant="secondary" onClick={() => deleteListItem(setCostCenters, i)} className="p-2 h-9 w-9 hover:bg-danger"><TrashIcon className="w-5 h-5"/></Button>
                             </li>
@@ -1491,10 +1658,20 @@ const SettingsView: FC<SettingsViewProps> = ({
                     <Button onClick={() => addListItem(setCostCenters, { id: crypto.randomUUID(), name: 'Novo Centro' })} className="mt-4 text-sm" variant="secondary">Adicionar Centro</Button>
                 </Card>
                  <Card className="md:col-span-2">
-                    <h3 className="text-lg font-bold mb-4">Assessores</h3>
+                    <h3 className="text-lg font-bold mb-1">Assessores</h3>
+                    <p className="text-xs text-text-secondary mb-4">Arraste os itens para reordenar.</p>
                      <ul className="space-y-2">
                         {advisors.map((advisor, i) => (
-                             <li key={i} className="flex flex-col md:flex-row items-center gap-2 p-2 bg-background rounded-md">
+                             <li key={i}
+                                className={`flex flex-col md:flex-row items-center gap-2 p-2 bg-background rounded-md transition-all duration-200 ${dragActive && draggedItem.current?.list === 'advisor' && draggedItem.current?.index === i ? 'opacity-50' : ''}`}
+                                draggable
+                                onDragStart={(e) => handleDragStart(e, 'advisor', i)}
+                                onDragEnter={(e) => handleDragEnter(e, 'advisor', i)}
+                                onDragEnd={handleDragEnd}
+                                onDragOver={(e) => e.preventDefault()}
+                                onDrop={() => handleDrop(setAdvisors)}
+                            >
+                                <span className="cursor-grab p-2 text-text-secondary"><DragHandleIcon className="w-5 h-5"/></span>
                                 <input type="text" placeholder="Nome do Assessor" value={advisor.name} onChange={(e) => updateListItem(setAdvisors, i, { ...advisor, name: e.target.value })} className="flex-grow bg-surface border-border-color rounded-md shadow-sm p-2 w-full md:w-auto"/>
                                 <div className="flex items-center gap-1 w-full md:w-auto">
                                     <input type="number" placeholder="Comissão" value={advisor.commissionRate} onChange={(e) => updateListItem(setAdvisors, i, { ...advisor, commissionRate: parseFloat(e.target.value) || 0 })} className="w-24 bg-surface border-border-color rounded-md shadow-sm p-2"/>
@@ -1505,6 +1682,29 @@ const SettingsView: FC<SettingsViewProps> = ({
                         ))}
                     </ul>
                     <Button onClick={() => addListItem(setAdvisors, { id: crypto.randomUUID(), name: '', commissionRate: 0 })} className="mt-4 text-sm" variant="secondary">Adicionar Assessor</Button>
+                </Card>
+                <Card className="md:col-span-2">
+                    <h3 className="text-lg font-bold mb-4">Gerenciamento de Dados</h3>
+                    <div className="flex flex-col sm:flex-row gap-4">
+                        <Button onClick={handleExport} variant="secondary">
+                            <ExportIcon className="w-4 h-4" /> Exportar Dados
+                        </Button>
+                        <div>
+                             <input
+                                type="file"
+                                id="import-file"
+                                className="hidden"
+                                accept=".json"
+                                onChange={handleImport}
+                            />
+                            <Button as="label" htmlFor="import-file" variant="secondary">
+                                <UploadIcon className="w-4 h-4" /> Importar Dados
+                            </Button>
+                        </div>
+                    </div>
+                    <p className="text-xs text-text-secondary mt-4">
+                        Exporte seus dados (configurações, metas, transações) para um arquivo de backup. A importação restaurará configurações e metas.
+                    </p>
                 </Card>
             </div>
         </div>
@@ -1668,7 +1868,7 @@ const App: React.FC = () => {
             case 'transactions': return <TransactionsView transactions={transactions} onAdd={addTransaction} onEdit={editTransaction} onDelete={deleteTransaction} onSetPaid={setExpenseAsPaid} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors}/>;
             case 'goals': return <GoalsView goals={goals} onAddGoal={addGoal} onEditGoal={editGoal} onDeleteGoal={deleteGoal} onAddProgress={addProgressToGoal}/>;
             case 'reports': return <ReportsView transactions={transactions} expenseCategories={expenseCategories} />;
-            case 'settings': return <SettingsView incomeCategories={incomeCategories} setIncomeCategories={setIncomeCategories} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} paymentMethods={paymentMethods} setPaymentMethods={setPaymentMethods} costCenters={costCenters} setCostCenters={setCostCenters} advisors={advisors} setAdvisors={setAdvisors} />;
+            case 'settings': return <SettingsView incomeCategories={incomeCategories} setIncomeCategories={setIncomeCategories} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} paymentMethods={paymentMethods} setPaymentMethods={setPaymentMethods} costCenters={costCenters} setCostCenters={setCostCenters} advisors={advisors} setAdvisors={setAdvisors} goals={goals} setGoals={setGoals} transactions={transactions} />;
             default: return <DashboardView transactions={transactions} goals={goals} />;
         }
     };
