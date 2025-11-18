@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, FC, ReactNode, useEffect } from 'react';
 import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType } from './types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
@@ -90,19 +91,21 @@ const initialAdvisors: Advisor[] = [];
 
 // --- COMPONENTES DE UI REUTILIZÁVEIS ---
 const Card: FC<{ children: ReactNode; className?: string }> = ({ children, className = '' }) => (<div className={`bg-surface rounded-xl shadow-lg p-4 sm:p-6 ${className}`}>{children}</div>);
-const Button: FC<{ onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void; children: ReactNode; variant?: 'primary' | 'secondary' | 'danger'; className?: string; type?: "button" | "submit" | "reset"; disabled?: boolean; as?: 'button' | 'label'; htmlFor?: string }> = ({ onClick, children, variant = 'primary', className = '', type = 'button', disabled = false, as = 'button', htmlFor }) => {
-  const baseClasses = 'px-4 py-2 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105';
+const Button: FC<{ onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void; children: ReactNode; variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'ghostDanger'; className?: string; type?: "button" | "submit" | "reset"; disabled?: boolean; as?: 'button' | 'label'; htmlFor?: string; title?: string }> = ({ onClick, children, variant = 'primary', className = '', type = 'button', disabled = false, as = 'button', htmlFor, title }) => {
+  const baseClasses = 'px-4 py-2 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transform';
   const variantClasses = {
-    primary: 'bg-primary hover:bg-opacity-90 text-white shadow-md shadow-primary/30',
-    secondary: 'bg-text-secondary bg-opacity-20 hover:bg-opacity-30 text-text-primary',
-    danger: 'bg-danger hover:bg-red-500 text-white',
+    primary: 'bg-primary hover:bg-opacity-90 text-white shadow-md shadow-primary/30 hover:scale-105',
+    secondary: 'bg-text-secondary bg-opacity-20 hover:bg-opacity-30 text-text-primary hover:scale-105',
+    danger: 'bg-danger hover:bg-red-500 text-white hover:scale-105',
+    ghost: 'bg-transparent hover:bg-white/5 text-text-secondary hover:text-text-primary',
+    ghostDanger: 'bg-transparent hover:bg-red-500/10 text-text-secondary hover:text-danger',
   };
   
   if (as === 'label') {
-    return <label htmlFor={htmlFor} className={`${baseClasses} ${variantClasses[variant]} ${className} cursor-pointer`}>{children}</label>
+    return <label htmlFor={htmlFor} className={`${baseClasses} ${variantClasses[variant]} ${className} cursor-pointer`} title={title}>{children}</label>
   }
 
-  return <button type={type} onClick={onClick} className={`${baseClasses} ${variantClasses[variant]} ${className}`} disabled={disabled}>{children}</button>;
+  return <button type={type} onClick={onClick} className={`${baseClasses} ${variantClasses[variant]} ${className}`} disabled={disabled} title={title}>{children}</button>;
 };
 const Modal: FC<{ isOpen: boolean; onClose: () => void; title: string; children: ReactNode, size?: 'sm' | 'md' | 'lg' | 'xl' }> = ({ isOpen, onClose, title, children, size = 'lg' }) => {
   if (!isOpen) return null;
@@ -132,7 +135,7 @@ const ProgressBar: FC<{ progress: number }> = ({ progress }) => {
 // --- COMPONENTES DE FORMULÁRIO ATUALIZADOS ---
 interface TransactionFormValues {
     description: string;
-    amount: number; // Net amount for income
+    amount: number; // Net amount for income, total for expense
     date: string; // YYYY-MM-DD
     type: TransactionType;
     category: string;
@@ -587,11 +590,11 @@ const Sidebar: FC<{ activeView: View; setActiveView: (view: View) => void; isSid
     }
 
     const allNavItems: { view: View; label: string; icon: ReactNode; }[] = [
-        { view: 'dashboard', label: 'Dashboard', icon: <DashboardIcon className="w-5 h-5"/> },
-        { view: 'transactions', label: 'Transações', icon: <TransactionsIcon className="w-5 h-5"/> },
-        { view: 'reports', label: 'Relatórios', icon: <ReportsIcon className="w-5 h-5"/> },
-        { view: 'goals', label: 'Metas', icon: <GoalsIcon className="w-5 h-5"/> },
-        { view: 'settings', label: 'Configurações', icon: <SettingsIcon className="w-5 h-5"/> },
+        { view: 'dashboard', label: 'Dashboard', icon: <DashboardIcon className="w-6 h-6"/> },
+        { view: 'transactions', label: 'Transações', icon: <TransactionsIcon className="w-6 h-6"/> },
+        { view: 'reports', label: 'Relatórios', icon: <ReportsIcon className="w-6 h-6"/> },
+        { view: 'goals', label: 'Metas', icon: <GoalsIcon className="w-6 h-6"/> },
+        { view: 'settings', label: 'Configurações', icon: <SettingsIcon className="w-6 h-6"/> },
     ];
     
     return (
@@ -811,10 +814,15 @@ const DashboardView: FC<{ transactions: Transaction[]; goals: Goal[] }> = ({ tra
                 <Card className="lg:col-span-2">
                     <h3 className="text-lg font-bold text-text-primary mb-4">Fluxo de Caixa</h3>
                     <ResponsiveContainer width="100%" height={300}>
-                        <LineChart data={cashFlowData}>
+                        <LineChart data={cashFlowData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#2D376A" />
-                            <XAxis dataKey="date" stroke="#A0AEC0" tick={{ fontSize: 12 }} />
-                            <YAxis stroke="#A0AEC0" tickFormatter={(value: number) => `R$${value/1000}k`} tick={{ fontSize: 12 }} />
+                            <XAxis dataKey="date" stroke="#A0AEC0" tick={{ fontSize: 10 }} />
+                            <YAxis 
+                                stroke="#A0AEC0" 
+                                tickFormatter={(value: number) => `R$${value/1000}k`} 
+                                tick={{ fontSize: 10 }}
+                                width={80}
+                            />
                             <Tooltip contentStyle={{ backgroundColor: '#1A214A', border: '1px solid #2D376A', color: '#F0F2F5' }} formatter={(value: any) => formatCurrency(Number(value))} />
                             <Legend />
                             <Line type="monotone" dataKey="balance" name="Saldo" stroke="#D1822A" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 8 }} />
@@ -1124,10 +1132,16 @@ const TransactionsView: FC<TransactionsViewProps> = ({ transactions, onAdd, onEd
                                     <td className="p-4 text-right">
                                         <div className="flex justify-end items-center gap-2">
                                             {t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PENDING && (
-                                                <Button onClick={() => onSetPaid(t.id)} variant="secondary" className="p-2 h-9 w-9"><PaidIcon className="w-5 h-5"/></Button>
+                                                <Button onClick={() => onSetPaid(t.id)} variant="ghost" className="p-3 h-14 w-14 flex items-center justify-center text-green-400 hover:bg-green-500/10" title="Marcar como Pago">
+                                                    <PaidIcon className="w-8 h-8"/>
+                                                </Button>
                                             )}
-                                            <Button onClick={() => openModal(t)} variant="secondary" className="p-2 h-9 w-9"><EditIcon className="w-5 h-5"/></Button>
-                                            <Button onClick={() => onDelete(t.id)} variant="secondary" className="p-2 h-9 w-9 hover:bg-danger"><TrashIcon className="w-5 h-5"/></Button>
+                                            <Button onClick={() => openModal(t)} variant="ghost" className="p-3 h-14 w-14 flex items-center justify-center" title="Editar">
+                                                <EditIcon className="w-8 h-8"/>
+                                            </Button>
+                                            <Button onClick={() => onDelete(t.id)} variant="ghostDanger" className="p-3 h-14 w-14 flex items-center justify-center" title="Excluir">
+                                                <TrashIcon className="w-8 h-8"/>
+                                            </Button>
                                         </div>
                                     </td>
                                 </tr>
@@ -1212,8 +1226,8 @@ const GoalsView: FC<{ goals: Goal[]; onAddGoal: (goal: Omit<Goal, 'id' | 'curren
                                 <div className="flex justify-between items-start">
                                     <h3 className="text-lg font-bold mb-2">{goal.name}</h3>
                                     <div className="flex gap-2">
-                                        <button onClick={() => openModal(goal)} className="text-text-secondary hover:text-primary"><EditIcon className="w-4 h-4" /></button>
-                                        <button onClick={() => onDeleteGoal(goal.id)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4" /></button>
+                                        <button onClick={() => openModal(goal)} className="text-text-secondary hover:text-primary"><EditIcon className="w-5 h-5" /></button>
+                                        <button onClick={() => onDeleteGoal(goal.id)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-5 h-5" /></button>
                                     </div>
                                 </div>
                                 <p className="text-sm text-text-secondary mb-4">{goal.deadline ? `Prazo: ${formatDate(goal.deadline)}` : 'Sem prazo definido'}</p>
@@ -1348,7 +1362,7 @@ const ReportsView: FC<{ transactions: Transaction[], expenseCategories: ExpenseC
                              <BarChart data={monthlyData}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#2D376A" />
                                 <XAxis dataKey="month" stroke="#A0AEC0" />
-                                <YAxis stroke="#A0AEC0" tickFormatter={(value) => `${formatCurrency(value)}`}/>
+                                <YAxis stroke="#A0AEC0" tickFormatter={(value) => `${formatCurrency(value)}`} tick={{ fontSize: 10 }} width={80} />
                                 <Tooltip contentStyle={{ backgroundColor: '#1A214A', border: '1px solid #2D376A', color: '#F0F2F5' }} formatter={(value: any, name: string) => [formatCurrency(Number(value)), name === 'income' ? 'Receita Líq.' : 'Despesa Total']} cursor={{fill: 'rgba(209, 130, 42, 0.1)'}}/>
                                 <Legend />
                                 <Bar dataKey="income" fill="#10B981" name="Receita Líq." />
@@ -1569,7 +1583,7 @@ const SettingsView: FC<SettingsViewProps> = ({
                     <ul className="space-y-2">
                         {incomeCategories.map((cat, i) => (
                             <li key={i} 
-                                className={`flex items-center gap-2 transition-all duration-200 ${dragActive && draggedItem.current?.list === 'income' && draggedItem.current?.index === i ? 'opacity-50' : ''}`}
+                                className={`flex items-center gap-2 p-2 rounded-xl bg-background/40 transition-all duration-200 ${dragActive && draggedItem.current?.list === 'income' && draggedItem.current?.index === i ? 'opacity-50' : ''}`}
                                 draggable
                                 onDragStart={(e) => handleDragStart(e, 'income', i)}
                                 onDragEnter={(e) => handleDragEnter(e, 'income', i)}
@@ -1577,9 +1591,15 @@ const SettingsView: FC<SettingsViewProps> = ({
                                 onDragOver={(e) => e.preventDefault()}
                                 onDrop={() => handleDrop(setIncomeCategories)}
                             >
-                                <span className="cursor-grab p-2 text-text-secondary"><DragHandleIcon className="w-5 h-5"/></span>
-                                <input type="text" value={cat} onChange={(e) => updateListItem(setIncomeCategories, i, e.target.value)} className="flex-grow bg-background border-border-color rounded-md shadow-sm p-2"/>
-                                <Button variant="secondary" onClick={() => deleteListItem(setIncomeCategories, i)} className="p-2 h-9 w-9 hover:bg-danger"><TrashIcon className="w-5 h-5"/></Button>
+                                <span className="cursor-grab p-2 text-text-secondary/50 hover:text-text-secondary"><DragHandleIcon className="w-6 h-6"/></span>
+                                <input 
+                                    type="text" 
+                                    value={cat} 
+                                    onChange={(e) => updateListItem(setIncomeCategories, i, e.target.value)} 
+                                    className="flex-grow bg-transparent border-none focus:ring-0 text-lg font-medium text-text-primary placeholder-text-secondary/50"
+                                    placeholder="Nome da categoria"
+                                />
+                                <Button variant="ghostDanger" onClick={() => deleteListItem(setIncomeCategories, i)} className="p-3 h-12 w-12 rounded-lg"><TrashIcon className="w-7 h-7"/></Button>
                             </li>
                         ))}
                     </ul>
@@ -1591,7 +1611,7 @@ const SettingsView: FC<SettingsViewProps> = ({
                      <ul className="space-y-2">
                         {expenseCategories.map((cat, i) => (
                             <li key={i} 
-                                className={`flex items-center gap-2 transition-all duration-200 ${dragActive && draggedItem.current?.list === 'expense' && draggedItem.current?.index === i ? 'opacity-50' : ''}`}
+                                className={`flex items-center gap-2 p-2 rounded-xl bg-background/40 transition-all duration-200 ${dragActive && draggedItem.current?.list === 'expense' && draggedItem.current?.index === i ? 'opacity-50' : ''}`}
                                 draggable
                                 onDragStart={(e) => handleDragStart(e, 'expense', i)}
                                 onDragEnter={(e) => handleDragEnter(e, 'expense', i)}
@@ -1599,13 +1619,23 @@ const SettingsView: FC<SettingsViewProps> = ({
                                 onDragOver={(e) => e.preventDefault()}
                                 onDrop={() => handleDrop(setExpenseCategories)}
                             >
-                                <span className="cursor-grab p-2 text-text-secondary"><DragHandleIcon className="w-5 h-5"/></span>
-                                <input type="text" value={cat.name} onChange={(e) => updateListItem(setExpenseCategories, i, { ...cat, name: e.target.value })} className="flex-grow bg-background border-border-color rounded-md shadow-sm p-2"/>
-                                <select value={cat.type} onChange={(e) => updateListItem(setExpenseCategories, i, { ...cat, type: e.target.value as ExpenseType })} className="bg-background border-border-color rounded-md shadow-sm p-2">
-                                    <option value={ExpenseType.COST}>Custo</option>
-                                    <option value={ExpenseType.EXPENSE}>Despesa</option>
+                                <span className="cursor-grab p-2 text-text-secondary/50 hover:text-text-secondary"><DragHandleIcon className="w-6 h-6"/></span>
+                                <input 
+                                    type="text" 
+                                    value={cat.name} 
+                                    onChange={(e) => updateListItem(setExpenseCategories, i, { ...cat, name: e.target.value })} 
+                                    className="flex-grow bg-transparent border-none focus:ring-0 text-lg font-medium text-text-primary placeholder-text-secondary/50"
+                                    placeholder="Nome da categoria"
+                                />
+                                <select 
+                                    value={cat.type} 
+                                    onChange={(e) => updateListItem(setExpenseCategories, i, { ...cat, type: e.target.value as ExpenseType })} 
+                                    className="bg-transparent border-none focus:ring-0 text-sm text-text-secondary font-medium cursor-pointer"
+                                >
+                                    <option value={ExpenseType.COST} className="bg-surface">Custo</option>
+                                    <option value={ExpenseType.EXPENSE} className="bg-surface">Despesa</option>
                                 </select>
-                                <Button variant="secondary" onClick={() => deleteListItem(setExpenseCategories, i)} className="p-2 h-9 w-9 hover:bg-danger"><TrashIcon className="w-5 h-5"/></Button>
+                                <Button variant="ghostDanger" onClick={() => deleteListItem(setExpenseCategories, i)} className="p-3 h-12 w-12 rounded-lg"><TrashIcon className="w-7 h-7"/></Button>
                             </li>
                         ))}
                     </ul>
@@ -1617,7 +1647,7 @@ const SettingsView: FC<SettingsViewProps> = ({
                      <ul className="space-y-2">
                         {paymentMethods.map((method, i) => (
                              <li key={i}
-                                className={`flex items-center gap-2 transition-all duration-200 ${dragActive && draggedItem.current?.list === 'payment' && draggedItem.current?.index === i ? 'opacity-50' : ''}`}
+                                className={`flex items-center gap-2 p-2 rounded-xl bg-background/40 transition-all duration-200 ${dragActive && draggedItem.current?.list === 'payment' && draggedItem.current?.index === i ? 'opacity-50' : ''}`}
                                 draggable
                                 onDragStart={(e) => handleDragStart(e, 'payment', i)}
                                 onDragEnter={(e) => handleDragEnter(e, 'payment', i)}
@@ -1625,9 +1655,15 @@ const SettingsView: FC<SettingsViewProps> = ({
                                 onDragOver={(e) => e.preventDefault()}
                                 onDrop={() => handleDrop(setPaymentMethods)}
                              >
-                                <span className="cursor-grab p-2 text-text-secondary"><DragHandleIcon className="w-5 h-5"/></span>
-                                <input type="text" value={method} onChange={(e) => updateListItem(setPaymentMethods, i, e.target.value)} className="flex-grow bg-background border-border-color rounded-md shadow-sm p-2"/>
-                                <Button variant="secondary" onClick={() => deleteListItem(setPaymentMethods, i)} className="p-2 h-9 w-9 hover:bg-danger"><TrashIcon className="w-5 h-5"/></Button>
+                                <span className="cursor-grab p-2 text-text-secondary/50 hover:text-text-secondary"><DragHandleIcon className="w-6 h-6"/></span>
+                                <input 
+                                    type="text" 
+                                    value={method} 
+                                    onChange={(e) => updateListItem(setPaymentMethods, i, e.target.value)} 
+                                    className="flex-grow bg-transparent border-none focus:ring-0 text-lg font-medium text-text-primary placeholder-text-secondary/50"
+                                    placeholder="Método de pagamento"
+                                />
+                                <Button variant="ghostDanger" onClick={() => deleteListItem(setPaymentMethods, i)} className="p-3 h-12 w-12 rounded-lg"><TrashIcon className="w-7 h-7"/></Button>
                             </li>
                         ))}
                     </ul>
@@ -1639,7 +1675,7 @@ const SettingsView: FC<SettingsViewProps> = ({
                      <ul className="space-y-2">
                         {costCenters.map((center, i) => (
                              <li key={i}
-                                className={`flex items-center gap-2 transition-all duration-200 ${dragActive && draggedItem.current?.list === 'cost' && draggedItem.current?.index === i ? 'opacity-50' : ''}`}
+                                className={`flex items-center gap-2 p-2 rounded-xl bg-background/40 transition-all duration-200 ${dragActive && draggedItem.current?.list === 'cost' && draggedItem.current?.index === i ? 'opacity-50' : ''}`}
                                 draggable
                                 onDragStart={(e) => handleDragStart(e, 'cost', i)}
                                 onDragEnter={(e) => handleDragEnter(e, 'cost', i)}
@@ -1647,9 +1683,15 @@ const SettingsView: FC<SettingsViewProps> = ({
                                 onDragOver={(e) => e.preventDefault()}
                                 onDrop={() => handleDrop(setCostCenters)}
                             >
-                                <span className="cursor-grab p-2 text-text-secondary"><DragHandleIcon className="w-5 h-5"/></span>
-                                <input type="text" value={center.name} onChange={(e) => updateListItem(setCostCenters, i, { ...center, name: e.target.value })} className="flex-grow bg-background border-border-color rounded-md shadow-sm p-2"/>
-                                <Button variant="secondary" onClick={() => deleteListItem(setCostCenters, i)} className="p-2 h-9 w-9 hover:bg-danger"><TrashIcon className="w-5 h-5"/></Button>
+                                <span className="cursor-grab p-2 text-text-secondary/50 hover:text-text-secondary"><DragHandleIcon className="w-6 h-6"/></span>
+                                <input 
+                                    type="text" 
+                                    value={center.name} 
+                                    onChange={(e) => updateListItem(setCostCenters, i, { ...center, name: e.target.value })} 
+                                    className="flex-grow bg-transparent border-none focus:ring-0 text-lg font-medium text-text-primary placeholder-text-secondary/50"
+                                    placeholder="Nome do centro de custo"
+                                />
+                                <Button variant="ghostDanger" onClick={() => deleteListItem(setCostCenters, i)} className="p-3 h-12 w-12 rounded-lg"><TrashIcon className="w-7 h-7"/></Button>
                             </li>
                         ))}
                     </ul>
@@ -1661,7 +1703,7 @@ const SettingsView: FC<SettingsViewProps> = ({
                      <ul className="space-y-2">
                         {advisors.map((advisor, i) => (
                              <li key={i}
-                                className={`flex flex-col md:flex-row items-center gap-2 p-2 bg-background rounded-md transition-all duration-200 ${dragActive && draggedItem.current?.list === 'advisor' && draggedItem.current?.index === i ? 'opacity-50' : ''}`}
+                                className={`flex flex-col md:flex-row items-center gap-2 p-2 rounded-xl bg-background/40 transition-all duration-200 ${dragActive && draggedItem.current?.list === 'advisor' && draggedItem.current?.index === i ? 'opacity-50' : ''}`}
                                 draggable
                                 onDragStart={(e) => handleDragStart(e, 'advisor', i)}
                                 onDragEnter={(e) => handleDragEnter(e, 'advisor', i)}
@@ -1669,13 +1711,29 @@ const SettingsView: FC<SettingsViewProps> = ({
                                 onDragOver={(e) => e.preventDefault()}
                                 onDrop={() => handleDrop(setAdvisors)}
                             >
-                                <span className="cursor-grab p-2 text-text-secondary"><DragHandleIcon className="w-5 h-5"/></span>
-                                <input type="text" placeholder="Nome do Assessor" value={advisor.name} onChange={(e) => updateListItem(setAdvisors, i, { ...advisor, name: e.target.value })} className="flex-grow bg-surface border-border-color rounded-md shadow-sm p-2 w-full md:w-auto"/>
-                                <div className="flex items-center gap-1 w-full md:w-auto">
-                                    <input type="number" placeholder="Comissão" value={advisor.commissionRate} onChange={(e) => updateListItem(setAdvisors, i, { ...advisor, commissionRate: parseFloat(e.target.value) || 0 })} className="w-24 bg-surface border-border-color rounded-md shadow-sm p-2"/>
-                                    <span className="text-text-secondary">%</span>
+                                <div className="flex items-center flex-grow w-full">
+                                    <span className="cursor-grab p-2 text-text-secondary/50 hover:text-text-secondary"><DragHandleIcon className="w-6 h-6"/></span>
+                                    <input 
+                                        type="text" 
+                                        placeholder="Nome do Assessor" 
+                                        value={advisor.name} 
+                                        onChange={(e) => updateListItem(setAdvisors, i, { ...advisor, name: e.target.value })} 
+                                        className="flex-grow bg-transparent border-none focus:ring-0 text-lg font-medium text-text-primary placeholder-text-secondary/50"
+                                    />
                                 </div>
-                                <Button variant="secondary" onClick={() => deleteListItem(setAdvisors, i)} className="p-2 h-9 w-9 hover:bg-danger"><TrashIcon className="w-5 h-5"/></Button>
+                                <div className="flex items-center gap-2 w-full md:w-auto pl-10 md:pl-0">
+                                    <div className="flex items-center bg-surface/50 rounded-lg px-2">
+                                        <input 
+                                            type="number" 
+                                            placeholder="Comissão" 
+                                            value={advisor.commissionRate} 
+                                            onChange={(e) => updateListItem(setAdvisors, i, { ...advisor, commissionRate: parseFloat(e.target.value) || 0 })} 
+                                            className="w-16 bg-transparent border-none focus:ring-0 text-right font-medium"
+                                        />
+                                        <span className="text-text-secondary ml-1">%</span>
+                                    </div>
+                                    <Button variant="ghostDanger" onClick={() => deleteListItem(setAdvisors, i)} className="p-3 h-12 w-12 rounded-lg"><TrashIcon className="w-7 h-7"/></Button>
+                                </div>
                             </li>
                         ))}
                     </ul>
@@ -1772,10 +1830,7 @@ const App: React.FC = () => {
             // We add to UTC month to avoid timezone issues
             transactionDate.setUTCMonth(baseDate.getUTCMonth() + i);
             
-            // Helper to ensure undefined becomes null for Firestore
-            const safeValue = <T,>(val: T | undefined) => val === undefined ? null : val;
-
-            const newTransactionData: Omit<Transaction, 'id'> = {
+            const newTransactionData: Partial<Omit<Transaction, 'id'>> = {
                 date: transactionDate.toISOString(),
                 description: data.description,
                 amount: data.amount,
@@ -1783,14 +1838,14 @@ const App: React.FC = () => {
                 category: data.category,
                 clientSupplier: data.clientSupplier,
                 paymentMethod: data.paymentMethod,
-                status: safeValue(data.status),
-                nature: safeValue(data.nature),
-                costCenter: safeValue(data.costCenter),
-                taxAmount: safeValue(data.taxAmount),
-                grossAmount: safeValue(data.grossAmount),
-                commissionAmount: safeValue(data.commissionAmount),
-                advisorId: safeValue(data.advisorId),
-                recurringId: batchRecurringId ?? undefined, // If undefined, key will be omitted in cleanData if we were using JSON.stringify but here we are constructing object
+                status: data.status,
+                nature: data.nature,
+                costCenter: data.costCenter,
+                taxAmount: data.taxAmount,
+                grossAmount: data.grossAmount,
+                commissionAmount: data.commissionAmount,
+                advisorId: data.advisorId,
+                recurringId: batchRecurringId,
             };
             
             // Sanitize object to ensure no undefined values are passed to Firestore
