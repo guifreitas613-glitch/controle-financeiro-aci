@@ -1100,6 +1100,10 @@ const TransactionsView: FC<TransactionsViewProps> = ({ transactions, onAdd, onEd
         return sortableItems;
     }, [filteredTransactions, sortConfig]);
     
+    const totalFilteredAmount = useMemo(() => {
+        return sortedTransactions.reduce((sum, t) => sum + t.amount, 0);
+    }, [sortedTransactions]);
+
     const requestSort = (key: keyof Transaction) => {
         let direction: 'asc' | 'desc' = 'asc';
         if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
@@ -1171,8 +1175,8 @@ const TransactionsView: FC<TransactionsViewProps> = ({ transactions, onAdd, onEd
                 </div>
 
                 {/* Filtros */}
-                 <div className="flex flex-wrap gap-4 mb-4 p-4 bg-background rounded-lg">
-                    <div className="relative flex-grow min-w-[250px]">
+                 <div className="flex flex-col lg:flex-row gap-4 mb-4 p-4 bg-background rounded-lg items-center">
+                    <div className="relative w-full lg:flex-1">
                         <input 
                             type="text" 
                             placeholder="Buscar por descrição..."
@@ -1182,26 +1186,38 @@ const TransactionsView: FC<TransactionsViewProps> = ({ transactions, onAdd, onEd
                         />
                         <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-text-secondary"/>
                     </div>
-                     <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="bg-surface border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2 flex-grow min-w-[180px]">
-                         <option value="all">Todas as Categorias</option>
-                         {currentCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                     </select>
-                     <select value={filterYear} onChange={e => setFilterYear(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-surface border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2 flex-grow min-w-[120px]">
-                         <option value="all">Todos os Anos</option>
-                         {availableYears.map(year => <option key={year} value={year}>{year}</option>)}
-                     </select>
-                    <select value={filterMonth} onChange={e => setFilterMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-surface border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2 flex-grow min-w-[150px]">
-                        <option value="all">Todos os Meses</option>
-                        {months.map((month, index) => <option key={month} value={index}>{month}</option>)}
-                    </select>
-                    {activeTab === TransactionType.EXPENSE && (
-                         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as 'all' | ExpenseStatus)} className="bg-surface border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2 flex-grow min-w-[150px]">
-                             <option value="all">Todos os Status</option>
-                             <option value={ExpenseStatus.PAID}>Paga</option>
-                             <option value={ExpenseStatus.PENDING}>Pendente</option>
-                         </select>
-                    )}
+                    <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full lg:w-auto">
+                        <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="bg-surface border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2 w-full sm:w-auto max-w-[200px]">
+                            <option value="all">Todas as Categorias</option>
+                            {currentCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                        </select>
+                        <select value={filterYear} onChange={e => setFilterYear(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-surface border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2 w-full sm:w-auto">
+                            <option value="all">Todos os Anos</option>
+                            {availableYears.map(year => <option key={year} value={year}>{year}</option>)}
+                        </select>
+                        <select value={filterMonth} onChange={e => setFilterMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-surface border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2 w-full sm:w-auto">
+                            <option value="all">Todos os Meses</option>
+                            {months.map((month, index) => <option key={month} value={index}>{month}</option>)}
+                        </select>
+                        {activeTab === TransactionType.EXPENSE && (
+                             <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as 'all' | ExpenseStatus)} className="bg-surface border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2 w-full sm:w-auto">
+                                 <option value="all">Todos os Status</option>
+                                 <option value={ExpenseStatus.PAID}>Paga</option>
+                                 <option value={ExpenseStatus.PENDING}>Pendente</option>
+                             </select>
+                        )}
+                    </div>
                  </div>
+
+                 {/* KPI de Total do Filtro */}
+                 <div className="mb-4 py-4 px-4 bg-background rounded-lg flex flex-col items-center justify-center shadow-sm border border-border-color/20">
+                    <h3 className="text-xs font-bold text-text-secondary uppercase tracking-wider mb-1">
+                        Total de {activeTab === TransactionType.INCOME ? 'Receitas' : 'Despesas'} no Período
+                    </h3>
+                    <p className={`text-3xl font-bold ${activeTab === TransactionType.INCOME ? 'text-green-400' : 'text-danger'} tracking-tight`}>
+                        {formatCurrency(totalFilteredAmount)}
+                    </p>
+                </div>
 
                 <div className="overflow-x-auto">
                      <table className="w-full text-left">
