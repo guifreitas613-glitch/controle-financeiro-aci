@@ -6,7 +6,6 @@ import {
   addDoc, 
   getDocs, 
   query, 
-  where, 
   orderBy, 
   doc, 
   updateDoc, 
@@ -28,12 +27,11 @@ export function saveTransaction(data: TransactionData, userId: string) {
   });
 }
 
-// Ler transações para um usuário específico
-export function getTransactions(userId: string) {
+// Ler todas as transações (sem filtro de usuário)
+export function getTransactions() {
   const transactionsCol = collection(db, "transacoes");
   const q = query(
     transactionsCol,
-    where("criadoPor", "==", userId),
     orderBy("date", "desc")
   );
   return getDocs(q);

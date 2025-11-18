@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, FC, ReactNode, useEffect } from 'react';
 import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType } from './types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area } from 'recharts';
@@ -1913,7 +1914,7 @@ const App: React.FC = () => {
     useEffect(() => {
         if (currentUser) {
             setLoadingTransactions(true);
-            getTransactions(currentUser.uid)
+            getTransactions()
                 .then(snapshot => {
                     const data = snapshot.docs.map(doc => ({
                         id: doc.id,
@@ -1994,7 +1995,7 @@ const App: React.FC = () => {
         }
         
         // Refetch all transactions to update the UI
-        const snapshot = await getTransactions(currentUser.uid);
+        const snapshot = await getTransactions();
         const updatedData = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as Omit<Transaction, 'id'>) })) as Transaction[];
         setTransactions(updatedData);
     };
@@ -2075,7 +2076,7 @@ const App: React.FC = () => {
             await Promise.all(promises);
 
             // Reload transactions from Firestore to reflect changes
-            const snapshot = await getTransactions(currentUser.uid);
+            const snapshot = await getTransactions();
             const updatedData = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as Omit<Transaction, 'id'>) })) as Transaction[];
             setTransactions(updatedData);
         } catch (error) {
