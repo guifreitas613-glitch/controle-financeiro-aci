@@ -1,5 +1,4 @@
 
-
 import React, { useState, useMemo, FC, ReactNode, useEffect } from 'react';
 import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType } from './types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area } from 'recharts';
@@ -694,9 +693,34 @@ const Header: FC<{ pageTitle: string, onMenuClick: () => void }> = ({ pageTitle,
 const CustomPieTooltip: FC<any> = ({ active, payload }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
+      
+      // Calculate percentage. 
+      // Prefer 'percent' field if pre-calculated (0-100 based), 
+      // otherwise fallback to Recharts 'percent' payload (0-1 based)
+      let percentVal = 0;
+      if (typeof data.percent === 'number') {
+          percentVal = data.percent;
+      } else if (typeof payload[0].percent === 'number') {
+          percentVal = payload[0].percent * 100;
+      }
+      
+      const percentDisplay = percentVal.toFixed(1);
+      
       return (
-        <div className="bg-surface border border-border-color p-3 rounded-lg shadow-lg text-text-primary">
-          <p className="font-semibold">{`${data.name}: ${formatCurrency(data.amount)} (${payload[0].value.toFixed(1)}%)`}</p>
+        <div className="bg-surface border border-border-color p-3 rounded-lg shadow-xl text-text-primary backdrop-blur-sm bg-opacity-95 z-50 min-w-[150px]">
+          <p className="font-bold text-sm mb-2 pb-1 border-b border-border-color/50">{data.name}</p>
+          <div className="space-y-1">
+               <div className="flex justify-between gap-4 text-xs text-text-secondary">
+                  <span>Valor:</span>
+                  <span className="font-mono text-text-primary font-bold">
+                       {typeof data.amount === 'number' ? formatCurrency(data.amount) : formatCurrency(data.value)}
+                  </span>
+              </div>
+              <div className="flex justify-between gap-4 text-xs text-text-secondary">
+                  <span>Participação:</span>
+                  <span className="font-mono text-primary font-bold">{percentDisplay}%</span>
+              </div>
+          </div>
         </div>
       );
     }
@@ -828,6 +852,7 @@ const DashboardView: FC<DashboardViewProps> = ({
             .map(d => ({
                 ...d,
                 value: (d.amount / totalExpense) * 100,
+                percent: (d.amount / totalExpense) * 100 // Added for tooltip consistency
             }))
             .filter(d => d.amount > 0);
     }, [filteredTransactions]);
@@ -1058,15 +1083,6 @@ const DashboardView: FC<DashboardViewProps> = ({
                                  <p>Sem dados de despesas para exibir.</p>
                              </div>
                         )}
-                        {/* Donut Center Text */}
-                        {expenseSubcategoryData.length > 0 && (
-                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none pb-8">
-                                <div className="text-center">
-                                    <p className="text-xs text-text-secondary">Total</p>
-                                    <p className="text-lg font-bold text-text-primary">100%</p>
-                                </div>
-                            </div>
-                        )}
                     </div>
                 </Card>
             </div>
@@ -1162,7 +1178,7 @@ const TransactionsView: FC<TransactionsViewProps> = ({ transactions, onAdd, onEd
         if (!years.includes(currentYear)) {
             years.push(currentYear);
         }
-        return years.sort((a, b) => b - a);
+        return years.sort((a: number, b: number) => b - a);
     }, [transactions]);
 
     const months = useMemo(() => ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'], []);
@@ -1660,7 +1676,7 @@ const ReportsView: FC<{ transactions: Transaction[], expenseCategories: ExpenseC
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
     
     const availableYears = useMemo(() => {
-        const years = [...new Set(transactions.map(t => new Date(t.date).getFullYear()))].sort((a,b) => b-a);
+        const years = [...new Set(transactions.map(t => new Date(t.date).getFullYear()))].sort((a: number, b: number) => b-a);
         if(!years.includes(new Date().getFullYear())) {
             years.unshift(new Date().getFullYear());
         }
@@ -1697,10 +1713,16 @@ const ReportsView: FC<{ transactions: Transaction[], expenseCategories: ExpenseC
                 acc[t.category] = (acc[t.category] || 0) + t.amount;
                 return acc;
             }, {} as Record<string, number>);
+
+        const total = Object.values(expenseByCat).reduce((sum: number, val: number) => sum + val, 0);
         
         return Object.entries(expenseByCat)
-            .sort((a, b) => Number(b[1]) - Number(a[1]))
-            .map(([name, amount]) => ({ name, amount }));
+            .sort((a, b) => (b[1] as number) - (a[1] as number))
+            .map(([name, amount]) => ({ 
+                name, 
+                amount: amount as number,
+                percent: total > 0 ? ((amount as number) / total) * 100 : 0
+            }));
     }, [filteredByYear]);
 
     // DRE Logic
@@ -1759,7 +1781,7 @@ const ReportsView: FC<{ transactions: Transaction[], expenseCategories: ExpenseC
                                 <CartesianGrid strokeDasharray="3 3" stroke="#2D376A" />
                                 <XAxis dataKey="month" stroke="#A0AEC0" />
                                 <YAxis stroke="#A0AEC0" tickFormatter={(value) => `${formatCurrency(value)}`} tick={{ fontSize: 10 }} width={80} />
-                                <Tooltip contentStyle={{ backgroundColor: '#1A214A', border: '1px solid #2D376A', color: '#F0F2F5' }} formatter={(value: any, name: string) => [formatCurrency(Number(value)), name === 'income' ? 'Receita Líq.' : 'Despesa Total']} cursor={{fill: 'rgba(209, 130, 42, 0.1)'}}/>
+                                <Tooltip contentStyle={{ backgroundColor: '#1A214A', border: '1px solid #2D376A', color: '#F0F2F5' }} formatter={(value: any) => formatCurrency(Number(value))} cursor={{fill: 'rgba(209, 130, 42, 0.1)'}}/>
                                 <Legend />
                                 <Bar dataKey="income" fill="#10B981" name="Receita Líq." />
                                 <Bar dataKey="expense" fill="#EF4444" name="Despesa Total"/>
@@ -1768,18 +1790,48 @@ const ReportsView: FC<{ transactions: Transaction[], expenseCategories: ExpenseC
                     </Card>
                 );
             case 'category':
+                const totalExpensesYear = categoryData.reduce((acc, cur) => acc + cur.amount, 0);
                  return (
-                    <Card>
-                        <h3 className="text-lg font-bold mb-4">Despesas por Categoria ({selectedYear})</h3>
-                         <ResponsiveContainer width="100%" height={400}>
-                            <PieChart>
-                                <Pie data={categoryData} dataKey="amount" nameKey="name" cx="50%" cy="50%" outerRadius={150} labelLine={false}>
-                                    {categoryData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
-                                </Pie>
-                                <Tooltip content={<CustomPieTooltip />} />
-                                <Legend />
-                            </PieChart>
-                        </ResponsiveContainer>
+                    <Card className="h-[500px] flex flex-col">
+                        <div className="flex flex-row justify-between items-start mb-4">
+                            <h3 className="text-lg font-bold">Despesas por Categoria ({selectedYear})</h3>
+                            <div className="text-right">
+                                <p className="text-xs text-text-secondary uppercase tracking-wider">Total Anual</p>
+                                <p className="text-xl font-bold text-danger">{formatCurrency(totalExpensesYear)}</p>
+                            </div>
+                        </div>
+                         <div className="flex-grow relative flex items-center justify-center">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie 
+                                        data={categoryData} 
+                                        dataKey="amount" 
+                                        nameKey="name" 
+                                        cx="50%" 
+                                        cy="50%" 
+                                        innerRadius={90} 
+                                        outerRadius={140} 
+                                        paddingAngle={2}
+                                        cornerRadius={6}
+                                        stroke="none"
+                                    >
+                                        {categoryData.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip content={<CustomPieTooltip />} />
+                                    <Legend 
+                                        layout="vertical" 
+                                        verticalAlign="middle" 
+                                        align="right"
+                                        iconType="circle"
+                                        iconSize={8}
+                                        formatter={(value) => <span className="text-text-secondary text-sm ml-1">{value}</span>}
+                                        wrapperStyle={{ paddingLeft: '20px' }}
+                                    />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </div>
                     </Card>
                 );
              case 'dre':
@@ -2230,7 +2282,7 @@ const App: React.FC = () => {
         for (let i = 0; i < recurringCount; i++) {
             const transactionDate = new Date(baseDate);
             // We add to UTC month to avoid timezone issues
-            transactionDate.setUTCMonth(baseDate.getUTCMonth() + Number(i));
+            transactionDate.setUTCMonth(baseDate.getUTCMonth() + i);
             
             const newTransactionData: Partial<Omit<Transaction, 'id'>> = {
                 date: transactionDate.toISOString(),
@@ -2323,7 +2375,7 @@ const App: React.FC = () => {
     };
 
     const addProgressToGoal = (id: string, amount: number) => {
-        setGoals(prev => prev.map(g => g.id === id ? { ...g, currentAmount: g.currentAmount + amount } : g));
+        setGoals(prev => prev.map(g => g.id === id ? { ...g, currentAmount: Number(g.currentAmount) + Number(amount) } : g));
     };
 
     // New function to handle transaction import
