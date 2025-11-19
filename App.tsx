@@ -703,9 +703,34 @@ const CustomPieTooltip: FC<any> = ({ active, payload }) => {
     return null;
 };
 
-const DashboardView: FC<{ transactions: Transaction[]; goals: Goal[]; onSetPaid: (id: string) => void }> = ({ transactions, goals, onSetPaid }) => {
+interface DashboardViewProps {
+    transactions: Transaction[];
+    goals: Goal[];
+    onSetPaid: (id: string) => void;
+    // New props needed for the Edit Form
+    onEdit: (id: string, data: TransactionFormValues) => void;
+    incomeCategories: string[];
+    expenseCategories: ExpenseCategory[];
+    paymentMethods: string[];
+    costCenters: CostCenter[];
+    advisors: Advisor[];
+}
+
+const DashboardView: FC<DashboardViewProps> = ({
+    transactions,
+    goals,
+    onSetPaid,
+    onEdit,
+    incomeCategories,
+    expenseCategories,
+    paymentMethods,
+    costCenters,
+    advisors
+}) => {
     const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
     const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all');
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
     const availableYears = useMemo(() => {
         const years = [...new Set(transactions.map(t => new Date(t.date).getFullYear()))];
@@ -832,6 +857,20 @@ const DashboardView: FC<{ transactions: Transaction[]; goals: Goal[]; onSetPaid:
     }, [transactions]);
     
     const COLORS = ['#D1822A', '#6366F1', '#10B981', '#EF4444', '#F59E0B'];
+
+    const handlePayClick = (bill: Transaction) => {
+        // Open modal, pre-setting status to PAID for convenience, but allowing edit
+        setEditingTransaction({ ...bill, status: ExpenseStatus.PAID });
+        setIsModalOpen(true);
+    };
+
+    const handleFormSubmit = (data: TransactionFormValues) => {
+        if (editingTransaction) {
+            onEdit(editingTransaction.id, data);
+        }
+        setIsModalOpen(false);
+        setEditingTransaction(null);
+    };
     
      return (
         <div className="space-y-6 animate-fade-in">
@@ -915,10 +954,10 @@ const DashboardView: FC<{ transactions: Transaction[]; goals: Goal[]; onSetPaid:
                                             <td className="py-2 px-1 font-bold text-danger whitespace-nowrap">{formatCurrency(bill.amount)}</td>
                                             <td className="py-2 px-1 text-right">
                                                 <Button 
-                                                    onClick={() => onSetPaid(bill.id)} 
+                                                    onClick={() => handlePayClick(bill)} 
                                                     variant="success" 
                                                     className="py-1 px-2 text-[10px] sm:text-xs ml-auto gap-1"
-                                                    title="Marcar como Pago"
+                                                    title="Marcar como Pago / Editar"
                                                 >
                                                     <CheckCircleIcon className="w-3 h-3 sm:w-4 sm:h-4" /> <span className="hidden sm:inline">Pagar</span>
                                                 </Button>
@@ -1053,6 +1092,19 @@ const DashboardView: FC<{ transactions: Transaction[]; goals: Goal[]; onSetPaid:
                     </div>
                  </div>
             </Card>
+
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Confirmar Pagamento / Ajustar Valor">
+                <TransactionForm
+                    onSubmit={handleFormSubmit}
+                    onClose={() => setIsModalOpen(false)}
+                    initialData={editingTransaction}
+                    incomeCategories={incomeCategories}
+                    expenseCategories={expenseCategories}
+                    paymentMethods={paymentMethods}
+                    costCenters={costCenters}
+                    advisors={advisors}
+                />
+            </Modal>
         </div>
     );
 };
@@ -1627,7 +1679,7 @@ const ReportsView: FC<{ transactions: Transaction[], expenseCategories: ExpenseC
         
         filteredByYear.forEach(t => {
             const month = new Date(t.date).getMonth();
-            if (t.type === 'income') {
+            if (t.type === TransactionType.INCOME) {
                 data[month].income += t.amount;
             } else {
                 data[month].expense += t.amount;
@@ -1640,14 +1692,14 @@ const ReportsView: FC<{ transactions: Transaction[], expenseCategories: ExpenseC
     
     const categoryData = useMemo(() => {
         const expenseByCat = filteredByYear
-            .filter(t => t.type === 'expense')
+            .filter(t => t.type === TransactionType.EXPENSE)
             .reduce((acc, t) => {
                 acc[t.category] = (acc[t.category] || 0) + t.amount;
                 return acc;
             }, {} as Record<string, number>);
         
         return Object.entries(expenseByCat)
-            .sort((a: [string, number], b: [string, number]) => b[1] - a[1])
+            .sort((a, b) => Number(b[1]) - Number(a[1]))
             .map(([name, amount]) => ({ name, amount }));
     }, [filteredByYear]);
 
@@ -2178,7 +2230,7 @@ const App: React.FC = () => {
         for (let i = 0; i < recurringCount; i++) {
             const transactionDate = new Date(baseDate);
             // We add to UTC month to avoid timezone issues
-            transactionDate.setUTCMonth(baseDate.getUTCMonth() + i);
+            transactionDate.setUTCMonth(baseDate.getUTCMonth() + Number(i));
             
             const newTransactionData: Partial<Omit<Transaction, 'id'>> = {
                 date: transactionDate.toISOString(),
@@ -2325,12 +2377,12 @@ const App: React.FC = () => {
              return <div className="flex items-center justify-center h-full"><p>Carregando dados...</p></div>;
         }
         switch (view) {
-            case 'dashboard': return <DashboardView transactions={transactions} goals={goals} onSetPaid={setExpenseAsPaid}/>;
+            case 'dashboard': return <DashboardView transactions={transactions} goals={goals} onSetPaid={setExpenseAsPaid} onEdit={editTransaction} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} />;
             case 'transactions': return <TransactionsView transactions={transactions} onAdd={addTransaction} onEdit={editTransaction} onDelete={deleteTransaction} onSetPaid={setExpenseAsPaid} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} onImportTransactions={importTransactions}/>;
             case 'goals': return <GoalsView goals={goals} onAddGoal={addGoal} onEditGoal={editGoal} onDeleteGoal={deleteGoal} onAddProgress={addProgressToGoal}/>;
             case 'reports': return <ReportsView transactions={transactions} expenseCategories={expenseCategories} />;
             case 'settings': return <SettingsView incomeCategories={incomeCategories} setIncomeCategories={setIncomeCategories} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} paymentMethods={paymentMethods} setPaymentMethods={setPaymentMethods} costCenters={costCenters} setCostCenters={setCostCenters} advisors={advisors} setAdvisors={setAdvisors} goals={goals} setGoals={setGoals} transactions={transactions} onImportTransactions={importTransactions} />;
-            default: return <DashboardView transactions={transactions} goals={goals} onSetPaid={setExpenseAsPaid} />;
+            default: return <DashboardView transactions={transactions} goals={goals} onSetPaid={setExpenseAsPaid} onEdit={editTransaction} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} />;
         }
     };
     
