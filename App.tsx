@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, FC, ReactNode, useEffect } from 'react';
-import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType } from './types';
+import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType, AdvisorSplit } from './types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area } from 'recharts';
 import Login from './Login';
 import { auth } from './firebase';
@@ -43,7 +43,19 @@ function useLocalStorage<T>(key: string, initialValue: T): [T, React.Dispatch<Re
     const [storedValue, setStoredValue] = useState<T>(() => {
         try {
             const item = window.localStorage.getItem(key);
-            return item ? JSON.parse(item) : initialValue;
+            // If item doesn't exist, return initialValue
+            if (!item) return initialValue;
+
+            const parsed = JSON.parse(item);
+            
+            // Safety check: if initialValue is an array, ensure parsed is an array.
+            // This prevents "map is not a function" errors if localStorage has corrupted/unexpected data type.
+            if (Array.isArray(initialValue) && !Array.isArray(parsed)) {
+                console.warn(`LocalStorage key “${key}” expected array but got ${typeof parsed}. Resetting to default.`);
+                return initialValue;
+            }
+            
+            return parsed;
         } catch (error) {
             console.error(`Error reading localStorage key “${key}”:`, error);
             return initialValue;
@@ -207,6 +219,8 @@ interface TransactionFormValues {
     commissionAmount?: number;
     advisorId?: string;
     recurringCount?: number;
+    // New field for Advisor Splits
+    splits?: AdvisorSplit[];
 }
 interface TransactionFormProps { 
     onSubmit: (data: TransactionFormValues) => void;
@@ -218,15 +232,18 @@ interface TransactionFormProps {
     paymentMethods: string[];
     costCenters: CostCenter[];
     advisors: Advisor[];
+    globalTaxRate: number;
+    transactions?: Transaction[]; // Added for fetching logic
 }
 
-const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialData, defaultType, incomeCategories, expenseCategories, paymentMethods, costCenters, advisors }) => {
+const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialData, defaultType, incomeCategories, expenseCategories, paymentMethods, costCenters, advisors, globalTaxRate, transactions = [] }) => {
     const [type, setType] = useState<TransactionType>(initialData?.type || defaultType || TransactionType.EXPENSE);
     const [nature, setNature] = useState<ExpenseNature>(initialData?.nature || ExpenseNature.VARIABLE);
     const [advisorId, setAdvisorId] = useState(initialData?.advisorId || '');
-    const [taxType, setTaxType] = useState<'percent' | 'fixed'>('percent');
-    const [taxValue, setTaxValue] = useState('0');
     const [recurringCount, setRecurringCount] = useState('1');
+
+    // Splits state
+    const [splits, setSplits] = useState<AdvisorSplit[]>([]);
 
     const isAddingFromTab = !!defaultType;
     const isEditing = !!initialData;
@@ -248,70 +265,17 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         costCenter: initialData?.costCenter || 'conta-pj',
     });
     
+    // Legacy simple commission state (can still be used if splits are empty)
     const [commissionAmount, setCommissionAmount] = useState(initialData?.commissionAmount || 0);
-    const [netAmount, setNetAmount] = useState(initialData?.amount || 0);
     const [isCommissionManual, setIsCommissionManual] = useState(false);
-
-    useEffect(() => {
-        if (initialData) {
-            // Set tax fields on edit
-            if (initialData.type === TransactionType.INCOME && initialData.taxAmount) {
-                // If gross amount exists, try to calculate percentage, otherwise default to fixed
-                if(initialData.grossAmount && initialData.grossAmount > 0) {
-                     const percent = (initialData.taxAmount / initialData.grossAmount) * 100;
-                     // Use a small tolerance for floating point issues
-                     if(Math.abs(percent - Math.round(percent)) < 0.01) {
-                         setTaxType('percent');
-                         setTaxValue(percent.toFixed(2));
-                     } else {
-                        setTaxType('fixed');
-                        setTaxValue(initialData.taxAmount.toString());
-                     }
-                } else {
-                    setTaxType('fixed');
-                    setTaxValue(initialData.taxAmount.toString());
-                }
-            }
-
-            // Set commission fields on edit
-            if (initialData.type === TransactionType.INCOME && initialData.advisorId && initialData.commissionAmount) {
-                const selectedAdvisor = advisors.find(a => a.id === initialData.advisorId);
-                const gross = initialData.grossAmount ?? 0;
-                if (selectedAdvisor && gross > 0) {
-                    const calculatedCommission = (gross * selectedAdvisor.commissionRate) / 100;
-                    // If the stored commission is different from the calculated one, assume it was manual
-                    if (Math.abs(calculatedCommission - initialData.commissionAmount) > 0.01) {
-                        setIsCommissionManual(true);
-                    }
-                } else if (initialData.commissionAmount > 0) {
-                    // If there's a commission but we can't calculate it (no advisor/gross), it must have been manual
-                    setIsCommissionManual(true);
-                }
-            }
-        }
-    }, [initialData, advisors]);
-
-    useEffect(() => {
-        if (isCommissionManual) return;
-        
-        const gross = parseFloat(formData.grossAmount);
-        const selectedAdvisor = advisors.find(a => a.id === advisorId);
-
-        if (!isNaN(gross) && selectedAdvisor) {
-            const commission = (gross * selectedAdvisor.commissionRate) / 100;
-            setCommissionAmount(commission);
-        } else if (!isNaN(gross)) {
-            setCommissionAmount(0);
-        } else {
-            setCommissionAmount(0);
-        }
-    }, [formData.grossAmount, advisorId, advisors, isCommissionManual]);
     
-    useEffect(() => {
-        const gross = parseFloat(formData.grossAmount) || 0;
-        setNetAmount(gross - commissionAmount);
-    }, [formData.grossAmount, commissionAmount]);
-
+    const gross = parseFloat(formData.grossAmount) || 0;
+    // Auto-calculate tax based on global rate for Income
+    // Tax is calculated on GROSS revenue (T)
+    const taxAmount = type === TransactionType.INCOME ? (gross * globalTaxRate / 100) : 0;
+    
+    // Base Post Tax = T - Tax
+    const basePostTax = gross - taxAmount;
 
     useEffect(() => {
         const newCats = type === TransactionType.INCOME ? incomeCategories : expenseCategories.map(c => c.name);
@@ -327,10 +291,152 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         }
     }, [nature]);
 
+    // Simple legacy commission update
+    useEffect(() => {
+        if (!isCommissionManual && type === TransactionType.INCOME && advisorId && splits.length === 0) {
+             const comm = basePostTax * 0.30;
+             setCommissionAmount(comm > 0 ? comm : 0);
+        }
+    }, [formData.grossAmount, advisorId, splits.length, type, basePostTax, isCommissionManual]);
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
     };
+
+    // Split Logic
+    const addSplit = () => {
+        if (advisors.length === 0) {
+            alert("Cadastre assessores primeiro nas Configurações.");
+            return;
+        }
+        setSplits([...splits, { advisorId: advisors[0].id, advisorName: advisors[0].name, revenueAmount: 0, percentage: 30 }]);
+    };
+
+    const removeSplit = (index: number) => {
+        setSplits(splits.filter((_, i) => i !== index));
+    };
+
+    const updateSplit = (index: number, field: keyof AdvisorSplit, value: any) => {
+        const newSplits = [...splits];
+        const split = { ...newSplits[index] };
+        
+        if (field === 'advisorId') {
+            split.advisorId = value;
+            const advisor = advisors.find(a => a.id === value);
+            split.advisorName = advisor ? advisor.name : '';
+        } else if (field === 'revenueAmount' || field === 'percentage') {
+            (split as any)[field] = parseFloat(value) || 0;
+        }
+        
+        newSplits[index] = split;
+        setSplits(newSplits);
+    };
+
+    const autoAdjustSplits = () => {
+        if (splits.length === 0 || gross <= 0) return;
+        
+        // Distribute gross amount proportionally or just equally if revenue is 0
+        const perSplit = gross / splits.length;
+        const newSplits = splits.map(s => ({ ...s, revenueAmount: perSplit }));
+        setSplits(newSplits);
+    };
+
+    const fetchPeriodRevenues = () => {
+        if (!formData.date) {
+            alert("Selecione uma data para buscar as receitas.");
+            return;
+        }
+        const selectedDate = new Date(formData.date);
+        const selectedMonth = selectedDate.getMonth();
+        const selectedYear = selectedDate.getFullYear();
+
+        // 1. Filter existing transactions
+        const periodRevenues = transactions.filter(t => {
+            if (t.type !== TransactionType.INCOME) return false;
+            const tDate = new Date(t.date);
+            return tDate.getMonth() === selectedMonth && tDate.getFullYear() === selectedYear;
+        });
+
+        if (periodRevenues.length === 0) {
+            alert("Nenhuma receita encontrada neste período.");
+            return;
+        }
+
+        // 2. Aggregate by Advisor
+        const revenueByAdvisor: Record<string, number> = {};
+        let totalRevenueFound = 0;
+
+        periodRevenues.forEach(t => {
+            // Logic: Try to match ClientSupplier or AdvisorId if available
+            // Assuming Excel Import puts Advisor Name in 'clientSupplier' if it's a commission entry
+            // Or look for a specific category. Let's assume standard 'Comissão' logic or just mapping by name.
+            
+            // Try to find an advisor whose name matches the clientSupplier (Case insensitive)
+            const advisor = advisors.find(adv => 
+                (t.advisorId === adv.id) || 
+                (t.clientSupplier && t.clientSupplier.toLowerCase() === adv.name.toLowerCase())
+            );
+
+            if (advisor) {
+                revenueByAdvisor[advisor.id] = (revenueByAdvisor[advisor.id] || 0) + t.amount;
+                totalRevenueFound += t.amount;
+            }
+        });
+
+        // 3. Update Splits
+        const newSplits: AdvisorSplit[] = Object.keys(revenueByAdvisor).map(advId => {
+            const advisor = advisors.find(a => a.id === advId)!;
+            return {
+                advisorId: advisor.id,
+                advisorName: advisor.name,
+                revenueAmount: revenueByAdvisor[advId],
+                percentage: advisor.commissionRate || 30 // Default or Advisor specific rate
+            };
+        });
+
+        if (newSplits.length === 0) {
+            alert("Receitas encontradas, mas não foi possível vincular a nenhum assessor cadastrado. Verifique os nomes.");
+            return;
+        }
+
+        setSplits(newSplits);
+        setFormData(prev => ({ ...prev, grossAmount: totalRevenueFound.toFixed(2) }));
+        alert(`Receitas carregadas! Total: ${formatCurrency(totalRevenueFound)} distribuído entre ${newSplits.length} assessores.`);
+    };
+
+    // Calculate complex split details including CRM
+    const splitsDetails = useMemo(() => {
+        return splits.map(split => {
+             const advisor = advisors.find(a => a.id === split.advisorId);
+             const crmCost = advisor?.crmCost || 0; // Negative number usually
+             
+             // 1. Proporcao_i = Ri / T
+             const prop = gross > 0 ? split.revenueAmount / gross : 0;
+             
+             // 2. Base_Pos_Imposto_i = Base_Pos_Imposto * Proporcao_i
+             const basePostTaxI = basePostTax * prop;
+             
+             // 3. Repasse_Bruto_i = Base_Pos_Imposto_i * (%Repasse_i)
+             const grossPayoutI = basePostTaxI * (split.percentage / 100);
+             
+             // 4. Repasse_Liquido_i = Repasse_Bruto_i + CRM_i
+             const netPayoutI = grossPayoutI + crmCost;
+
+             return {
+                 ...split,
+                 crmCost,
+                 netPayout: netPayoutI
+             }
+        });
+    }, [splits, gross, basePostTax, advisors]);
+
+    const totalSplitRevenue = splits.reduce((acc, s) => acc + s.revenueAmount, 0);
+    const totalNetPayouts = splitsDetails.reduce((acc, s) => acc + s.netPayout, 0);
+    const splitRevenueDifference = gross - totalSplitRevenue;
+    
+    // Parcela do Escritório = Base Post Tax - Total Net Payouts
+    const officeShare = basePostTax - totalNetPayouts;
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -355,9 +461,22 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             return;
         }
 
+        // Validate Splits if they exist
+        if (splits.length > 0) {
+            if (Math.abs(splitRevenueDifference) > 0.05) {
+                alert(`A soma das receitas individuais (R$ ${formatCurrency(totalSplitRevenue)}) deve ser igual ao valor total da receita (R$ ${formatCurrency(parsedGrossAmount)}). Diferença: ${formatCurrency(splitRevenueDifference)}`);
+                return;
+            }
+            // Removing old netForPJ check because logic has changed to Office Share
+        }
+
+        // Important: For Income, we now use basePostTax as the main amount for the Transaction Record if no splits?
+        // Or if simple mode: standard.
+        // If complex mode: Logic handles splitting.
+        
         const submissionData: TransactionFormValues = {
             description,
-            amount: type === TransactionType.INCOME ? netAmount : parsedGrossAmount,
+            amount: type === TransactionType.INCOME ? basePostTax : parsedGrossAmount, 
             date: new Date(date).toISOString(),
             type,
             category,
@@ -367,15 +486,17 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         };
         
         if (type === TransactionType.INCOME) {
-            let calculatedTax = 0;
-            const parsedTaxValue = parseFloat(taxValue);
-            if (!isNaN(parsedGrossAmount) && !isNaN(parsedTaxValue) && parsedTaxValue > 0) {
-                calculatedTax = taxType === 'percent' ? (parsedGrossAmount * parsedTaxValue) / 100 : parsedTaxValue;
-            }
-            submissionData.taxAmount = calculatedTax;
+            submissionData.taxAmount = taxAmount;
             submissionData.grossAmount = parsedGrossAmount;
-            submissionData.commissionAmount = commissionAmount;
-            submissionData.advisorId = advisorId;
+            // Send splits if used
+            if (splits.length > 0) {
+                // Pass the calculated details including netPayout
+                submissionData.splits = splitsDetails;
+            } else {
+                // Legacy single advisor logic
+                submissionData.commissionAmount = commissionAmount;
+                submissionData.advisorId = advisorId;
+            }
         }
 
         if (type === TransactionType.EXPENSE) {
@@ -410,7 +531,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             </div>
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                    <label className="block text-sm font-medium text-text-secondary">{type === TransactionType.INCOME ? 'Valor Bruto (Repasse)' : 'Valor'}</label>
+                    <label className="block text-sm font-medium text-text-secondary">{type === TransactionType.INCOME ? 'Receita Total (Bruto)' : 'Valor'}</label>
                     <input type="number" step="0.01" name="grossAmount" value={formData.grossAmount} onChange={handleChange} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" required />
                 </div>
                 <div>
@@ -427,45 +548,155 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             
             {type === TransactionType.INCOME && (
                 <>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                     <div>
-                        <label className="block text-sm font-medium text-text-secondary">Assessor (Opcional)</label>
-                         <select value={advisorId} onChange={(e) => { setAdvisorId(e.target.value); setIsCommissionManual(false); }} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary">
-                            <option value="">Sem Assessor</option>
-                            {advisors.map(adv => <option key={adv.id} value={adv.id}>{adv.name}</option>)}
-                        </select>
+                {/* Advisor Splits Block - Only for Income */}
+                <div className="border border-border-color rounded-lg p-4 bg-background/50">
+                    <div className="flex justify-between items-center mb-3">
+                         <div className="flex gap-2 items-center">
+                            <h3 className="text-sm font-bold text-text-primary">Adicionar detalhamento por assessor</h3>
+                             <Button type="button" onClick={fetchPeriodRevenues} variant="secondary" className="py-1 px-2 text-[10px] sm:text-xs ml-2 border border-primary/30" title="Busca e agrupa receitas já lançadas para os assessores neste mês">
+                                 Buscar receitas do período
+                             </Button>
+                         </div>
+                         <Button type="button" onClick={addSplit} variant="secondary" className="py-1 px-2 text-xs">
+                             <PlusIcon className="w-3 h-3" /> Adicionar Assessor
+                         </Button>
                     </div>
-                     <div className="md:col-span-1 bg-background p-3 rounded-lg border border-border-color">
-                        <label className="block text-sm font-medium text-text-secondary mb-2">Provisão de Impostos</label>
-                        <div className="flex items-center gap-2">
-                            <select value={taxType} onChange={e => setTaxType(e.target.value as 'percent' | 'fixed')} className="bg-surface border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2">
-                                <option value="percent">%</option>
-                                <option value="fixed">R$</option>
-                            </select>
-                            <input type="number" step="0.01" value={taxValue} onChange={e => setTaxValue(e.target.value)} className="block w-full bg-surface border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" />
+                    
+                    {splits.length > 0 && (
+                        <div className="space-y-3 mb-4">
+                             <div className="hidden sm:grid grid-cols-12 gap-2 text-xs text-text-secondary font-medium px-1">
+                                <div className="col-span-4">Assessor</div>
+                                <div className="col-span-3">Receita Individual</div>
+                                <div className="col-span-2 text-center">% Repasse</div>
+                                <div className="col-span-2 text-right">Repasse (Liq)</div>
+                                <div className="col-span-1"></div>
+                             </div>
+                             {splitsDetails.map((split, index) => {
+                                 return (
+                                     <div key={index} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center bg-surface p-2 rounded-md">
+                                        <div className="col-span-4">
+                                            <select 
+                                                value={split.advisorId} 
+                                                onChange={(e) => updateSplit(index, 'advisorId', e.target.value)}
+                                                className="w-full bg-background border-border-color rounded-md text-sm py-1"
+                                            >
+                                                {advisors.map(adv => <option key={adv.id} value={adv.id}>{adv.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="col-span-3">
+                                            <input 
+                                                type="number" 
+                                                step="0.01" 
+                                                value={split.revenueAmount} 
+                                                onChange={(e) => updateSplit(index, 'revenueAmount', e.target.value)}
+                                                placeholder="Receita"
+                                                className="w-full bg-background border-border-color rounded-md text-sm py-1"
+                                            />
+                                        </div>
+                                        <div className="col-span-2">
+                                            <input 
+                                                type="number" 
+                                                step="0.1" 
+                                                value={split.percentage} 
+                                                onChange={(e) => updateSplit(index, 'percentage', e.target.value)}
+                                                className="w-full bg-background border-border-color rounded-md text-sm py-1 text-center"
+                                            />
+                                        </div>
+                                        <div className="col-span-2 text-right font-bold text-danger text-sm" title={`CRM: ${formatCurrency(split.crmCost)}`}>
+                                            {formatCurrency(split.netPayout)}
+                                        </div>
+                                        <div className="col-span-1 text-right">
+                                            <button type="button" onClick={() => removeSplit(index)} className="text-text-secondary hover:text-danger">
+                                                <TrashIcon className="w-4 h-4"/>
+                                            </button>
+                                        </div>
+                                     </div>
+                                 )
+                             })}
+                            
+                            <div className="mt-3 p-3 bg-surface rounded-lg border border-border-color text-xs space-y-1">
+                                <div className="flex justify-between">
+                                    <span className="text-text-secondary">Total Receita Informada:</span>
+                                    <span className="font-mono">{formatCurrency(gross)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-text-secondary">Soma Receitas Individuais:</span>
+                                    <span className={`font-mono ${Math.abs(splitRevenueDifference) > 0.05 ? 'text-danger' : 'text-green-400'}`}>
+                                        {formatCurrency(totalSplitRevenue)}
+                                    </span>
+                                </div>
+                                {Math.abs(splitRevenueDifference) > 0.05 && (
+                                    <div className="flex justify-between items-center text-danger font-bold mt-1 pt-1 border-t border-border-color">
+                                        <span>Diferença:</span>
+                                        <div className="flex items-center gap-2">
+                                            <span>{formatCurrency(splitRevenueDifference)}</span>
+                                            <button type="button" onClick={autoAdjustSplits} className="text-[10px] bg-secondary/20 hover:bg-secondary/40 px-2 py-0.5 rounded text-text-primary font-normal">
+                                                Ajustar Proporcionalmente
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                    </div>
+                    )}
+
+                    {splits.length === 0 && (
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                             <div>
+                                <label className="block text-sm font-medium text-text-secondary">Assessor (Opcional - Simples)</label>
+                                 <select value={advisorId} onChange={(e) => { setAdvisorId(e.target.value); setIsCommissionManual(false); }} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary">
+                                    <option value="">Sem Assessor</option>
+                                    {advisors.map(adv => <option key={adv.id} value={adv.id}>{adv.name}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                    )}
                 </div>
-                {advisorId && (
-                    <div className="bg-background p-3 rounded-lg border border-border-color">
-                        <div className="grid grid-cols-3 gap-4 text-center mb-2">
-                            <div>
-                                <p className="text-xs text-text-secondary">Valor Bruto</p>
-                                <p className="font-semibold">{formatCurrency(parseFloat(formData.grossAmount) || 0)}</p>
+
+                {/* Tax and Summary Block */}
+                 <div className="bg-background p-3 rounded-lg border border-border-color">
+                    <div className="grid grid-cols-3 gap-4 text-center mb-2">
+                        <div>
+                            <p className="text-xs text-text-secondary">Receita Total</p>
+                            <p className="font-semibold">{formatCurrency(gross)}</p>
+                        </div>
+                        <div className="border-l border-r border-border-color px-2">
+                            <p className="text-xs text-text-secondary">(-) Imposto ({globalTaxRate}%)</p>
+                            <p className="font-semibold text-danger">
+                                {formatCurrency(taxAmount)}
+                            </p>
+                        </div>
+                        <div>
+                            <p className="text-xs text-text-secondary">(=) Base Pós-Imposto</p>
+                            <p className="font-bold text-green-400">{formatCurrency(basePostTax)}</p>
+                        </div>
+                    </div>
+                    
+                    {/* Show logic for splits total */}
+                    {splits.length > 0 && (
+                        <div className="border-t border-border-color pt-2 mt-2">
+                            <div className="flex justify-between items-center text-sm">
+                                <span className="text-text-secondary">Total Repasses (Liq):</span>
+                                <span className="font-bold text-danger">{formatCurrency(totalNetPayouts)}</span>
                             </div>
-                            <div>
-                                <p className="text-xs text-text-secondary">(-) Comissão</p>
-                                <p className="font-semibold text-danger">{formatCurrency(commissionAmount)}</p>
-                            </div>
-                            <div>
-                                <p className="text-xs text-text-secondary">(=) Valor Líquido</p>
-                                <p className="font-bold text-green-400">{formatCurrency(netAmount)}</p>
+                            <div className="flex justify-between items-center text-sm mt-1">
+                                <span className="text-text-secondary">Parcela Escritório:</span>
+                                <span className={`font-bold ${(officeShare) >= 0 ? 'text-primary' : 'text-danger'}`}>
+                                    {formatCurrency(officeShare)}
+                                </span>
                             </div>
                         </div>
-                        <div className="flex justify-center items-center gap-2 pt-2 border-t border-border-color">
-                            {isCommissionManual ? (
-                                <>
-                                    <label className="text-sm text-text-secondary">Editar Comissão (R$):</label>
+                    )}
+                    
+                    {/* Fallback for legacy single advisor */}
+                    {splits.length === 0 && advisorId && (
+                        <div className="flex flex-col items-center gap-2 pt-2 border-t border-border-color mt-2">
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-text-secondary">Comissão Estimada (30% do Líquido):</span>
+                                <span className="font-bold text-danger">{formatCurrency(commissionAmount)}</span>
+                            </div>
+                             {isCommissionManual ? (
+                                <div className="flex items-center gap-2">
                                     <input
                                         type="number" step="0.01"
                                         value={commissionAmount.toFixed(2)}
@@ -475,16 +706,16 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                                                 setCommissionAmount(val);
                                             }
                                         }}
-                                        className="w-28 bg-surface p-1 rounded-md border border-border-color text-danger font-semibold"
+                                        className="w-28 bg-surface p-1 rounded-md border border-border-color text-danger font-semibold text-center"
                                     />
-                                    <Button type="button" variant="secondary" className="py-1 px-2 text-xs" onClick={() => setIsCommissionManual(false)}>Calcular Auto</Button>
-                                </>
+                                    <Button type="button" variant="secondary" className="py-1 px-2 text-xs" onClick={() => setIsCommissionManual(false)}>Recalcular (Auto)</Button>
+                                </div>
                             ) : (
-                                <Button type="button" variant="secondary" className="py-1 px-2 text-xs" onClick={() => setIsCommissionManual(true)}>Editar Comissão</Button>
+                                <Button type="button" variant="ghost" className="py-1 px-2 text-xs text-text-secondary" onClick={() => setIsCommissionManual(true)}>Ajustar Manualmente</Button>
                             )}
                         </div>
-                    </div>
-                )}
+                    )}
+                </div>
                 </>
             )}
             
@@ -640,7 +871,6 @@ const Sidebar: FC<{ activeView: View; setActiveView: (view: View) => void; isSid
         if (user.displayName) return user.displayName;
         if (user.email) {
             const namePart = user.email.split('@')[0];
-            // Capitalize first letter of each part separated by dot or underscore or hyphen
             return namePart.replace(/[._-]/g, ' ').split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
         }
         return "Usuário";
@@ -738,6 +968,7 @@ interface DashboardViewProps {
     paymentMethods: string[];
     costCenters: CostCenter[];
     advisors: Advisor[];
+    globalTaxRate: number;
 }
 
 const DashboardView: FC<DashboardViewProps> = ({
@@ -749,7 +980,8 @@ const DashboardView: FC<DashboardViewProps> = ({
     expenseCategories,
     paymentMethods,
     costCenters,
-    advisors
+    advisors,
+    globalTaxRate
 }) => {
     const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
     const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all');
@@ -1061,7 +1293,7 @@ const DashboardView: FC<DashboardViewProps> = ({
                                         nameKey="name" 
                                         cx="50%" 
                                         cy="50%" 
-                                        innerRadius={60}
+                                        innerRadius={60} 
                                         outerRadius={100} 
                                         fill="#8884d8" 
                                         paddingAngle={5}
@@ -1119,6 +1351,8 @@ const DashboardView: FC<DashboardViewProps> = ({
                     paymentMethods={paymentMethods}
                     costCenters={costCenters}
                     advisors={advisors}
+                    globalTaxRate={globalTaxRate}
+                    transactions={transactions}
                 />
             </Modal>
         </div>
@@ -1137,8 +1371,9 @@ interface TransactionsViewProps {
     costCenters: CostCenter[];
     advisors: Advisor[];
     onImportTransactions: (data: any[]) => Promise<void>;
+    globalTaxRate: number;
 }
-const TransactionsView: FC<TransactionsViewProps> = ({ transactions, onAdd, onEdit, onDelete, onSetPaid, incomeCategories, expenseCategories, paymentMethods, costCenters, advisors, onImportTransactions }) => {
+const TransactionsView: FC<TransactionsViewProps> = ({ transactions, onAdd, onEdit, onDelete, onSetPaid, incomeCategories, expenseCategories, paymentMethods, costCenters, advisors, onImportTransactions, globalTaxRate }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
     const [activeTab, setActiveTab] = useState<TransactionType>(TransactionType.EXPENSE);
@@ -1307,1153 +1542,712 @@ const TransactionsView: FC<TransactionsViewProps> = ({ transactions, onAdd, onEd
         };
         reader.readAsText(file);
     };
-    
-    const handleToggleOfxSelection = (tempId: string) => {
-        setPendingOfxTransactions(prev => prev.map(t => t.tempId === tempId ? { ...t, selected: !t.selected } : t));
-    };
 
-    const handleToggleAllOfx = () => {
-        const allSelected = pendingOfxTransactions.every(t => t.selected);
-        setPendingOfxTransactions(prev => prev.map(t => ({ ...t, selected: !allSelected })));
-    };
-
-    const handleUpdateOfxTransaction = (tempId: string, field: keyof ImportableTransaction, value: any) => {
-        setPendingOfxTransactions(prev => prev.map(t => {
-             if (t.tempId !== tempId) return t;
-             return { ...t, [field]: value };
-        }));
-    };
-
-    const handleConfirmImport = async () => {
-        const selected = pendingOfxTransactions.filter(t => t.selected);
-        if (selected.length === 0) {
-            alert("Selecione pelo menos uma transação para importar.");
-            return;
-        }
-
-        // Remove temp properties
-        const cleanData = selected.map(({ tempId, selected, ...rest }) => rest);
-        
-        await onImportTransactions(cleanData);
-        setIsOfxModalOpen(false);
-        setPendingOfxTransactions([]);
-        alert(`${selected.length} transações importadas com sucesso!`);
-    };
-    
-    const currentCategories = activeTab === TransactionType.INCOME ? incomeCategories : expenseCategories.map(c => c.name);
-    const allCategories = useMemo(() => ({
-        income: incomeCategories,
-        expense: expenseCategories.map(c => c.name)
-    }), [incomeCategories, expenseCategories]);
-
-    return (
-        <div className="space-y-6 animate-fade-in">
-             <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                <h2 className="text-2xl font-bold">Gerenciar Transações</h2>
-                 <Button onClick={() => openModal()}><PlusIcon className="w-5 h-5"/> Adicionar Transação</Button>
-            </div>
-            
-            <Card>
-                <div className="flex flex-col md:flex-row gap-4 mb-4">
-                     <div className="flex-1">
-                         <div className="flex border-b border-border-color">
-                             <button onClick={() => setActiveTab(TransactionType.EXPENSE)} className={`px-4 py-2 font-semibold ${activeTab === TransactionType.EXPENSE ? 'border-b-2 border-primary text-primary' : 'text-text-secondary'}`}>Despesas</button>
-                             <button onClick={() => setActiveTab(TransactionType.INCOME)} className={`px-4 py-2 font-semibold ${activeTab === TransactionType.INCOME ? 'border-b-2 border-primary text-primary' : 'text-text-secondary'}`}>Receitas</button>
-                         </div>
-                     </div>
-                      <div className="flex gap-2 items-center">
-                        <Button onClick={exportToExcel} variant="secondary" className="whitespace-nowrap"><ExportIcon className="w-4 h-4"/> XLSX</Button>
-                        <Button onClick={exportToPdf} variant="secondary" className="whitespace-nowrap"><ExportIcon className="w-4 h-4"/> PDF</Button>
-                        
-                        <input
-                            type="file"
-                            id="import-ofx"
-                            className="hidden"
-                            accept=".ofx,.ofx.sgml"
-                            onChange={handleOFXImport}
-                        />
-                        <Button as="label" htmlFor="import-ofx" variant="secondary" className="whitespace-nowrap" title="Importar Extrato Bancário (OFX)">
-                            <UploadIcon className="w-4 h-4" /> OFX
-                        </Button>
-                    </div>
-                </div>
-
-                {/* Filtros */}
-                 <div className="flex flex-col lg:flex-row gap-4 mb-4 p-4 bg-background rounded-lg items-center">
-                    <div className="relative w-full lg:flex-1">
-                        <input 
-                            type="text" 
-                            placeholder="Buscar por descrição..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full bg-surface border-border-color rounded-md shadow-sm pl-10 pr-4 py-2 focus:ring-primary focus:border-primary"
-                        />
-                        <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-text-secondary"/>
-                    </div>
-                    <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full lg:w-auto">
-                        <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="bg-surface border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2 w-full sm:w-auto max-w-[200px]">
-                            <option value="all">Todas as Categorias</option>
-                            {currentCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                        </select>
-                        <select value={filterYear} onChange={e => setFilterYear(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-surface border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2 w-full sm:w-auto">
-                            <option value="all">Todos os Anos</option>
-                            {availableYears.map(year => <option key={year} value={year}>{year}</option>)}
-                        </select>
-                        <select value={filterMonth} onChange={e => setFilterMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-surface border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2 w-full sm:w-auto">
-                            <option value="all">Todos os Meses</option>
-                            {months.map((month, index) => <option key={month} value={index}>{month}</option>)}
-                        </select>
-                        {activeTab === TransactionType.EXPENSE && (
-                             <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as 'all' | ExpenseStatus)} className="bg-surface border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2 w-full sm:w-auto">
-                                 <option value="all">Todos os Status</option>
-                                 <option value={ExpenseStatus.PAID}>Paga</option>
-                                 <option value={ExpenseStatus.PENDING}>Pendente</option>
-                             </select>
-                        )}
-                    </div>
-                 </div>
-
-                 {/* KPI de Total do Filtro */}
-                 <div className="mb-4 py-4 px-4 bg-background rounded-lg flex flex-col items-center justify-center shadow-sm border border-border-color/20">
-                    <h3 className="text-xs font-bold text-text-secondary uppercase tracking-wider mb-1">
-                        Total de {activeTab === TransactionType.INCOME ? 'Receitas' : 'Despesas'} no Período
-                    </h3>
-                    <p className={`text-3xl font-bold ${activeTab === TransactionType.INCOME ? 'text-green-400' : 'text-danger'} tracking-tight`}>
-                        {formatCurrency(totalFilteredAmount)}
-                    </p>
-                </div>
-
-                <div className="overflow-x-auto">
-                     <table className="w-full text-left">
-                        <thead className="border-b border-border-color">
-                            <tr>
-                                <th className="p-4 cursor-pointer" onClick={() => requestSort('date')}><div className="flex items-center">Data {getSortIndicator('date')}</div></th>
-                                <th className="p-4">Descrição</th>
-                                <th className="p-4 cursor-pointer" onClick={() => requestSort('amount')}><div className="flex items-center">Valor {getSortIndicator('amount')}</div></th>
-                                <th className="p-4">Categoria</th>
-                                {activeTab === TransactionType.EXPENSE && <th className="p-4">Status</th>}
-                                <th className="p-4 text-right">Ações</th>
-                            </tr>
-                        </thead>
-                         <tbody>
-                            {sortedTransactions.map(t => (
-                                <tr key={t.id} className="border-b border-border-color hover:bg-background">
-                                    <td className="p-4">{formatDate(t.date)}</td>
-                                    <td className="p-4">
-                                        <p className="font-semibold">{t.description}</p>
-                                        <p className="text-sm text-text-secondary">{t.clientSupplier}</p>
-                                    </td>
-                                    <td className={`p-4 font-bold ${activeTab === 'income' ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(t.amount)}</td>
-                                    <td className="p-4">{t.category}</td>
-                                    {activeTab === 'expense' && (
-                                        <td className="p-4">
-                                            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${t.status === ExpenseStatus.PAID ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
-                                                {t.status}
-                                            </span>
-                                        </td>
-                                    )}
-                                    <td className="p-4 text-right">
-                                        <div className="flex justify-end items-center gap-2">
-                                            {t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PENDING && (
-                                                <Button onClick={() => onSetPaid(t.id)} variant="ghost" className="p-3 h-14 w-14 flex items-center justify-center text-green-400 hover:bg-green-500/10" title="Marcar como Pago">
-                                                    <PaidIcon className="w-8 h-8"/>
-                                                </Button>
-                                            )}
-                                            <Button onClick={() => openModal(t)} variant="ghost" className="p-3 h-14 w-14 flex items-center justify-center" title="Editar">
-                                                <EditIcon className="w-8 h-8"/>
-                                            </Button>
-                                            <Button onClick={() => onDelete(t.id)} variant="ghostDanger" className="p-3 h-14 w-14 flex items-center justify-center" title="Excluir">
-                                                <TrashIcon className="w-8 h-8"/>
-                                            </Button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                     {sortedTransactions.length === 0 && <p className="text-center p-8 text-text-secondary">Nenhuma transação encontrada.</p>}
-                </div>
-            </Card>
-
-            {/* Modais */}
-            <Modal isOpen={isModalOpen} onClose={closeModal} title={editingTransaction ? 'Editar Transação' : 'Adicionar Transação'}>
-                <TransactionForm
-                    onSubmit={handleSubmit}
-                    onClose={closeModal}
-                    initialData={editingTransaction}
-                    defaultType={editingTransaction ? null : activeTab}
-                    incomeCategories={incomeCategories}
-                    expenseCategories={expenseCategories}
-                    paymentMethods={paymentMethods}
-                    costCenters={costCenters}
-                    advisors={advisors}
-                />
-            </Modal>
-            
-            {/* OFX Preview Modal */}
-            <Modal isOpen={isOfxModalOpen} onClose={() => setIsOfxModalOpen(false)} title="Importar Extrato (Pré-visualização)" size="xl">
-                <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                        <p className="text-text-secondary text-sm">Selecione e ajuste as transações antes de confirmar.</p>
-                        <div className="flex gap-2">
-                             <Button onClick={handleToggleAllOfx} variant="secondary" className="text-xs py-1">
-                                {pendingOfxTransactions.every(t => t.selected) ? "Desmarcar Todos" : "Marcar Todos"}
-                            </Button>
-                        </div>
-                    </div>
-                    <div className="overflow-x-auto max-h-[60vh] border border-border-color rounded-lg">
-                        <table className="w-full text-left text-sm">
-                            <thead className="bg-background sticky top-0 z-10">
-                                <tr className="border-b border-border-color text-text-secondary">
-                                    <th className="p-3 w-10 text-center">#</th>
-                                    <th className="p-3">Data</th>
-                                    <th className="p-3">Descrição</th>
-                                    <th className="p-3">Valor</th>
-                                    <th className="p-3">Tipo</th>
-                                    <th className="p-3">Categoria</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {pendingOfxTransactions.map((t) => (
-                                    <tr key={t.tempId} className={`border-b border-border-color/50 hover:bg-background/50 ${!t.selected ? 'opacity-50' : ''}`}>
-                                        <td className="p-3 text-center">
-                                            <input 
-                                                type="checkbox" 
-                                                checked={t.selected} 
-                                                onChange={() => handleToggleOfxSelection(t.tempId)}
-                                                className="w-4 h-4 rounded border-border-color text-primary focus:ring-primary bg-surface"
-                                            />
-                                        </td>
-                                        <td className="p-3 whitespace-nowrap">{formatDate(t.date!)}</td>
-                                        <td className="p-3">
-                                            <input 
-                                                type="text" 
-                                                value={t.description} 
-                                                onChange={(e) => handleUpdateOfxTransaction(t.tempId, 'description', e.target.value)}
-                                                className="bg-transparent border-b border-transparent focus:border-primary focus:outline-none w-full"
-                                            />
-                                        </td>
-                                        <td className={`p-3 font-bold ${t.type === TransactionType.INCOME ? 'text-green-400' : 'text-danger'}`}>
-                                            {formatCurrency(t.amount!)}
-                                        </td>
-                                        <td className="p-3">
-                                             <select 
-                                                value={t.type} 
-                                                onChange={(e) => {
-                                                    const newType = e.target.value as TransactionType;
-                                                    // Reset category to default of new type if changed
-                                                    const defaultCat = newType === TransactionType.INCOME ? allCategories.income[0] : allCategories.expense[0];
-                                                    handleUpdateOfxTransaction(t.tempId, 'type', newType);
-                                                    handleUpdateOfxTransaction(t.tempId, 'category', defaultCat);
-                                                }} 
-                                                className="bg-surface border-border-color rounded px-2 py-1 text-xs"
-                                            >
-                                                <option value={TransactionType.INCOME}>Receita</option>
-                                                <option value={TransactionType.EXPENSE}>Despesa</option>
-                                            </select>
-                                        </td>
-                                        <td className="p-3">
-                                             <select 
-                                                value={t.category} 
-                                                onChange={(e) => handleUpdateOfxTransaction(t.tempId, 'category', e.target.value)}
-                                                className="bg-surface border-border-color rounded px-2 py-1 text-xs w-full max-w-[150px]"
-                                            >
-                                                {(t.type === TransactionType.INCOME ? allCategories.income : allCategories.expense).map(cat => (
-                                                    <option key={cat} value={cat}>{cat}</option>
-                                                ))}
-                                            </select>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                     <div className="flex justify-end gap-4 pt-2 border-t border-border-color">
-                        <div className="mr-auto text-sm text-text-secondary flex items-center">
-                             {pendingOfxTransactions.filter(t => t.selected).length} selecionados
-                        </div>
-                        <Button onClick={() => setIsOfxModalOpen(false)} variant="secondary">Cancelar</Button>
-                        <Button onClick={handleConfirmImport}>Confirmar Importação</Button>
-                    </div>
-                </div>
-            </Modal>
-        </div>
-    );
-};
-
-const GoalsView: FC<{ goals: Goal[]; onAddGoal: (goal: Omit<Goal, 'id' | 'currentAmount'>) => void; onEditGoal: (id: string, goal: Omit<Goal, 'id' | 'currentAmount'>) => void; onDeleteGoal: (id: string) => void; onAddProgress: (id: string, amount: number) => void }> = ({ goals, onAddGoal, onEditGoal, onDeleteGoal, onAddProgress }) => {
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [isProgressModalOpen, setIsProgressModalOpen] = useState(false);
-    const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
-    const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
-    
-    const openModal = (goal: Goal | null = null) => {
-        setEditingGoal(goal);
-        setIsModalOpen(true);
-    };
-    const closeModal = () => {
-        setIsModalOpen(false);
-        setEditingGoal(null);
-    };
-
-    const openProgressModal = (id: string) => {
-        setSelectedGoalId(id);
-        setIsProgressModalOpen(true);
-    };
-
-    const closeProgressModal = () => {
-        setSelectedGoalId(null);
-        setIsProgressModalOpen(false);
-    };
-
-    const handleGoalSubmit = (data: Omit<Goal, 'id' | 'currentAmount'>) => {
-        if (editingGoal) {
-            onEditGoal(editingGoal.id, data);
-        } else {
-            onAddGoal(data);
-        }
-        closeModal();
-    };
-
-    const handleProgressSubmit = (amount: number) => {
-        if (selectedGoalId) {
-            onAddProgress(selectedGoalId, amount);
-        }
-        closeProgressModal();
-    };
-
-    return (
-        <div className="space-y-6 animate-fade-in">
-            <div className="flex justify-between items-center">
-                <h2 className="text-2xl font-bold">Metas Financeiras</h2>
-                <Button onClick={() => openModal()}><PlusIcon className="w-5 h-5"/> Nova Meta</Button>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {goals.map(goal => {
-                    const progress = (goal.currentAmount / goal.targetAmount) * 100;
-                    return (
-                        <Card key={goal.id} className="flex flex-col">
-                            <div className="flex-grow">
-                                <div className="flex justify-between items-start">
-                                    <h3 className="text-lg font-bold mb-2">{goal.name}</h3>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => openModal(goal)} className="text-text-secondary hover:text-primary"><EditIcon className="w-5 h-5" /></button>
-                                        <button onClick={() => onDeleteGoal(goal.id)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-5 h-5" /></button>
-                                    </div>
-                                </div>
-                                <p className="text-sm text-text-secondary mb-4">{goal.deadline ? `Prazo: ${formatDate(goal.deadline)}` : 'Sem prazo definido'}</p>
-                                <div className="flex justify-between items-end mb-2">
-                                    <span className="text-lg font-bold text-primary">{formatCurrency(goal.currentAmount)}</span>
-                                    <span className="text-sm text-text-secondary">de {formatCurrency(goal.targetAmount)}</span>
-                                </div>
-                                <ProgressBar progress={progress}/>
-                                <p className="text-right text-sm mt-1 font-semibold">{progress.toFixed(1)}%</p>
-                            </div>
-                            <Button onClick={() => openProgressModal(goal.id)} className="w-full mt-4">Adicionar Progresso</Button>
-                        </Card>
-                    )
-                })}
-            </div>
-             {goals.length === 0 && (
-                <div className="text-center py-16">
-                    <p className="text-text-secondary">Você ainda não tem nenhuma meta. Que tal criar uma?</p>
-                </div>
-             )}
-
-            <Modal isOpen={isModalOpen} onClose={closeModal} title={editingGoal ? 'Editar Meta' : 'Nova Meta'}>
-                <GoalForm onSubmit={handleGoalSubmit} onClose={closeModal} initialData={editingGoal} />
-            </Modal>
-            <Modal isOpen={isProgressModalOpen} onClose={closeProgressModal} title="Adicionar Progresso" size="sm">
-                <AddProgressForm onSubmit={handleProgressSubmit} onClose={closeProgressModal} />
-            </Modal>
-        </div>
-    );
-};
-
-const ReportsView: FC<{ transactions: Transaction[], expenseCategories: ExpenseCategory[] }> = ({ transactions, expenseCategories }) => {
-    const [reportType, setReportType] = useState<'monthly' | 'category' | 'dre'>('dre');
-    const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-    
-    const availableYears = useMemo(() => {
-        const years = [...new Set(transactions.map(t => new Date(t.date).getFullYear()))].sort((a: number, b: number) => b-a);
-        if(!years.includes(new Date().getFullYear())) {
-            years.unshift(new Date().getFullYear());
-        }
-        return years;
-    }, [transactions]);
-    
-    const filteredByYear = useMemo(() => {
-        return transactions.filter(t => new Date(t.date).getFullYear() === selectedYear);
-    }, [transactions, selectedYear]);
-    
-    const monthlyData = useMemo(() => {
-        const data = Array(12).fill(0).map((_, i) => {
-            const monthName = new Date(0, i).toLocaleString('pt-BR', { month: 'short' });
-            return { month: monthName, income: 0, expense: 0, profit: 0 };
-        });
-        
-        filteredByYear.forEach(t => {
-            const month = new Date(t.date).getMonth();
-            if (t.type === TransactionType.INCOME) {
-                data[month].income += t.amount;
-            } else {
-                data[month].expense += t.amount;
-            }
-            data[month].profit = data[month].income - data[month].expense;
-        });
-        
-        return data;
-    }, [filteredByYear]);
-    
-    const categoryData = useMemo(() => {
-        const expenseByCat = filteredByYear
-            .filter(t => t.type === TransactionType.EXPENSE)
-            .reduce((acc, t) => {
-                acc[t.category] = (acc[t.category] || 0) + t.amount;
-                return acc;
-            }, {} as Record<string, number>);
-
-        const total = Object.values(expenseByCat).reduce((sum: number, val: number) => sum + val, 0);
-        
-        return Object.entries(expenseByCat)
-            .sort((a, b) => (b[1] as number) - (a[1] as number))
-            .map(([name, amount]) => ({ 
-                name, 
-                amount: amount as number,
-                percent: total > 0 ? ((amount as number) / total) * 100 : 0
-            }));
-    }, [filteredByYear]);
-
-    // DRE Logic
-    const dreData = useMemo(() => {
-        const grossRevenue = filteredByYear
-            .filter(t => t.type === TransactionType.INCOME)
-            .reduce((sum, t) => sum + (t.grossAmount ?? t.amount), 0);
-
-        const commissions = filteredByYear
-            .filter(t => t.type === TransactionType.INCOME)
-            .reduce((sum, t) => sum + (t.commissionAmount ?? 0), 0);
-        
-        const netRevenue = grossRevenue - commissions;
-
-        const cogs = filteredByYear
-            .filter(t => {
-                if (t.type !== TransactionType.EXPENSE) return false;
-                const categoryInfo = expenseCategories.find(cat => cat.name === t.category);
-                return categoryInfo?.type === ExpenseType.COST;
-            })
-            .reduce((sum, t) => sum + t.amount, 0);
-
-        const grossProfit = netRevenue - cogs;
-
-        const operatingExpenses = filteredByYear
-            .filter(t => {
-                if (t.type !== TransactionType.EXPENSE) return false;
-                const categoryInfo = expenseCategories.find(cat => cat.name === t.category);
-                return categoryInfo?.type === ExpenseType.EXPENSE;
-            })
-            .reduce((sum, t) => sum + t.amount, 0);
-        
-        const netProfit = grossProfit - operatingExpenses;
-
-        return {
-            grossRevenue,
-            commissions,
-            netRevenue,
-            cogs,
-            grossProfit,
-            operatingExpenses,
-            netProfit,
-        };
-    }, [filteredByYear, expenseCategories]);
-    
-    const COLORS = ['#D1822A', '#6366F1', '#10B981', '#EF4444', '#F59E0B', '#3B82F6', '#8B5CF6'];
-
-    const renderReport = () => {
-        switch(reportType) {
-            case 'monthly':
-                return (
-                    <Card>
-                        <h3 className="text-lg font-bold mb-4">Desempenho Mensal ({selectedYear})</h3>
-                        <ResponsiveContainer width="100%" height={400}>
-                             <BarChart data={monthlyData}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#2D376A" />
-                                <XAxis dataKey="month" stroke="#A0AEC0" />
-                                <YAxis stroke="#A0AEC0" tickFormatter={(value) => `${formatCurrency(value)}`} tick={{ fontSize: 10 }} width={80} />
-                                <Tooltip contentStyle={{ backgroundColor: '#1A214A', border: '1px solid #2D376A', color: '#F0F2F5' }} formatter={(value: any) => formatCurrency(Number(value))} cursor={{fill: 'rgba(209, 130, 42, 0.1)'}}/>
-                                <Legend />
-                                <Bar dataKey="income" fill="#10B981" name="Receita Líq." />
-                                <Bar dataKey="expense" fill="#EF4444" name="Despesa Total"/>
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </Card>
-                );
-            case 'category':
-                const totalExpensesYear = categoryData.reduce((acc, cur) => acc + cur.amount, 0);
-                 return (
-                    <Card className="h-[500px] flex flex-col">
-                        <div className="flex flex-row justify-between items-start mb-4">
-                            <h3 className="text-lg font-bold">Despesas por Categoria ({selectedYear})</h3>
-                            <div className="text-right">
-                                <p className="text-xs text-text-secondary uppercase tracking-wider">Total Anual</p>
-                                <p className="text-xl font-bold text-danger">{formatCurrency(totalExpensesYear)}</p>
-                            </div>
-                        </div>
-                         <div className="flex-grow relative flex items-center justify-center">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie 
-                                        data={categoryData} 
-                                        dataKey="amount" 
-                                        nameKey="name" 
-                                        cx="50%" 
-                                        cy="50%" 
-                                        innerRadius={90} 
-                                        outerRadius={140} 
-                                        paddingAngle={2}
-                                        cornerRadius={6}
-                                        stroke="none"
-                                    >
-                                        {categoryData.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip content={<CustomPieTooltip />} />
-                                    <Legend 
-                                        layout="vertical" 
-                                        verticalAlign="middle" 
-                                        align="right"
-                                        iconType="circle"
-                                        iconSize={8}
-                                        formatter={(value) => <span className="text-text-secondary text-sm ml-1">{value}</span>}
-                                        wrapperStyle={{ paddingLeft: '20px' }}
-                                    />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </Card>
-                );
-             case 'dre':
-                return (
-                    <Card>
-                        <h3 className="text-lg font-bold mb-4">Demonstrativo de Resultados (DRE) - {selectedYear}</h3>
-                        <div className="space-y-2 text-text-primary">
-                            {Object.entries({
-                                "(=) Receita Bruta de Vendas": dreData.grossRevenue,
-                                "(-) Comissões e Devoluções": -dreData.commissions,
-                                "(=) Receita Operacional Líquida": dreData.netRevenue,
-                                "(-) Custo dos Serviços Prestados (CSP)": -dreData.cogs,
-                                "(=) Lucro Bruto": dreData.grossProfit,
-                                "(-) Despesas Operacionais": -dreData.operatingExpenses,
-                                "(=) Lucro Líquido do Exercício": dreData.netProfit,
-                            }).map(([label, value]) => {
-                                const isBold = label.startsWith("(=)");
-                                const isNegative = !label.startsWith("(=)") && value !== 0;
-                                const isResult = label.startsWith("(=)");
-                                const colorClass = value >= 0 ? 'text-green-400' : 'text-danger';
-
-                                return(
-                                    <div key={label} className={`flex justify-between p-3 rounded-md ${isResult ? 'bg-background mt-2' : ''}`}>
-                                        <span className={`${isBold ? 'font-bold' : ''}`}>{label}</span>
-                                        <span className={`font-mono ${isBold ? 'font-bold' : ''} ${isResult ? colorClass : (isNegative ? 'text-danger' : '')}`}>
-                                            {formatCurrency(isNegative ? -value : value)}
-                                        </span>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </Card>
-                );
-        }
-    };
-    
-    return (
-        <div className="space-y-6 animate-fade-in">
-             <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                <h2 className="text-2xl font-bold">Relatórios</h2>
-                <div className="flex items-center gap-2">
-                     <select value={reportType} onChange={e => setReportType(e.target.value as any)} className="bg-surface border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2">
-                        <option value="dre">DRE</option>
-                        <option value="monthly">Mensal</option>
-                        <option value="category">Por Categoria</option>
-                    </select>
-                     <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))} className="bg-surface border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2">
-                        {availableYears.map(year => <option key={year} value={year}>{year}</option>)}
-                    </select>
-                </div>
-            </div>
-            {renderReport()}
-        </div>
-    );
-};
-
-interface SettingsViewProps {
-  incomeCategories: string[];
-  setIncomeCategories: React.Dispatch<React.SetStateAction<string[]>>;
-  expenseCategories: ExpenseCategory[];
-  setExpenseCategories: React.Dispatch<React.SetStateAction<ExpenseCategory[]>>;
-  paymentMethods: string[];
-  setPaymentMethods: React.Dispatch<React.SetStateAction<string[]>>;
-  costCenters: CostCenter[];
-  setCostCenters: React.Dispatch<React.SetStateAction<CostCenter[]>>;
-  advisors: Advisor[];
-  setAdvisors: React.Dispatch<React.SetStateAction<Advisor[]>>;
-  goals: Goal[];
-  setGoals: React.Dispatch<React.SetStateAction<Goal[]>>;
-  transactions: Transaction[];
-  onImportTransactions: (data: any[]) => Promise<void>;
-}
-
-const SettingsView: FC<SettingsViewProps> = ({
-    incomeCategories, setIncomeCategories,
-    expenseCategories, setExpenseCategories,
-    paymentMethods, setPaymentMethods,
-    costCenters, setCostCenters,
-    advisors, setAdvisors,
-    goals, setGoals,
-    transactions,
-    onImportTransactions
-}) => {
-
-    const draggedItem = React.useRef<{ list: string; index: number } | null>(null);
-    const dragOverItem = React.useRef<{ list: string; index: number } | null>(null);
-    const [dragActive, setDragActive] = useState(false);
-
-    const handleDragStart = (e: React.DragEvent, list: string, index: number) => {
-        draggedItem.current = { list, index };
-        setDragActive(true);
-        e.dataTransfer.effectAllowed = 'move';
-    };
-
-    const handleDragEnter = (e: React.DragEvent, list: string, index: number) => {
-        if (draggedItem.current && draggedItem.current.list === list) {
-            dragOverItem.current = { list, index };
-        }
-    };
-    
-    const handleDragEnd = () => {
-        draggedItem.current = null;
-        dragOverItem.current = null;
-        setDragActive(false);
-    };
-
-    const handleDrop = (setter: React.Dispatch<React.SetStateAction<any[]>>) => {
-        if (!draggedItem.current || !dragOverItem.current || draggedItem.current.index === dragOverItem.current.index) return;
-        
-        setter(prev => {
-            const newItems = [...prev];
-            const [reorderedItem] = newItems.splice(draggedItem.current!.index, 1);
-            newItems.splice(dragOverItem.current!.index, 0, reorderedItem);
-            return newItems;
-        });
-    };
-    
-    const handleSave = () => {
-        // This is now handled by useLocalStorage automatically.
-        alert('Configurações salvas!');
-    };
-
-    const addListItem = (setter: React.Dispatch<React.SetStateAction<any[]>>, defaultValue: any) => {
-        setter(prev => [...prev, defaultValue]);
-    };
-
-    const updateListItem = <T,>(setter: React.Dispatch<React.SetStateAction<T[]>>, index: number, value: T) => {
-        setter(prev => prev.map((item, i) => i === index ? value : item));
-    };
-
-    const deleteListItem = <T,>(setter: React.Dispatch<React.SetStateAction<T[]>>, index: number) => {
-        setter(prev => prev.filter((_, i) => i !== index));
-    };
-    
-    const handleExport = () => {
-        const dataToExport = {
-            incomeCategories,
-            expenseCategories,
-            paymentMethods,
-            costCenters,
-            advisors,
-            goals,
-            transactions,
-        };
-        const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(
-            JSON.stringify(dataToExport, null, 2)
-        )}`;
-        const link = document.createElement("a");
-        link.href = jsonString;
-        link.download = `acicapital_backup_${new Date().toISOString().split('T')[0]}.json`;
-        link.click();
-    };
-
-    const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const handleExcelImport = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
 
         const reader = new FileReader();
         reader.onload = async (e) => {
             try {
-                const text = e.target?.result;
-                if (typeof text !== 'string') throw new Error("File content is not text");
-                
-                const data = JSON.parse(text);
+                const data = new Uint8Array(e.target?.result as ArrayBuffer);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet);
 
-                if (!data || typeof data !== 'object') throw new Error("Invalid JSON structure");
+                // Filter logic: Ignore 'Costs' as per business rule (CRM is fixed in settings)
+                // Assume standard columns: 'Data', 'Descrição', 'Valor', 'Tipo', 'Assessor', 'Cliente'
+                const importedTransactions: TransactionFormValues[] = [];
+                let ignoredCount = 0;
 
-                if (window.confirm("Isso irá sobrescrever suas configurações e metas e ADICIONAR as transações do backup. Deseja continuar?")) {
-                    if (Array.isArray(data.incomeCategories)) setIncomeCategories(data.incomeCategories);
-                    if (Array.isArray(data.expenseCategories)) setExpenseCategories(data.expenseCategories);
-                    if (Array.isArray(data.paymentMethods)) setPaymentMethods(data.paymentMethods);
-                    if (Array.isArray(data.costCenters)) setCostCenters(data.costCenters);
-                    if (Array.isArray(data.advisors)) setAdvisors(data.advisors);
-                    if (Array.isArray(data.goals)) setGoals(data.goals);
-                    
-                    if (Array.isArray(data.transactions)) {
-                         await onImportTransactions(data.transactions);
+                jsonData.forEach(row => {
+                    // Basic validation and mapping
+                    // Flexible key matching for "Tipo" (Type) to filter Costs
+                    const typeVal = row['Tipo'] || row['Type'] || '';
+                    if (typeVal && typeVal.toString().toLowerCase().includes('custo')) {
+                        ignoredCount++;
+                        return;
                     }
-                    
-                    alert("Dados importados com sucesso!");
+
+                    // Flexible Date Parsing (assuming Excel serial date or string)
+                    let dateStr = new Date().toISOString();
+                    if (row['Data']) {
+                         // Check if excel date number
+                         if (typeof row['Data'] === 'number') {
+                             const date = new Date((row['Data'] - (25567 + 2)) * 86400 * 1000);
+                             dateStr = date.toISOString();
+                         } else {
+                             // Try string parsing
+                             const parts = row['Data'].split('/');
+                             if (parts.length === 3) {
+                                 // DD/MM/YYYY to YYYY-MM-DD
+                                 dateStr = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`).toISOString();
+                             } else {
+                                 dateStr = new Date(row['Data']).toISOString();
+                             }
+                         }
+                    }
+
+                    const val = parseFloat(row['Valor'] || row['Amount'] || 0);
+                    if (val > 0) {
+                        importedTransactions.push({
+                            date: dateStr,
+                            description: row['Descrição'] || row['Description'] || 'Receita Importada',
+                            amount: val, // Gross Amount really, but stored here as base
+                            grossAmount: val,
+                            type: TransactionType.INCOME,
+                            category: 'Comissão sobre Ativos', // Default or map from excel
+                            clientSupplier: row['Cliente'] || row['Client'] || row['Assessor'] || 'Importado', // If Assessor column exists, map it here for the aggregation logic later
+                            paymentMethod: 'Transferência Bancária',
+                            costCenter: 'conta-pj',
+                            // Try to map advisor ID if name matches? For now, we store name in clientSupplier to aggregate later
+                        });
+                    }
+                });
+
+                if (importedTransactions.length > 0) {
+                    // Batch add
+                    if (window.confirm(`Encontradas ${importedTransactions.length} receitas válidas (${ignoredCount} custos ignorados). Confirmar importação?`)) {
+                        importedTransactions.forEach(t => onAdd(t));
+                        alert('Importação concluída!');
+                    }
+                } else {
+                    alert('Nenhuma transação válida encontrada.');
                 }
+
             } catch (error) {
-                console.error("Error importing data:", error);
-                alert("Ocorreu um erro ao importar o arquivo. Verifique o console.");
+                console.error("Error reading Excel:", error);
+                alert("Erro ao ler arquivo Excel. Verifique o formato.");
             } finally {
                 event.target.value = '';
             }
         };
-        reader.readAsText(file);
+        reader.readAsArrayBuffer(file);
+    };
+    
+    const handleToggleOfxTransaction = (tempId: string) => {
+        setPendingOfxTransactions(prev => prev.map(t => 
+            t.tempId === tempId ? { ...t, selected: !t.selected } : t
+        ));
+    };
+
+    return (
+        <div className="space-y-6 animate-fade-in">
+             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                    <h2 className="text-2xl font-bold text-text-primary">Transações</h2>
+                    <p className="text-text-secondary">Gerencie suas receitas e despesas.</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    <label htmlFor="excel-upload" className="bg-green-600 hover:bg-opacity-90 text-white px-4 py-2 rounded-lg font-semibold cursor-pointer shadow-md shadow-green-600/30 hover:scale-105 transition-all duration-300 flex items-center gap-2">
+                        <UploadIcon className="w-5 h-5" /> Importar Planilha
+                    </label>
+                    <input id="excel-upload" type="file" accept=".xlsx, .xls" onChange={handleExcelImport} className="hidden" />
+
+                    <label htmlFor="ofx-upload" className="bg-primary hover:bg-opacity-90 text-white px-4 py-2 rounded-lg font-semibold cursor-pointer shadow-md shadow-primary/30 hover:scale-105 transition-all duration-300 flex items-center gap-2">
+                        <UploadIcon className="w-5 h-5" /> Importar OFX
+                    </label>
+                    <input id="ofx-upload" type="file" accept=".ofx" onChange={handleOFXImport} className="hidden" />
+                    
+                    <Button onClick={() => openModal()} className="flex items-center gap-2">
+                        <PlusIcon className="w-5 h-5" /> Nova Transação
+                    </Button>
+                </div>
+            </div>
+
+            {/* Filter Controls */}
+             <Card className="p-4">
+                <div className="flex flex-col md:flex-row gap-4 justify-between items-center mb-4 border-b border-border-color pb-4">
+                     <div className="flex bg-background p-1 rounded-lg">
+                        <button onClick={() => setActiveTab(TransactionType.EXPENSE)} className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === TransactionType.EXPENSE ? 'bg-surface text-danger shadow-sm' : 'text-text-secondary hover:text-text-primary'}`}>Despesas</button>
+                        <button onClick={() => setActiveTab(TransactionType.INCOME)} className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === TransactionType.INCOME ? 'bg-surface text-green-400 shadow-sm' : 'text-text-secondary hover:text-text-primary'}`}>Receitas</button>
+                    </div>
+                     <div className="relative w-full md:w-64">
+                        <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-text-secondary w-4 h-4" />
+                        <input type="text" placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-background border border-border-color rounded-md text-sm focus:ring-primary focus:border-primary" />
+                    </div>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <select value={filterYear} onChange={(e) => setFilterYear(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-background border-border-color rounded-md text-sm p-2">
+                        <option value="all">Todos os Anos</option>
+                        {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                    <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-background border-border-color rounded-md text-sm p-2">
+                        <option value="all">Todos os Meses</option>
+                        {months.map((m, i) => <option key={m} value={i}>{m}</option>)}
+                    </select>
+                    <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="bg-background border-border-color rounded-md text-sm p-2">
+                        <option value="all">Todas Categorias</option>
+                        {(activeTab === TransactionType.INCOME ? incomeCategories : expenseCategories.map(c => c.name)).map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                     {activeTab === TransactionType.EXPENSE && (
+                        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as any)} className="bg-background border-border-color rounded-md text-sm p-2">
+                            <option value="all">Todos Status</option>
+                            <option value={ExpenseStatus.PAID}>Paga</option>
+                            <option value={ExpenseStatus.PENDING}>Pendente</option>
+                        </select>
+                    )}
+                </div>
+            </Card>
+
+            {/* Totals */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card className="p-4 flex items-center justify-between">
+                     <span className="text-text-secondary">Total Listado:</span>
+                     <span className={`text-xl font-bold ${activeTab === TransactionType.INCOME ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(totalFilteredAmount)}</span>
+                </Card>
+                <div className="col-span-2 flex justify-end gap-2">
+                    <Button variant="secondary" onClick={exportToExcel} className="text-sm"><ExportIcon className="w-4 h-4" /> Excel</Button>
+                    <Button variant="secondary" onClick={exportToPdf} className="text-sm"><ExportIcon className="w-4 h-4" /> PDF</Button>
+                </div>
+            </div>
+
+            {/* Table */}
+            <div className="overflow-x-auto bg-surface rounded-xl shadow-lg">
+                <table className="w-full text-left border-collapse">
+                    <thead>
+                        <tr className="bg-background/50 border-b border-border-color text-text-secondary text-xs uppercase tracking-wider">
+                            <th className="p-4 cursor-pointer hover:text-primary" onClick={() => requestSort('date')}>Data {getSortIndicator('date')}</th>
+                            <th className="p-4 cursor-pointer hover:text-primary" onClick={() => requestSort('description')}>Descrição {getSortIndicator('description')}</th>
+                            <th className="p-4 hidden md:table-cell cursor-pointer hover:text-primary" onClick={() => requestSort('category')}>Categoria {getSortIndicator('category')}</th>
+                            <th className="p-4 hidden sm:table-cell">Cliente/Fornecedor</th>
+                            <th className="p-4 cursor-pointer text-right hover:text-primary" onClick={() => requestSort('amount')}>Valor {getSortIndicator('amount')}</th>
+                            {activeTab === TransactionType.EXPENSE && <th className="p-4 text-center">Status</th>}
+                            <th className="p-4 text-center">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border-color/30">
+                        {sortedTransactions.length > 0 ? sortedTransactions.map(t => (
+                            <tr key={t.id} className="hover:bg-background/30 transition-colors">
+                                <td className="p-4 whitespace-nowrap text-sm">{formatDate(t.date)}</td>
+                                <td className="p-4 font-medium text-sm">{t.description}</td>
+                                <td className="p-4 hidden md:table-cell text-sm text-text-secondary"><span className="px-2 py-1 rounded-full bg-background border border-border-color text-xs whitespace-nowrap">{t.category}</span></td>
+                                <td className="p-4 hidden sm:table-cell text-sm text-text-secondary">{t.clientSupplier || '-'}</td>
+                                <td className={`p-4 text-right font-bold text-sm ${t.type === TransactionType.INCOME ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(t.amount)}</td>
+                                {activeTab === TransactionType.EXPENSE && (
+                                    <td className="p-4 text-center">
+                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${t.status === ExpenseStatus.PAID ? 'bg-green-500/10 text-green-500' : 'bg-yellow-500/10 text-yellow-500'}`}>
+                                            {t.status === ExpenseStatus.PAID ? 'Paga' : 'Pendente'}
+                                        </span>
+                                    </td>
+                                )}
+                                <td className="p-4 flex items-center justify-center gap-2">
+                                    {t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PENDING && (
+                                        <button onClick={() => onSetPaid(t.id)} className="p-1.5 text-green-400 hover:bg-green-400/10 rounded-md transition-colors" title="Marcar como Paga"><PaidIcon className="w-5 h-5" /></button>
+                                    )}
+                                    <button onClick={() => openModal(t)} className="p-1.5 text-text-secondary hover:text-primary hover:bg-primary/10 rounded-md transition-colors" title="Editar"><EditIcon className="w-5 h-5" /></button>
+                                    <button onClick={() => onDelete(t.id)} className="p-1.5 text-text-secondary hover:text-danger hover:bg-danger/10 rounded-md transition-colors" title="Excluir"><TrashIcon className="w-5 h-5" /></button>
+                                </td>
+                            </tr>
+                        )) : (
+                            <tr><td colSpan={7} className="p-8 text-center text-text-secondary">Nenhuma transação encontrada.</td></tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+
+            {/* Edit/Add Modal */}
+            <Modal isOpen={isModalOpen} onClose={closeModal} title={editingTransaction ? 'Editar Transação' : 'Nova Transação'}>
+                <TransactionForm
+                    onSubmit={handleSubmit}
+                    onClose={closeModal}
+                    initialData={editingTransaction}
+                    defaultType={activeTab}
+                    incomeCategories={incomeCategories}
+                    expenseCategories={expenseCategories}
+                    paymentMethods={paymentMethods}
+                    costCenters={costCenters}
+                    advisors={advisors}
+                    globalTaxRate={globalTaxRate}
+                    transactions={transactions}
+                />
+            </Modal>
+
+            {/* OFX Import Modal */}
+            <Modal isOpen={isOfxModalOpen} onClose={() => setIsOfxModalOpen(false)} title="Confirmar Importação OFX" size="xl">
+                 <div className="space-y-4">
+                     <p className="text-text-secondary">Selecione as transações que deseja importar. Você poderá editá-las após a importação.</p>
+                     <div className="max-h-[50vh] overflow-y-auto border border-border-color rounded-lg">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-background sticky top-0">
+                                <tr>
+                                    <th className="p-2"><input type="checkbox" checked={pendingOfxTransactions.every(t => t.selected)} onChange={(e) => setPendingOfxTransactions(prev => prev.map(t => ({...t, selected: e.target.checked})))} /></th>
+                                    <th className="p-2">Data</th>
+                                    <th className="p-2">Descrição</th>
+                                    <th className="p-2 text-right">Valor</th>
+                                    <th className="p-2">Tipo</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border-color/30">
+                                {pendingOfxTransactions.map(t => (
+                                    <tr key={t.tempId} className={t.selected ? 'bg-surface' : 'bg-background opacity-50'}>
+                                        <td className="p-2"><input type="checkbox" checked={t.selected} onChange={() => handleToggleOfxTransaction(t.tempId)} /></td>
+                                        <td className="p-2">{t.date ? formatDate(t.date) : '-'}</td>
+                                        <td className="p-2">{t.description}</td>
+                                        <td className={`p-2 text-right font-bold ${t.type === TransactionType.INCOME ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(t.amount || 0)}</td>
+                                        <td className="p-2">{t.type === TransactionType.INCOME ? 'Receita' : 'Despesa'}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                     </div>
+                     <div className="flex justify-end gap-4">
+                         <Button variant="secondary" onClick={() => setIsOfxModalOpen(false)}>Cancelar</Button>
+                         <Button onClick={() => {
+                             const selected = pendingOfxTransactions.filter(t => t.selected);
+                             if (selected.length === 0) return;
+                             onImportTransactions(selected);
+                             setIsOfxModalOpen(false);
+                             setPendingOfxTransactions([]);
+                         }}>Importar {pendingOfxTransactions.filter(t => t.selected).length} itens</Button>
+                     </div>
+                 </div>
+            </Modal>
+        </div>
+    );
+};
+
+// --- ADDITIONAL VIEWS (Goals, Reports, Settings) ---
+const GoalsView: FC<{ goals: Goal[], onAdd: (g: any) => void, onUpdateProgress: (id: string, amount: number) => void, onDelete: (id: string) => void }> = ({ goals, onAdd, onUpdateProgress, onDelete }) => {
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [isProgressModalOpen, setIsProgressModalOpen] = useState(false);
+    const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
+
+    const openProgressModal = (id: string) => {
+        setSelectedGoalId(id);
+        setIsProgressModalOpen(true);
     };
 
     return (
         <div className="space-y-6 animate-fade-in">
              <div className="flex justify-between items-center">
-                <h2 className="text-2xl font-bold">Configurações</h2>
-                <Button onClick={handleSave}><PlusIcon className="w-5 h-5"/> Salvar Configurações</Button>
+                <div>
+                    <h2 className="text-2xl font-bold text-text-primary">Metas Financeiras</h2>
+                    <p className="text-text-secondary">Defina e acompanhe seus objetivos.</p>
+                </div>
+                <Button onClick={() => setIsAddModalOpen(true)} className="flex items-center gap-2"><PlusIcon className="w-5 h-5"/> Nova Meta</Button>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 <Card>
-                    <h3 className="text-lg font-bold mb-1">Categorias de Receita</h3>
-                    <p className="text-xs text-text-secondary mb-4">Arraste os itens para reordenar.</p>
-                    <ul className="space-y-2">
-                        {incomeCategories.map((cat, i) => (
-                            <li key={i} 
-                                className={`flex items-center gap-2 p-2 rounded-xl bg-background/40 transition-all duration-200 ${dragActive && draggedItem.current?.list === 'income' && draggedItem.current?.index === i ? 'opacity-50' : ''}`}
-                                draggable
-                                onDragStart={(e) => handleDragStart(e, 'income', i)}
-                                onDragEnter={(e) => handleDragEnter(e, 'income', i)}
-                                onDragEnd={handleDragEnd}
-                                onDragOver={(e) => e.preventDefault()}
-                                onDrop={() => handleDrop(setIncomeCategories)}
-                            >
-                                <span className="cursor-grab p-2 text-text-secondary/50 hover:text-text-secondary"><DragHandleIcon className="w-6 h-6"/></span>
-                                <input 
-                                    type="text" 
-                                    value={cat} 
-                                    onChange={(e) => updateListItem(setIncomeCategories, i, e.target.value)} 
-                                    className="flex-grow bg-transparent border-none focus:ring-0 text-lg font-medium text-text-primary placeholder-text-secondary/50"
-                                    placeholder="Nome da categoria"
-                                />
-                                <Button variant="ghostDanger" onClick={() => deleteListItem(setIncomeCategories, i)} className="p-3 h-12 w-12 rounded-lg"><TrashIcon className="w-7 h-7"/></Button>
-                            </li>
-                        ))}
-                    </ul>
-                     <Button onClick={() => addListItem(setIncomeCategories, 'Nova Categoria')} className="mt-4 text-sm" variant="secondary">Adicionar Categoria</Button>
-                </Card>
-                 <Card>
-                    <h3 className="text-lg font-bold mb-1">Categorias de Despesa</h3>
-                    <p className="text-xs text-text-secondary mb-4">Arraste os itens para reordenar.</p>
-                     <ul className="space-y-2">
-                        {expenseCategories.map((cat, i) => (
-                            <li key={i} 
-                                className={`flex items-center gap-2 p-2 rounded-xl bg-background/40 transition-all duration-200 ${dragActive && draggedItem.current?.list === 'expense' && draggedItem.current?.index === i ? 'opacity-50' : ''}`}
-                                draggable
-                                onDragStart={(e) => handleDragStart(e, 'expense', i)}
-                                onDragEnter={(e) => handleDragEnter(e, 'expense', i)}
-                                onDragEnd={handleDragEnd}
-                                onDragOver={(e) => e.preventDefault()}
-                                onDrop={() => handleDrop(setExpenseCategories)}
-                            >
-                                <span className="cursor-grab p-2 text-text-secondary/50 hover:text-text-secondary"><DragHandleIcon className="w-6 h-6"/></span>
-                                <input 
-                                    type="text" 
-                                    value={cat.name} 
-                                    onChange={(e) => updateListItem(setExpenseCategories, i, { ...cat, name: e.target.value })} 
-                                    className="flex-grow bg-transparent border-none focus:ring-0 text-lg font-medium text-text-primary placeholder-text-secondary/50"
-                                    placeholder="Nome da categoria"
-                                />
-                                <select 
-                                    value={cat.type} 
-                                    onChange={(e) => updateListItem(setExpenseCategories, i, { ...cat, type: e.target.value as ExpenseType })} 
-                                    className="bg-transparent border-none focus:ring-0 text-sm text-text-secondary font-medium cursor-pointer"
-                                >
-                                    <option value={ExpenseType.COST} className="bg-surface">Custo</option>
-                                    <option value={ExpenseType.EXPENSE} className="bg-surface">Despesa</option>
-                                </select>
-                                <Button variant="ghostDanger" onClick={() => deleteListItem(setExpenseCategories, i)} className="p-3 h-12 w-12 rounded-lg"><TrashIcon className="w-7 h-7"/></Button>
-                            </li>
-                        ))}
-                    </ul>
-                     <Button onClick={() => addListItem(setExpenseCategories, { name: 'Nova Categoria', type: ExpenseType.EXPENSE })} className="mt-4 text-sm" variant="secondary">Adicionar Categoria</Button>
-                </Card>
-                 <Card>
-                    <h3 className="text-lg font-bold mb-1">Formas de Pagamento</h3>
-                    <p className="text-xs text-text-secondary mb-4">Arraste os itens para reordenar.</p>
-                     <ul className="space-y-2">
-                        {paymentMethods.map((method, i) => (
-                             <li key={i}
-                                className={`flex items-center gap-2 p-2 rounded-xl bg-background/40 transition-all duration-200 ${dragActive && draggedItem.current?.list === 'payment' && draggedItem.current?.index === i ? 'opacity-50' : ''}`}
-                                draggable
-                                onDragStart={(e) => handleDragStart(e, 'payment', i)}
-                                onDragEnter={(e) => handleDragEnter(e, 'payment', i)}
-                                onDragEnd={handleDragEnd}
-                                onDragOver={(e) => e.preventDefault()}
-                                onDrop={() => handleDrop(setPaymentMethods)}
-                             >
-                                <span className="cursor-grab p-2 text-text-secondary/50 hover:text-text-secondary"><DragHandleIcon className="w-6 h-6"/></span>
-                                <input 
-                                    type="text" 
-                                    value={method} 
-                                    onChange={(e) => updateListItem(setPaymentMethods, i, e.target.value)} 
-                                    className="flex-grow bg-transparent border-none focus:ring-0 text-lg font-medium text-text-primary placeholder-text-secondary/50"
-                                    placeholder="Método de pagamento"
-                                />
-                                <Button variant="ghostDanger" onClick={() => deleteListItem(setPaymentMethods, i)} className="p-3 h-12 w-12 rounded-lg"><TrashIcon className="w-7 h-7"/></Button>
-                            </li>
-                        ))}
-                    </ul>
-                    <Button onClick={() => addListItem(setPaymentMethods, 'Novo Método')} className="mt-4 text-sm" variant="secondary">Adicionar Método</Button>
-                </Card>
-                 <Card>
-                    <h3 className="text-lg font-bold mb-1">Centros de Custo</h3>
-                    <p className="text-xs text-text-secondary mb-4">Arraste os itens para reordenar.</p>
-                     <ul className="space-y-2">
-                        {costCenters.map((center, i) => (
-                             <li key={i}
-                                className={`flex items-center gap-2 p-2 rounded-xl bg-background/40 transition-all duration-200 ${dragActive && draggedItem.current?.list === 'cost' && draggedItem.current?.index === i ? 'opacity-50' : ''}`}
-                                draggable
-                                onDragStart={(e) => handleDragStart(e, 'cost', i)}
-                                onDragEnter={(e) => handleDragEnter(e, 'cost', i)}
-                                onDragEnd={handleDragEnd}
-                                onDragOver={(e) => e.preventDefault()}
-                                onDrop={() => handleDrop(setCostCenters)}
-                            >
-                                <span className="cursor-grab p-2 text-text-secondary/50 hover:text-text-secondary"><DragHandleIcon className="w-6 h-6"/></span>
-                                <input 
-                                    type="text" 
-                                    value={center.name} 
-                                    onChange={(e) => updateListItem(setCostCenters, i, { ...center, name: e.target.value })} 
-                                    className="flex-grow bg-transparent border-none focus:ring-0 text-lg font-medium text-text-primary placeholder-text-secondary/50"
-                                    placeholder="Nome do centro de custo"
-                                />
-                                <Button variant="ghostDanger" onClick={() => deleteListItem(setCostCenters, i)} className="p-3 h-12 w-12 rounded-lg"><TrashIcon className="w-7 h-7"/></Button>
-                            </li>
-                        ))}
-                    </ul>
-                    <Button onClick={() => addListItem(setCostCenters, { id: crypto.randomUUID(), name: 'Novo Centro' })} className="mt-4 text-sm" variant="secondary">Adicionar Centro</Button>
-                </Card>
-                 <Card className="md:col-span-2">
-                    <h3 className="text-lg font-bold mb-1">Assessores</h3>
-                    <p className="text-xs text-text-secondary mb-4">Arraste os itens para reordenar.</p>
-                     <ul className="space-y-2">
-                        {advisors.map((advisor, i) => (
-                             <li key={i}
-                                className={`flex flex-col md:flex-row items-center gap-2 p-2 rounded-xl bg-background/40 transition-all duration-200 ${dragActive && draggedItem.current?.list === 'advisor' && draggedItem.current?.index === i ? 'opacity-50' : ''}`}
-                                draggable
-                                onDragStart={(e) => handleDragStart(e, 'advisor', i)}
-                                onDragEnter={(e) => handleDragEnter(e, 'advisor', i)}
-                                onDragEnd={handleDragEnd}
-                                onDragOver={(e) => e.preventDefault()}
-                                onDrop={() => handleDrop(setAdvisors)}
-                            >
-                                <div className="flex items-center flex-grow w-full">
-                                    <span className="cursor-grab p-2 text-text-secondary/50 hover:text-text-secondary"><DragHandleIcon className="w-6 h-6"/></span>
-                                    <input 
-                                        type="text" 
-                                        placeholder="Nome do Assessor" 
-                                        value={advisor.name} 
-                                        onChange={(e) => updateListItem(setAdvisors, i, { ...advisor, name: e.target.value })} 
-                                        className="flex-grow bg-transparent border-none focus:ring-0 text-lg font-medium text-text-primary placeholder-text-secondary/50"
-                                    />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {goals.map(goal => {
+                    const progress = (goal.currentAmount / goal.targetAmount) * 100;
+                    return (
+                        <Card key={goal.id} className="relative group">
+                            <div className="flex justify-between items-start mb-2">
+                                <h3 className="text-lg font-bold text-text-primary">{goal.name}</h3>
+                                <button onClick={() => onDelete(goal.id)} className="text-text-secondary hover:text-danger opacity-0 group-hover:opacity-100 transition-opacity"><TrashIcon className="w-4 h-4"/></button>
+                            </div>
+                            <div className="mb-4">
+                                <div className="flex justify-between text-sm mb-1">
+                                    <span className="text-text-secondary">Progresso</span>
+                                    <span className="font-bold text-primary">{Math.round(progress)}%</span>
                                 </div>
-                                <div className="flex items-center gap-2 w-full md:w-auto pl-10 md:pl-0">
-                                    <div className="flex items-center bg-surface/50 rounded-lg px-2">
-                                        <input 
-                                            type="number" 
-                                            placeholder="Comissão" 
-                                            value={advisor.commissionRate} 
-                                            onChange={(e) => updateListItem(setAdvisors, i, { ...advisor, commissionRate: parseFloat(e.target.value) || 0 })} 
-                                            className="w-16 bg-transparent border-none focus:ring-0 text-right font-medium"
-                                        />
-                                        <span className="text-text-secondary ml-1">%</span>
-                                    </div>
-                                    <Button variant="ghostDanger" onClick={() => deleteListItem(setAdvisors, i)} className="p-3 h-12 w-12 rounded-lg"><TrashIcon className="w-7 h-7"/></Button>
-                                </div>
-                            </li>
-                        ))}
-                    </ul>
-                    <Button onClick={() => addListItem(setAdvisors, { id: crypto.randomUUID(), name: '', commissionRate: 0 })} className="mt-4 text-sm" variant="secondary">Adicionar Assessor</Button>
-                </Card>
-                <Card className="md:col-span-2">
-                    <h3 className="text-lg font-bold mb-4">Gerenciamento de Dados</h3>
-                    <div className="flex flex-col sm:flex-row gap-4">
-                        <Button onClick={handleExport} variant="secondary">
-                            <ExportIcon className="w-4 h-4" /> Exportar Dados
-                        </Button>
-                        <div>
-                             <input
-                                type="file"
-                                id="import-file"
-                                className="hidden"
-                                accept=".json"
-                                onChange={handleImport}
-                            />
-                            <Button as="label" htmlFor="import-file" variant="secondary">
-                                <UploadIcon className="w-4 h-4" /> Importar Dados
-                            </Button>
-                        </div>
+                                <ProgressBar progress={progress} />
+                            </div>
+                            <div className="flex justify-between items-center text-sm mb-4">
+                                <span className="font-mono text-text-primary">{formatCurrency(goal.currentAmount)}</span>
+                                <span className="text-text-secondary">de {formatCurrency(goal.targetAmount)}</span>
+                            </div>
+                            <Button onClick={() => openProgressModal(goal.id)} variant="secondary" className="w-full text-sm">Adicionar Valor</Button>
+                        </Card>
+                    )
+                })}
+                {goals.length === 0 && (
+                    <div className="col-span-full text-center py-12 text-text-secondary border-2 border-dashed border-border-color rounded-xl">
+                        <GoalsIcon className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                        <p>Nenhuma meta definida ainda.</p>
                     </div>
-                    <p className="text-xs text-text-secondary mt-4">
-                        Exporte seus dados (configurações, metas, transações) para um arquivo de backup. A importação restaurará configurações e metas e adicionará as transações.
-                    </p>
-                </Card>
+                )}
+            </div>
+
+            <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Nova Meta">
+                <GoalForm onSubmit={(data) => { onAdd(data); setIsAddModalOpen(false); }} onClose={() => setIsAddModalOpen(false)} />
+            </Modal>
+
+            <Modal isOpen={isProgressModalOpen} onClose={() => setIsProgressModalOpen(false)} title="Adicionar Progresso" size="sm">
+                <AddProgressForm onSubmit={(amount) => { if(selectedGoalId) onUpdateProgress(selectedGoalId, amount); setIsProgressModalOpen(false); }} onClose={() => setIsProgressModalOpen(false)} />
+            </Modal>
+        </div>
+    );
+};
+
+const SettingsView: FC<any> = ({ 
+    incomeCategories, setIncomeCategories, 
+    expenseCategories, setExpenseCategories, 
+    paymentMethods, setPaymentMethods, 
+    costCenters, setCostCenters,
+    advisors, setAdvisors,
+    globalTaxRate, setGlobalTaxRate
+}) => {
+    const [activeTab, setActiveTab] = useState('categories');
+    const [newItem, setNewItem] = useState('');
+    const [newAdvisorName, setNewAdvisorName] = useState('');
+    const [newAdvisorCrm, setNewAdvisorCrm] = useState('');
+
+    const addIncomeCategory = () => { if(newItem) { setIncomeCategories([...incomeCategories, newItem]); setNewItem(''); } };
+    const addExpenseCategory = () => { if(newItem) { setExpenseCategories([...expenseCategories, { name: newItem, type: ExpenseType.EXPENSE }]); setNewItem(''); } };
+    const addPaymentMethod = () => { if(newItem) { setPaymentMethods([...paymentMethods, newItem]); setNewItem(''); } };
+    const addCostCenter = () => { if(newItem) { setCostCenters([...costCenters, { id: crypto.randomUUID(), name: newItem }]); setNewItem(''); } };
+    const addAdvisor = () => { 
+        if(newAdvisorName) { 
+            const crmVal = parseFloat(newAdvisorCrm);
+            // Ensure CRM is negative if user typed positive, unless 0
+            const finalCrm = isNaN(crmVal) ? 0 : (crmVal > 0 ? -crmVal : crmVal);
+            
+            setAdvisors([...advisors, { 
+                id: crypto.randomUUID(), 
+                name: newAdvisorName, 
+                commissionRate: 30,
+                crmCost: finalCrm
+            }]); 
+            setNewAdvisorName(''); 
+            setNewAdvisorCrm('');
+        } 
+    };
+
+    const removeIncomeCategory = (i: number) => setIncomeCategories(incomeCategories.filter((_:any, idx:any) => idx !== i));
+    const removeExpenseCategory = (i: number) => setExpenseCategories(expenseCategories.filter((_:any, idx:any) => idx !== i));
+    const removePaymentMethod = (i: number) => setPaymentMethods(paymentMethods.filter((_:any, idx:any) => idx !== i));
+    const removeCostCenter = (i: number) => setCostCenters(costCenters.filter((_:any, idx:any) => idx !== i));
+    const removeAdvisor = (i: number) => setAdvisors(advisors.filter((_:any, idx:any) => idx !== i));
+
+    return (
+        <div className="space-y-6 animate-fade-in">
+             <div>
+                <h2 className="text-2xl font-bold text-text-primary">Configurações</h2>
+                <p className="text-text-secondary">Personalize as categorias e opções do sistema.</p>
+            </div>
+            
+            <div className="flex border-b border-border-color overflow-x-auto">
+                <button onClick={() => setActiveTab('categories')} className={`px-4 py-2 text-sm font-medium whitespace-nowrap ${activeTab === 'categories' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}>Categorias</button>
+                <button onClick={() => setActiveTab('payment')} className={`px-4 py-2 text-sm font-medium whitespace-nowrap ${activeTab === 'payment' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}>Pagamentos</button>
+                <button onClick={() => setActiveTab('advisors')} className={`px-4 py-2 text-sm font-medium whitespace-nowrap ${activeTab === 'advisors' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}>Assessores & Taxas</button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {activeTab === 'categories' && (
+                    <>
+                        <Card>
+                            <h3 className="font-bold mb-4 text-green-400">Categorias de Receita</h3>
+                            <div className="flex gap-2 mb-4">
+                                <input type="text" value={newItem} onChange={(e) => setNewItem(e.target.value)} placeholder="Nova categoria..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" />
+                                <Button onClick={addIncomeCategory} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button>
+                            </div>
+                            <ul className="space-y-2 max-h-60 overflow-y-auto">
+                                {incomeCategories.map((cat: string, i: number) => (
+                                    <li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm">
+                                        <span>{cat}</span>
+                                        <button onClick={() => removeIncomeCategory(i)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>
+                                    </li>
+                                ))}
+                            </ul>
+                        </Card>
+                         <Card>
+                            <h3 className="font-bold mb-4 text-danger">Categorias de Despesa</h3>
+                            <div className="flex gap-2 mb-4">
+                                <input type="text" value={newItem} onChange={(e) => setNewItem(e.target.value)} placeholder="Nova categoria..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" />
+                                <Button onClick={addExpenseCategory} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button>
+                            </div>
+                            <ul className="space-y-2 max-h-60 overflow-y-auto">
+                                {expenseCategories.map((cat: ExpenseCategory, i: number) => (
+                                    <li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm">
+                                        <span>{cat.name} <span className="text-[10px] uppercase bg-background px-1 rounded ml-1 text-text-secondary">{cat.type}</span></span>
+                                        <button onClick={() => removeExpenseCategory(i)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>
+                                    </li>
+                                ))}
+                            </ul>
+                        </Card>
+                    </>
+                )}
+                
+                {activeTab === 'payment' && (
+                    <>
+                        <Card>
+                             <h3 className="font-bold mb-4">Formas de Pagamento</h3>
+                             <div className="flex gap-2 mb-4">
+                                <input type="text" value={newItem} onChange={(e) => setNewItem(e.target.value)} placeholder="Novo método..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" />
+                                <Button onClick={addPaymentMethod} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button>
+                            </div>
+                            <ul className="space-y-2 max-h-60 overflow-y-auto">
+                                {paymentMethods.map((pm: string, i: number) => (
+                                    <li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm">
+                                        <span>{pm}</span>
+                                        <button onClick={() => removePaymentMethod(i)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>
+                                    </li>
+                                ))}
+                            </ul>
+                        </Card>
+                        <Card>
+                             <h3 className="font-bold mb-4">Centros de Custo</h3>
+                             <div className="flex gap-2 mb-4">
+                                <input type="text" value={newItem} onChange={(e) => setNewItem(e.target.value)} placeholder="Novo centro..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" />
+                                <Button onClick={addCostCenter} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button>
+                            </div>
+                            <ul className="space-y-2 max-h-60 overflow-y-auto">
+                                {costCenters.map((cc: CostCenter, i: number) => (
+                                    <li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm">
+                                        <span>{cc.name}</span>
+                                        {!cc.isDefault && <button onClick={() => removeCostCenter(i)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>}
+                                    </li>
+                                ))}
+                            </ul>
+                        </Card>
+                    </>
+                )}
+
+                {activeTab === 'advisors' && (
+                    <>
+                         <Card>
+                             <h3 className="font-bold mb-4">Gerenciar Assessores</h3>
+                             <div className="flex gap-2 mb-4">
+                                <input type="text" value={newAdvisorName} onChange={(e) => setNewAdvisorName(e.target.value)} placeholder="Nome do Assessor..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" />
+                                <input type="number" value={newAdvisorCrm} onChange={(e) => setNewAdvisorCrm(e.target.value)} placeholder="Custo CRM (-)" className="w-24 bg-background border border-border-color rounded-md px-3 py-2 text-sm" title="Valor fixo mensal (negativo)" />
+                                <Button onClick={addAdvisor} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button>
+                            </div>
+                            <ul className="space-y-2 max-h-60 overflow-y-auto">
+                                {advisors.map((adv: Advisor, i: number) => (
+                                    <li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm">
+                                        <div>
+                                            <span className="font-semibold block">{adv.name}</span>
+                                            {adv.crmCost !== undefined && adv.crmCost !== 0 && (
+                                                <span className="text-xs text-danger">CRM: {formatCurrency(adv.crmCost)}</span>
+                                            )}
+                                        </div>
+                                        <button onClick={() => removeAdvisor(i)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>
+                                    </li>
+                                ))}
+                            </ul>
+                        </Card>
+                        <Card>
+                            <h3 className="font-bold mb-4">Taxas Globais</h3>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm text-text-secondary mb-1">Imposto Padrão (%)</label>
+                                    <input 
+                                        type="number" 
+                                        step="0.01" 
+                                        value={globalTaxRate} 
+                                        onChange={(e) => setGlobalTaxRate(parseFloat(e.target.value) || 0)} 
+                                        className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm"
+                                    />
+                                    <p className="text-xs text-text-secondary mt-1">Este valor será usado para calcular o imposto sobre receitas automaticamente.</p>
+                                </div>
+                            </div>
+                        </Card>
+                    </>
+                )}
             </div>
         </div>
     );
 };
 
+const ReportsView: FC<any> = () => {
+    return (
+        <div className="flex flex-col items-center justify-center h-full text-center p-8 animate-fade-in">
+             <div className="bg-surface p-8 rounded-full mb-6 shadow-xl">
+                <ReportsIcon className="w-16 h-16 text-primary" />
+             </div>
+             <h2 className="text-3xl font-bold text-text-primary mb-2">Relatórios Detalhados</h2>
+             <p className="text-text-secondary max-w-md">O módulo de relatórios avançados com IA está sendo preparado. Em breve você terá acesso a insights profundos sobre sua performance.</p>
+             <Button variant="secondary" className="mt-8" onClick={() => alert('Em breve!')}>Ser notificado</Button>
+        </div>
+    )
+}
 
-const App: React.FC = () => {
-    const [currentUser, setCurrentUser] = useState<User | null>(null);
-    const [loadingAuth, setLoadingAuth] = useState(true);
-    const [isSidebarOpen, setSidebarOpen] = useState(false);
+// --- COMPONENTES PRINCIPAL (APP) ---
+
+const App: FC = () => {
+    const [user, setUser] = useState<User | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [activeView, setActiveView] = useState<View>('dashboard');
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     
+    // Estado global de dados
+    const [transactions, setTransactions] = useState<Transaction[]>([]);
+    const [goals, setGoals] = useLocalStorage<Goal[]>('goals', getInitialGoals());
+    
+    // Configurações Globais
+    const [incomeCategories, setIncomeCategories] = useLocalStorage('incomeCategories', initialIncomeCategories);
+    const [expenseCategories, setExpenseCategories] = useLocalStorage('expenseCategories', initialExpenseCategories);
+    const [paymentMethods, setPaymentMethods] = useLocalStorage('paymentMethods', initialPaymentMethods);
+    const [costCenters, setCostCenters] = useLocalStorage('costCenters', initialCostCenters);
+    const [advisors, setAdvisors] = useLocalStorage('advisors', initialAdvisors);
+    const [globalTaxRate, setGlobalTaxRate] = useLocalStorage('globalTaxRate', 16.33);
+
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, user => {
-            setCurrentUser(user);
-            setLoadingAuth(false);
+        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+            setUser(currentUser);
+            setLoading(false);
         });
         return () => unsubscribe();
     }, []);
 
-    const [transactions, setTransactions] = useState<Transaction[]>([]);
-    const [loadingTransactions, setLoadingTransactions] = useState(true);
-
-    // Fetch transactions from firestore
     useEffect(() => {
-        if (currentUser) {
-            setLoadingTransactions(true);
-            getTransactions()
-                .then(snapshot => {
-                    const data = snapshot.docs.map(doc => ({
-                        id: doc.id,
-                        ...(doc.data() as Omit<Transaction, 'id'>),
-                    })) as Transaction[];
-                    setTransactions(data);
-                })
-                .catch(error => {
-                    console.error("Error fetching transactions: ", error);
-                })
-                .finally(() => {
-                    setLoadingTransactions(false);
-                });
-        } else {
-            setTransactions([]); // Clear transactions on logout
-            setLoadingTransactions(false);
-        }
-    }, [currentUser]);
-
-    const [goals, setGoals] = useLocalStorage<Goal[]>('goals', getInitialGoals());
-    const [incomeCategories, setIncomeCategories] = useLocalStorage<string[]>('incomeCategories', initialIncomeCategories);
-    const [expenseCategories, setExpenseCategories] = useLocalStorage<ExpenseCategory[]>('expenseCategories', initialExpenseCategories);
-    const [paymentMethods, setPaymentMethods] = useLocalStorage<string[]>('paymentMethods', initialPaymentMethods);
-    const [costCenters, setCostCenters] = useLocalStorage<CostCenter[]>('costCenters', initialCostCenters);
-    const [advisors, setAdvisors] = useLocalStorage<Advisor[]>('advisors', initialAdvisors);
-    const [view, setView] = useState<View>('dashboard');
-
-    const addTransaction = async (data: TransactionFormValues) => {
-        if (!currentUser) return;
-        
-        const recurringCount = data.recurringCount || 1;
-        const baseDate = new Date(data.date);
-
-        const transactionsToSave = [];
-        const batchRecurringId = recurringCount > 1 ? crypto.randomUUID() : undefined;
-
-        for (let i = 0; i < recurringCount; i++) {
-            const transactionDate = new Date(baseDate);
-            // We add to UTC month to avoid timezone issues
-            transactionDate.setUTCMonth(baseDate.getUTCMonth() + i);
-            
-            const newTransactionData: Partial<Omit<Transaction, 'id'>> = {
-                date: transactionDate.toISOString(),
-                description: data.description,
-                amount: data.amount,
-                type: data.type,
-                category: data.category,
-                clientSupplier: data.clientSupplier,
-                paymentMethod: data.paymentMethod,
-                status: data.status,
-                nature: data.nature,
-                costCenter: data.costCenter,
-                taxAmount: data.taxAmount,
-                grossAmount: data.grossAmount,
-                commissionAmount: data.commissionAmount,
-                advisorId: data.advisorId,
-                recurringId: batchRecurringId,
-            };
-            
-            // Sanitize object to ensure no undefined values are passed to Firestore
-            const cleanData = Object.entries(newTransactionData).reduce((acc, [key, value]) => {
-                if (value !== undefined) {
-                    acc[key] = value;
-                }
-                return acc;
-            }, {} as any);
-
-            transactionsToSave.push(saveTransaction(cleanData, currentUser.uid));
-        }
-
-        try {
-            await Promise.all(transactionsToSave);
-        } catch (error) {
-            console.error("Error adding transaction(s): ", error);
-            // Optionally, show an error message to the user
-            const errorMessage = (error as any).message || "Erro desconhecido";
-            alert(`Erro ao salvar transação: ${errorMessage}`);
-        }
-        
-        // Refetch all transactions to update the UI
-        const snapshot = await getTransactions();
-        const updatedData = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as Omit<Transaction, 'id'>) })) as Transaction[];
-        setTransactions(updatedData);
-    };
-
-    const editTransaction = async (id: string, data: TransactionFormValues) => {
-        const transactionToUpdate: Partial<Omit<Transaction, 'id'>> = {
-            ...data,
-            date: new Date(data.date).toISOString(),
+        if (!user) return;
+        const loadData = async () => {
+            try {
+                const snapshot = await getTransactions();
+                const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
+                setTransactions(data);
+            } catch (error) {
+                console.error("Erro ao carregar transações:", error);
+            }
         };
-        delete (transactionToUpdate as any).recurringCount;
+        loadData();
+    }, [user]);
 
-        await updateTransaction(id, transactionToUpdate);
-
-        setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...transactionToUpdate, id } : t));
+    const handleAddTransaction = async (data: TransactionFormValues) => {
+        if (!user) return;
+        try {
+            const docRef = await saveTransaction(data as any, user.uid);
+            
+            const newTransaction = { ...data, id: docRef.id } as Transaction;
+            setTransactions(prev => [newTransaction, ...prev]);
+        } catch (error) {
+            console.error("Erro ao adicionar transação:", error);
+            alert("Erro ao salvar no banco de dados.");
+        }
     };
 
-    const deleteTransaction = async (id: string) => {
-        if (window.confirm("Tem certeza que deseja excluir esta transação?")) {
+    const handleEditTransaction = async (id: string, data: TransactionFormValues) => {
+        try {
+            await updateTransaction(id, data);
+            setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...data } as Transaction : t));
+        } catch (error) {
+            console.error("Erro ao editar transação:", error);
+            alert("Erro ao atualizar no banco de dados.");
+        }
+    };
+
+    const handleDeleteTransaction = async (id: string) => {
+        if(!confirm("Tem certeza que deseja excluir?")) return;
+        try {
             await deleteTransactionFromDb(id);
             setTransactions(prev => prev.filter(t => t.id !== id));
-        }
-    };
-    
-    const setExpenseAsPaid = async (id: string) => {
-        const transaction = transactions.find(t => t.id === id);
-        if (transaction && transaction.type === TransactionType.EXPENSE) {
-             await updateTransaction(id, { status: ExpenseStatus.PAID });
-             setTransactions(prev => prev.map(t => t.id === id ? { ...t, status: ExpenseStatus.PAID } : t));
+        } catch (error) {
+            console.error("Erro ao excluir transação:", error);
+            alert("Erro ao excluir do banco de dados.");
         }
     };
 
-    const addGoal = (goalData: Omit<Goal, 'id' | 'currentAmount'>) => {
+    const handleSetPaid = async (id: string) => {
+        try {
+            await updateTransaction(id, { status: ExpenseStatus.PAID });
+            setTransactions(prev => prev.map(t => t.id === id ? { ...t, status: ExpenseStatus.PAID } : t));
+        } catch (error) {
+            console.error("Erro ao atualizar status:", error);
+        }
+    };
+
+    const handleImportTransactions = async (data: any[]) => {
+         if (!user) return;
+         
+         const newTransactions: Transaction[] = [];
+         let errorCount = 0;
+
+         for (const item of data) {
+             const { tempId, selected, ...transactionData } = item;
+             if (!transactionData.description) continue;
+
+             try {
+                 const docRef = await saveTransaction(transactionData, user.uid);
+                 newTransactions.push({ ...transactionData, id: docRef.id } as Transaction);
+             } catch (err) {
+                 errorCount++;
+             }
+         }
+         
+         if (newTransactions.length > 0) {
+             setTransactions(prev => [...newTransactions, ...prev]);
+             alert(`${newTransactions.length} transações importadas com sucesso.${errorCount > 0 ? ` Falha em ${errorCount} itens.` : ''}`);
+         }
+    };
+
+    const handleAddGoal = (goalData: Omit<Goal, 'id' | 'currentAmount'>) => {
         const newGoal: Goal = {
-            ...goalData,
             id: crypto.randomUUID(),
             currentAmount: 0,
+            ...goalData
         };
         setGoals(prev => [...prev, newGoal]);
     };
 
-    const editGoal = (id: string, goalData: Omit<Goal, 'id' | 'currentAmount'>) => {
-        setGoals(prev => prev.map(g => g.id === id ? { ...g, ...goalData } : g));
+    const handleUpdateGoalProgress = (id: string, amount: number) => {
+        setGoals(prev => prev.map(g => {
+            if (g.id === id) {
+                return { ...g, currentAmount: g.currentAmount + amount };
+            }
+            return g;
+        }));
     };
 
-    const deleteGoal = (id: string) => {
-        if(window.confirm("Tem certeza que deseja excluir esta meta?")) {
-             setGoals(prev => prev.filter(g => g.id !== id));
+    const handleDeleteGoal = (id: string) => {
+        if (window.confirm("Tem certeza que deseja excluir esta meta?")) {
+            setGoals(prev => prev.filter(g => g.id !== id));
         }
     };
 
-    const addProgressToGoal = (id: string, amount: number) => {
-        setGoals(prev => prev.map(g => g.id === id ? { ...g, currentAmount: Number(g.currentAmount) + Number(amount) } : g));
-    };
-
-    // New function to handle transaction import
-    const importTransactions = async (importedTransactions: any[]) => {
-        if (!currentUser) return;
-        setLoadingTransactions(true);
-        try {
-            // Filter out potentially invalid transactions and sanitize data
-            const validTransactions = importedTransactions.filter(t => t.description && t.amount && t.date);
-            
-            const promises = validTransactions.map(t => {
-                // Exclude ID to create new records and let Firestore generate new IDs
-                const { id, ...rest } = t;
-                
-                // Ensure no undefined values are passed to Firestore
-                const cleanData = Object.entries(rest).reduce((acc, [key, value]) => {
-                    if (value !== undefined) {
-                        acc[key] = value;
-                    }
-                    return acc;
-                }, {} as any);
-                
-                return saveTransaction(cleanData, currentUser.uid);
-            });
-
-            await Promise.all(promises);
-
-            // Reload transactions from Firestore to reflect changes
-            const snapshot = await getTransactions();
-            const updatedData = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as Omit<Transaction, 'id'>) })) as Transaction[];
-            setTransactions(updatedData);
-        } catch (error) {
-            console.error("Error importing transactions:", error);
-            throw error; // Allow SettingsView to handle alert if needed, or handle here
-        } finally {
-            setLoadingTransactions(false);
-        }
-    };
-
-
-    const pageTitles: Record<View, string> = {
-        dashboard: 'Dashboard',
-        transactions: 'Transações',
-        goals: 'Metas',
-        reports: 'Relatórios',
-        settings: 'Configurações',
-    };
-
-    const renderView = () => {
-        if (loadingTransactions) {
-             return <div className="flex items-center justify-center h-full"><p>Carregando dados...</p></div>;
-        }
-        switch (view) {
-            case 'dashboard': return <DashboardView transactions={transactions} goals={goals} onSetPaid={setExpenseAsPaid} onEdit={editTransaction} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} />;
-            case 'transactions': return <TransactionsView transactions={transactions} onAdd={addTransaction} onEdit={editTransaction} onDelete={deleteTransaction} onSetPaid={setExpenseAsPaid} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} onImportTransactions={importTransactions}/>;
-            case 'goals': return <GoalsView goals={goals} onAddGoal={addGoal} onEditGoal={editGoal} onDeleteGoal={deleteGoal} onAddProgress={addProgressToGoal}/>;
-            case 'reports': return <ReportsView transactions={transactions} expenseCategories={expenseCategories} />;
-            case 'settings': return <SettingsView incomeCategories={incomeCategories} setIncomeCategories={setIncomeCategories} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} paymentMethods={paymentMethods} setPaymentMethods={setPaymentMethods} costCenters={costCenters} setCostCenters={setCostCenters} advisors={advisors} setAdvisors={setAdvisors} goals={goals} setGoals={setGoals} transactions={transactions} onImportTransactions={importTransactions} />;
-            default: return <DashboardView transactions={transactions} goals={goals} onSetPaid={setExpenseAsPaid} onEdit={editTransaction} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} />;
-        }
-    };
-    
-    if (loadingAuth) {
-        return <div className="flex items-center justify-center min-h-screen bg-background text-white">Carregando...</div>;
-    }
-    
-    if (!currentUser) {
-        return <Login />;
-    }
+    if (loading) return <div className="flex items-center justify-center h-screen bg-background text-text-primary">Carregando...</div>;
+    if (!user) return <Login />;
 
     return (
-        <div className="flex h-screen bg-background">
-            <Sidebar activeView={view} setActiveView={setView} isSidebarOpen={isSidebarOpen} user={currentUser} />
-            <div className="flex-1 flex flex-col overflow-hidden">
-                <Header pageTitle={pageTitles[view]} onMenuClick={() => setSidebarOpen(!isSidebarOpen)} />
-                 {isSidebarOpen && <div className="fixed inset-0 bg-black bg-opacity-50 z-10 md:hidden" onClick={() => setSidebarOpen(false)}></div>}
-                <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6">
-                    {renderView()}
+        <div className="flex h-screen bg-background font-sans overflow-hidden">
+            <Sidebar activeView={activeView} setActiveView={(v) => { setActiveView(v); setIsSidebarOpen(false); }} isSidebarOpen={isSidebarOpen} user={user} />
+            
+            <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
+                <Header pageTitle={
+                    activeView === 'dashboard' ? 'Dashboard' : 
+                    activeView === 'transactions' ? 'Transações' :
+                    activeView === 'goals' ? 'Metas' :
+                    activeView === 'reports' ? 'Relatórios' : 'Configurações'
+                } onMenuClick={() => setIsSidebarOpen(true)} />
+                
+                <main className="flex-1 overflow-y-auto p-4 sm:p-8 relative">
+                    {activeView === 'dashboard' && (
+                        <DashboardView 
+                            transactions={transactions} 
+                            goals={goals} 
+                            onSetPaid={handleSetPaid}
+                            onEdit={handleEditTransaction}
+                            incomeCategories={incomeCategories}
+                            expenseCategories={expenseCategories}
+                            paymentMethods={paymentMethods}
+                            costCenters={costCenters}
+                            advisors={advisors}
+                            globalTaxRate={globalTaxRate}
+                        />
+                    )}
+                    {activeView === 'transactions' && (
+                        <TransactionsView 
+                            transactions={transactions} 
+                            onAdd={handleAddTransaction} 
+                            onEdit={handleEditTransaction} 
+                            onDelete={handleDeleteTransaction} 
+                            onSetPaid={handleSetPaid}
+                            incomeCategories={incomeCategories}
+                            expenseCategories={expenseCategories}
+                            paymentMethods={paymentMethods}
+                            costCenters={costCenters}
+                            advisors={advisors}
+                            onImportTransactions={handleImportTransactions}
+                            globalTaxRate={globalTaxRate}
+                        />
+                    )}
+                    {activeView === 'goals' && (
+                        <GoalsView goals={goals} onAdd={handleAddGoal} onUpdateProgress={handleUpdateGoalProgress} onDelete={handleDeleteGoal} />
+                    )}
+                    {activeView === 'reports' && <ReportsView transactions={transactions} />}
+                    {activeView === 'settings' && (
+                        <SettingsView 
+                            incomeCategories={incomeCategories} setIncomeCategories={setIncomeCategories}
+                            expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories}
+                            paymentMethods={paymentMethods} setPaymentMethods={setPaymentMethods}
+                            costCenters={costCenters} setCostCenters={setCostCenters}
+                            advisors={advisors} setAdvisors={setAdvisors}
+                            globalTaxRate={globalTaxRate} setGlobalTaxRate={setGlobalTaxRate}
+                        />
+                    )}
                 </main>
             </div>
         </div>
