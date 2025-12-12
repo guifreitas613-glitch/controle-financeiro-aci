@@ -39,6 +39,17 @@ export interface Transaction {
   grossAmount?: number;
   commissionAmount?: number;
   advisorId?: string;
+  splits?: AdvisorSplit[];
+}
+
+export interface ImportedRevenue {
+    id: string;
+    date: string; // ISO string
+    advisor: string;
+    client: string;
+    category: string;
+    amount: number; // Receita Base
+    origin: string; // Corretora/Origem
 }
 
 export interface AdvisorSplit {
@@ -46,6 +57,9 @@ export interface AdvisorSplit {
     advisorName: string;
     revenueAmount: number;
     percentage: number;
+    // Computed fields optionally stored
+    crmCost?: number;
+    netPayout?: number;
 }
 
 export interface Goal {
@@ -74,6 +88,6 @@ export interface ExpenseCategory {
     type: ExpenseType; // Custo ou Despesa
 }
 
-export type View = 'dashboard' | 'transactions' | 'goals' | 'reports' | 'settings';
+export type View = 'dashboard' | 'transactions' | 'imported-revenues' | 'goals' | 'reports' | 'settings';
 
 export type AspectRatio = "1:1" | "3:4" | "4:3" | "9:16" | "16:9";
