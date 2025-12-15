@@ -44,7 +44,7 @@ export interface Transaction {
 
 export interface ImportedRevenue {
     id: string;
-    data: string; // ISO string (coluna Data)
+    date: string; // ISO string (coluna Data) - Padronizado para 'date'
     conta: string; // coluna Conta
     cliente: string; // coluna Cliente
     codAssessor: string; // coluna Cod Assessor

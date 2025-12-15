@@ -74,8 +74,9 @@ export function getRevenuesByPeriod(startDate: string, endDate: string) {
     const q = query(
         col, 
         where("tipoInterno", "==", "receita_importada"),
-        where("data", ">=", startDate),
-        where("data", "<=", endDate)
+        where("date", ">=", startDate),
+        where("date", "<=", endDate),
+        orderBy("date", "asc")
     );
     return getDocs(q);
 }

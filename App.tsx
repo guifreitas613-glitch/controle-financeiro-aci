@@ -336,7 +336,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         endDate.setUTCHours(23, 59, 59, 999);
         const endDateIso = endDate.toISOString();
 
-        if (startDate > endDate) {
+        if (startDate.getTime() > endDate.getTime()) {
             alert("Data inicial não pode ser maior que data final.");
             return;
         }
@@ -355,6 +355,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             let totalRevenueFound = 0;
 
             periodRevenues.forEach(rev => {
+                // Use rev.date instead of rev.data
                 const advisor = advisors.find(adv => 
                     adv.name.toLowerCase() === (rev.assessorPrincipal || '').toLowerCase()
                 );
@@ -387,7 +388,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             alert(`Receitas carregadas! Total: ${formatCurrency(totalRevenueFound)} distribuído entre ${newSplits.length} assessores.`);
         } catch (error) {
             console.error("Erro ao buscar receitas:", error);
-            alert("Erro ao buscar receitas do período. Verifique se existe um índice composto para 'tipoInterno' e 'data' no Firebase.");
+            alert("Erro ao buscar receitas do período. Verifique se existe um índice composto para 'tipoInterno' e 'date' no Firebase.");
         }
     };
 
@@ -1323,7 +1324,7 @@ const ImportedRevenuesView: FC<{
 
     const filteredRevenues = useMemo(() => {
         return importedRevenues.filter(r => {
-            const rDate = new Date(r.data).toISOString().split('T')[0];
+            const rDate = new Date(r.date).toISOString().split('T')[0];
             
             if (startDate && rDate < startDate) return false;
             if (endDate && rDate > endDate) return false;
@@ -1367,8 +1368,7 @@ const ImportedRevenuesView: FC<{
                                         // Excel base date: Dec 30 1899 usually for PC.
                                         // Javascript base date: Jan 1 1970.
                                         // Difference is 25569 days.
-                                        const jsDate = new Date(((rawDate as number) - 25569) * 86400 * 1000);
-                                        // Add 12 hours to avoid timezone issues rolling it back a day
+                                        const jsDate = new Date(((Number(rawDate)) - 25569) * 86400 * 1000);
                                         jsDate.setHours(12, 0, 0); 
                                         dateIso = jsDate.toISOString();
                                     } else if (rawDate) {
@@ -1383,7 +1383,7 @@ const ImportedRevenuesView: FC<{
                                     }
 
                                     return {
-                                        data: dateIso,
+                                        date: dateIso,
                                         conta: row['Conta'] || '',
                                         cliente: row['Cliente'] || '',
                                         codAssessor: row['Cod Assessor'] || '',
@@ -1464,7 +1464,7 @@ const ImportedRevenuesView: FC<{
                         <tbody className="divide-y divide-border-color/30 text-xs">
                             {filteredRevenues.map(r => (
                                 <tr key={r.id} className="hover:bg-background/50">
-                                    <td className="p-4">{formatDate(r.data)}</td>
+                                    <td className="p-4">{formatDate(r.date)}</td>
                                     <td className="p-4">{r.conta}</td>
                                     <td className="p-4 font-medium">{r.cliente}</td>
                                     <td className="p-4">{r.codAssessor}</td>
@@ -1574,7 +1574,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         today.setHours(0, 0, 0, 0);
         const fiveDaysFromNow = new Date(today);
         fiveDaysFromNow.setDate(today.getDate() + 5);
-        return transactions.filter(t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PENDING && new Date(t.date) <= fiveDaysFromNow).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        return transactions.filter(t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PENDING && new Date(t.date).getTime() <= fiveDaysFromNow.getTime()).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     }, [transactions]);
 
     const expenseSubcategoryData = useMemo(() => {
@@ -1657,7 +1657,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                             </thead>
                             <tbody className="text-xs sm:text-sm">
                                 {upcomingBills.map(bill => {
-                                    const isOverdue = new Date(bill.date) < new Date(new Date().setHours(0,0,0,0));
+                                    const isOverdue = new Date(bill.date).getTime() < new Date(new Date().setHours(0,0,0,0)).getTime();
                                     const isToday = new Date(bill.date).toDateString() === new Date().toDateString();
                                     return (
                                         <tr key={bill.id} className="border-b border-border-color/50 last:border-0 hover:bg-background/50 transition-colors">
