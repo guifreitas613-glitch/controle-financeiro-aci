@@ -69,6 +69,17 @@ export function getImportedRevenues() {
     return getDocs(q);
 }
 
+export function getRevenuesByPeriod(startDate: string, endDate: string) {
+    const col = collection(db, "transacoes");
+    const q = query(
+        col, 
+        where("tipoInterno", "==", "receita_importada"),
+        where("data", ">=", startDate),
+        where("data", "<=", endDate)
+    );
+    return getDocs(q);
+}
+
 export function deleteImportedRevenue(id: string) {
     const docRef = doc(db, "transacoes", id);
     return deleteDoc(docRef);

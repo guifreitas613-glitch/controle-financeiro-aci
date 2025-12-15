@@ -5,7 +5,7 @@ import Login from './Login';
 import { auth } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { logoutUser } from './auth';
-import { getTransactions, saveTransaction, updateTransaction, deleteTransaction as deleteTransactionFromDb, getImportedRevenues, saveImportedRevenue, deleteImportedRevenue } from './firestore';
+import { getTransactions, saveTransaction, updateTransaction, deleteTransaction as deleteTransactionFromDb, getImportedRevenues, saveImportedRevenue, deleteImportedRevenue, getRevenuesByPeriod } from './firestore';
 
 
 // --- ÍCONES ---
@@ -322,7 +322,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         setSearchPeriod({ ...searchPeriod, show: true });
     };
 
-    const confirmSearchPeriod = () => {
+    const confirmSearchPeriod = async () => {
         if (!searchPeriod.start || !searchPeriod.end) {
             alert("Selecione a data inicial e final.");
             return;
@@ -330,59 +330,65 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         
         const startDate = new Date(searchPeriod.start);
         startDate.setUTCHours(0, 0, 0, 0);
+        const startDateIso = startDate.toISOString();
+
         const endDate = new Date(searchPeriod.end);
         endDate.setUTCHours(23, 59, 59, 999);
+        const endDateIso = endDate.toISOString();
 
         if (startDate > endDate) {
             alert("Data inicial não pode ser maior que data final.");
             return;
         }
 
-        const periodRevenues = importedRevenues.filter(rev => {
-            const rDate = new Date(rev.data);
-            return rDate >= startDate && rDate <= endDate;
-        });
+        try {
+            const snapshot = await getRevenuesByPeriod(startDateIso, endDateIso);
+            const periodRevenues = snapshot.docs.map(doc => doc.data() as ImportedRevenue);
 
-        if (periodRevenues.length === 0) {
-            alert("Nenhuma receita importada encontrada para o período selecionado.");
-            setSearchPeriod({ ...searchPeriod, show: false });
-            return;
-        }
-
-        const revenueByAdvisor: Record<string, number> = {};
-        let totalRevenueFound = 0;
-
-        periodRevenues.forEach(rev => {
-            const advisor = advisors.find(adv => 
-                adv.name.toLowerCase() === (rev.assessorPrincipal || '').toLowerCase()
-            );
-
-            if (advisor) {
-                revenueByAdvisor[advisor.id] = (revenueByAdvisor[advisor.id] || 0) + rev.receitaLiquidaEQI;
-                totalRevenueFound += rev.receitaLiquidaEQI;
+            if (periodRevenues.length === 0) {
+                alert("Nenhuma receita importada encontrada para o período selecionado.");
+                setSearchPeriod({ ...searchPeriod, show: false });
+                return;
             }
-        });
 
-        if (totalRevenueFound === 0) {
-             alert("Receitas encontradas, mas nenhum assessor correspondente foi localizado. Verifique se os nomes na aba 'Receitas Importadas' coincidem com os cadastrados em Configurações.");
-             setSearchPeriod({ ...searchPeriod, show: false });
-             return;
+            const revenueByAdvisor: Record<string, number> = {};
+            let totalRevenueFound = 0;
+
+            periodRevenues.forEach(rev => {
+                const advisor = advisors.find(adv => 
+                    adv.name.toLowerCase() === (rev.assessorPrincipal || '').toLowerCase()
+                );
+
+                if (advisor) {
+                    revenueByAdvisor[advisor.id] = (revenueByAdvisor[advisor.id] || 0) + rev.receitaLiquidaEQI;
+                    totalRevenueFound += rev.receitaLiquidaEQI;
+                }
+            });
+
+            if (totalRevenueFound === 0) {
+                alert("Receitas encontradas, mas nenhum assessor correspondente foi localizado. Verifique se os nomes na aba 'Receitas Importadas' coincidem com os cadastrados em Configurações.");
+                setSearchPeriod({ ...searchPeriod, show: false });
+                return;
+            }
+
+            const newSplits: AdvisorSplit[] = Object.keys(revenueByAdvisor).map(advId => {
+                const advisor = advisors.find(a => a.id === advId)!;
+                return {
+                    advisorId: advisor.id,
+                    advisorName: advisor.name,
+                    revenueAmount: revenueByAdvisor[advId],
+                    percentage: advisor.commissionRate || 30
+                };
+            });
+
+            setSplits(newSplits);
+            setFormData(prev => ({ ...prev, grossAmount: totalRevenueFound.toFixed(2) }));
+            setSearchPeriod({ ...searchPeriod, show: false });
+            alert(`Receitas carregadas! Total: ${formatCurrency(totalRevenueFound)} distribuído entre ${newSplits.length} assessores.`);
+        } catch (error) {
+            console.error("Erro ao buscar receitas:", error);
+            alert("Erro ao buscar receitas do período. Verifique se existe um índice composto para 'tipoInterno' e 'data' no Firebase.");
         }
-
-        const newSplits: AdvisorSplit[] = Object.keys(revenueByAdvisor).map(advId => {
-            const advisor = advisors.find(a => a.id === advId)!;
-            return {
-                advisorId: advisor.id,
-                advisorName: advisor.name,
-                revenueAmount: revenueByAdvisor[advId],
-                percentage: advisor.commissionRate || 30
-            };
-        });
-
-        setSplits(newSplits);
-        setFormData(prev => ({ ...prev, grossAmount: totalRevenueFound.toFixed(2) }));
-        setSearchPeriod({ ...searchPeriod, show: false });
-        alert(`Receitas carregadas! Total: ${formatCurrency(totalRevenueFound)} distribuído entre ${newSplits.length} assessores.`);
     };
 
     const splitsDetails = useMemo(() => {
@@ -1354,10 +1360,20 @@ const ImportedRevenuesView: FC<{
                                     
                                     // Parse date properly (assuming Excel standard)
                                     let dateIso = new Date().toISOString();
-                                    if (row['Data']) {
-                                        // If it's a number (Excel serial date), convert it. If string, use Date constructor.
-                                        // Simple handling for now:
-                                        dateIso = new Date(row['Data']).toISOString(); 
+                                    const rawDate = row['Data'];
+
+                                    if (typeof rawDate === 'number') {
+                                        // Excel date to JS Date
+                                        // Excel base date: Dec 30 1899 usually for PC.
+                                        // Javascript base date: Jan 1 1970.
+                                        // Difference is 25569 days.
+                                        const jsDate = new Date(((rawDate as number) - 25569) * 86400 * 1000);
+                                        // Add 12 hours to avoid timezone issues rolling it back a day
+                                        jsDate.setHours(12, 0, 0); 
+                                        dateIso = jsDate.toISOString();
+                                    } else if (rawDate) {
+                                        // Try parsing string
+                                         dateIso = new Date(rawDate).toISOString();
                                     }
 
                                     // Parse Percentual Repasse as integer (80% -> 80)
@@ -1487,6 +1503,21 @@ interface DashboardViewProps {
     importedRevenues: ImportedRevenue[];
 }
 
+const ReportsView: FC<{ transactions: Transaction[] }> = ({ transactions }) => {
+    return (
+        <div className="space-y-6 animate-fade-in">
+             <div className="flex justify-between items-center">
+                <div><h2 className="text-2xl font-bold text-text-primary">Relatórios</h2><p className="text-text-secondary">Análises detalhadas.</p></div>
+            </div>
+            <Card className="p-12 text-center text-text-secondary border-2 border-dashed border-border-color">
+                <ReportsIcon className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                <h3 className="text-lg font-bold mb-2">Relatórios em Desenvolvimento</h3>
+                <p>Em breve você poderá visualizar relatórios avançados de fluxo de caixa e DRE.</p>
+            </Card>
+        </div>
+    );
+};
+
 const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid, onEdit, incomeCategories, expenseCategories, paymentMethods, costCenters, advisors, globalTaxRate, importedRevenues }) => {
     const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
     const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all');
@@ -1519,15 +1550,16 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
             if (expenses.length > 0) largestExpense = expenses.reduce((max, t) => t.amount > max.amount ? t : max);
         }
         
-        const monthProfits = filteredTransactions.reduce<Record<string, number>>((acc, t) => {
+        const monthProfits = filteredTransactions.reduce((acc, t) => {
             const month = getMonthYear(t.date);
             const amount = t.type === TransactionType.INCOME ? t.amount : -t.amount;
-            acc[month] = (acc[month] || 0) + amount;
+            const current = acc[month] || 0;
+            acc[month] = current + amount;
             return acc;
-        }, {});
+        }, {} as Record<string, number>);
         
         const mostProfitableMonth = Object.keys(monthProfits).length > 0
-            ? Object.entries(monthProfits).reduce<[string, number]>((max, entry) => (entry[1] as number) > (max[1] as number) ? entry : max, ["N/A", -Infinity])[0]
+            ? (Object.entries(monthProfits) as [string, number][]).reduce<[string, number]>((max, entry) => entry[1] > max[1] ? entry : max, ["N/A", -Infinity])[0]
             : "N/A";
             
         const totalProvisioned = filteredTransactions.filter(t => t.type === TransactionType.INCOME && t.taxAmount).reduce<number>((sum, t) => sum + (t.taxAmount || 0), 0);
@@ -1689,167 +1721,6 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Confirmar Pagamento / Ajustar Valor">
                 <TransactionForm onSubmit={handleFormSubmit} onClose={() => setIsModalOpen(false)} initialData={editingTransaction} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} globalTaxRate={globalTaxRate} transactions={transactions} importedRevenues={importedRevenues} />
             </Modal>
-        </div>
-    );
-};
-
-const ReportsView: FC<{ transactions: Transaction[] }> = ({ transactions }) => {
-    const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-
-    // Filter transactions by year
-    const yearTransactions = useMemo(() => {
-        return transactions.filter(t => new Date(t.date).getFullYear() === selectedYear);
-    }, [transactions, selectedYear]);
-
-    // Available years
-    const years = useMemo(() => {
-        const y = new Set(transactions.map(t => new Date(t.date).getFullYear()));
-        y.add(new Date().getFullYear());
-        return Array.from(y).sort((a, b) => b - a);
-    }, [transactions]);
-
-    // Monthly Data for Bar Chart
-    const monthlyData = useMemo(() => {
-        const data = Array(12).fill(0).map((_, i) => ({
-            name: new Date(0, i).toLocaleString('pt-BR', { month: 'short' }),
-            receitas: 0,
-            despesas: 0,
-            saldo: 0
-        }));
-
-        yearTransactions.forEach(t => {
-            const month = new Date(t.date).getMonth();
-            if (t.type === TransactionType.INCOME) data[month].receitas += t.amount;
-            else data[month].despesas += t.amount;
-        });
-
-        return data.map(d => ({ ...d, saldo: d.receitas - d.despesas }));
-    }, [yearTransactions]);
-
-    // Category Data for Pie Charts
-    const expenseByCategory = useMemo(() => {
-        const catMap: Record<string, number> = {};
-        yearTransactions.filter(t => t.type === TransactionType.EXPENSE).forEach(t => {
-            catMap[t.category] = (catMap[t.category] || 0) + t.amount;
-        });
-        return Object.entries(catMap)
-            .map(([name, value]) => ({ name, value }))
-            .sort((a, b) => b.value - a.value);
-    }, [yearTransactions]);
-
-    const incomeByCategory = useMemo(() => {
-        const catMap: Record<string, number> = {};
-        yearTransactions.filter(t => t.type === TransactionType.INCOME).forEach(t => {
-            catMap[t.category] = (catMap[t.category] || 0) + t.amount;
-        });
-        return Object.entries(catMap)
-            .map(([name, value]) => ({ name, value }))
-            .sort((a, b) => b.value - a.value);
-    }, [yearTransactions]);
-
-    // Totals
-    const totalIncome = yearTransactions.filter(t => t.type === TransactionType.INCOME).reduce((acc, t) => acc + t.amount, 0);
-    const totalExpense = yearTransactions.filter(t => t.type === TransactionType.EXPENSE).reduce((acc, t) => acc + t.amount, 0);
-    const result = totalIncome - totalExpense;
-
-    const COLORS = ['#D1822A', '#6366F1', '#10B981', '#EF4444', '#F59E0B', '#8B5CF6', '#EC4899', '#14B8A6'];
-
-    return (
-        <div className="space-y-6 animate-fade-in">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h2 className="text-2xl font-bold text-text-primary">Relatórios Financeiros</h2>
-                    <p className="text-text-secondary">Análise detalhada do ano {selectedYear}</p>
-                </div>
-                <select 
-                    value={selectedYear} 
-                    onChange={(e) => setSelectedYear(Number(e.target.value))}
-                    className="bg-surface border border-border-color rounded-lg px-4 py-2 text-text-primary focus:ring-primary focus:border-primary"
-                >
-                    {years.map(y => <option key={y} value={y}>{y}</option>)}
-                </select>
-            </div>
-
-            {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <Card className="border-l-4 border-green-400">
-                    <p className="text-text-secondary text-sm font-medium">Receitas ({selectedYear})</p>
-                    <p className="text-2xl font-bold text-green-400 mt-1">{formatCurrency(totalIncome)}</p>
-                </Card>
-                <Card className="border-l-4 border-danger">
-                    <p className="text-text-secondary text-sm font-medium">Despesas ({selectedYear})</p>
-                    <p className="text-2xl font-bold text-danger mt-1">{formatCurrency(totalExpense)}</p>
-                </Card>
-                <Card className={`border-l-4 ${result >= 0 ? 'border-primary' : 'border-red-500'}`}>
-                    <p className="text-text-secondary text-sm font-medium">Resultado Operacional</p>
-                    <p className={`text-2xl font-bold mt-1 ${result >= 0 ? 'text-text-primary' : 'text-danger'}`}>{formatCurrency(result)}</p>
-                </Card>
-            </div>
-
-            {/* Monthly Chart */}
-            <Card className="h-96">
-                <h3 className="text-lg font-bold mb-6">Evolução Mensal</h3>
-                <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={monthlyData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2D376A" opacity={0.3} />
-                        <XAxis dataKey="name" stroke="#A0AEC0" tick={{fontSize: 12}} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#A0AEC0" tick={{fontSize: 12}} tickFormatter={(value) => `R$${value/1000}k`} tickLine={false} axisLine={false} />
-                        <Tooltip 
-                            contentStyle={{ backgroundColor: '#1A214A', border: '1px solid #2D376A', borderRadius: '8px', color: '#F0F2F5' }}
-                            formatter={(value: number) => formatCurrency(value)}
-                            cursor={{fill: '#2D376A', opacity: 0.2}}
-                        />
-                        <Legend wrapperStyle={{paddingTop: '20px'}} />
-                        <Bar dataKey="receitas" name="Receitas" fill="#4ade80" radius={[4, 4, 0, 0]} maxBarSize={50} />
-                        <Bar dataKey="despesas" name="Despesas" fill="#EF4444" radius={[4, 4, 0, 0]} maxBarSize={50} />
-                    </BarChart>
-                </ResponsiveContainer>
-            </Card>
-
-            {/* Pie Charts Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card className="h-96 flex flex-col">
-                    <h3 className="text-lg font-bold mb-2">Despesas por Categoria</h3>
-                    <div className="flex-grow">
-                        {expenseByCategory.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie data={expenseByCategory} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} fill="#8884d8" labelLine={false}>
-                                        {expenseByCategory.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip content={<CustomPieTooltip />} />
-                                    <Legend layout="vertical" align="right" verticalAlign="middle" />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        ) : (
-                            <div className="flex items-center justify-center h-full text-text-secondary">Sem dados de despesa</div>
-                        )}
-                    </div>
-                </Card>
-
-                <Card className="h-96 flex flex-col">
-                    <h3 className="text-lg font-bold mb-2">Receitas por Categoria</h3>
-                    <div className="flex-grow">
-                        {incomeByCategory.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie data={incomeByCategory} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} fill="#8884d8" labelLine={false}>
-                                        {incomeByCategory.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip content={<CustomPieTooltip />} />
-                                    <Legend layout="vertical" align="right" verticalAlign="middle" />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        ) : (
-                            <div className="flex items-center justify-center h-full text-text-secondary">Sem dados de receita</div>
-                        )}
-                    </div>
-                </Card>
-            </div>
         </div>
     );
 };
