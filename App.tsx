@@ -47,7 +47,7 @@ function useLocalStorage<T>(key: string, initialValue: T): [T, React.Dispatch<Re
             }
             return parsed;
         } catch (error) {
-            console.error(`Error reading localStorage key “${key}”:`, error);
+            console.error(`Error reading localStorage key "${key}":`, error);
             return initialValue;
         }
     });
@@ -56,7 +56,7 @@ function useLocalStorage<T>(key: string, initialValue: T): [T, React.Dispatch<Re
         try {
             window.localStorage.setItem(key, JSON.stringify(storedValue));
         } catch (error) {
-            console.error(`Error writing to localStorage key “${key}”:`, error);
+            console.error(`Error writing to localStorage key "${key}":`, error);
         }
     }, [key, storedValue]);
 
@@ -509,33 +509,30 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             {type === TransactionType.INCOME && (
                 <>
                 <div className="border border-border-color rounded-lg p-4 bg-background/50">
-                    <div className="flex flex-col sm:flex-row justify-between items-center mb-3 gap-3">
-                         <h3 className="text-sm font-bold text-text-primary self-start sm:self-center">Adicionar detalhamento por assessor</h3>
-                         <div className="flex gap-2 w-full sm:w-auto items-end">
-                             {!searchPeriod.show ? (
-                                 <Button type="button" onClick={handleSearchPeriod} variant="secondary" className="flex-1 sm:flex-none py-2 px-4 text-xs font-semibold border border-primary/30 whitespace-nowrap" title="Busca e agrupa receitas já lançadas para os assessores por período">
-                                     Buscar receitas do período
-                                 </Button>
-                             ) : (
-                                <div className="flex flex-col sm:flex-row gap-2 items-end bg-surface p-2 rounded border border-border-color">
-                                    <div>
-                                        <label className="block text-[10px] text-text-secondary">De</label>
-                                        <input type="date" value={searchPeriod.start} onChange={(e) => setSearchPeriod({...searchPeriod, start: e.target.value})} className="bg-background border border-border-color rounded px-2 py-1 text-xs min-w-[150px]" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] text-text-secondary">Até</label>
-                                        <input type="date" value={searchPeriod.end} onChange={(e) => setSearchPeriod({...searchPeriod, end: e.target.value})} className="bg-background border border-border-color rounded px-2 py-1 text-xs min-w-[150px]" />
-                                    </div>
-                                    <div className="flex gap-1">
-                                        <Button type="button" onClick={confirmSearchPeriod} className="py-1 px-3 text-xs min-w-[50px]">OK</Button>
-                                        <Button type="button" onClick={() => setSearchPeriod({...searchPeriod, show: false})} variant="ghost" className="py-1 px-2 text-xs">X</Button>
-                                    </div>
-                                </div>
-                             )}
-                             <Button type="button" onClick={addSplit} variant="secondary" className="flex-1 sm:flex-none py-2 px-4 text-xs font-semibold whitespace-nowrap">
-                                 <PlusIcon className="w-4 h-4" /> Adicionar Assessor
+                    <div className="flex flex-wrap gap-3 mb-3">
+                         {!searchPeriod.show ? (
+                             <Button type="button" onClick={handleSearchPeriod} variant="secondary" className="flex-1 sm:flex-none py-2 px-4 text-xs font-semibold border border-primary/30 whitespace-nowrap" title="Busca e agrupa receitas já lançadas para os assessores por período">
+                                 Buscar receitas do período
                              </Button>
-                         </div>
+                         ) : (
+                            <div className="flex flex-col sm:flex-row gap-2 items-end bg-surface p-2 rounded border border-border-color w-full sm:w-auto">
+                                <div>
+                                    <label className="block text-[10px] text-text-secondary">De</label>
+                                    <input type="date" value={searchPeriod.start} onChange={(e) => setSearchPeriod({...searchPeriod, start: e.target.value})} className="bg-background border border-border-color rounded px-2 py-1 text-xs min-w-[150px]" />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] text-text-secondary">Até</label>
+                                    <input type="date" value={searchPeriod.end} onChange={(e) => setSearchPeriod({...searchPeriod, end: e.target.value})} className="bg-background border border-border-color rounded px-2 py-1 text-xs min-w-[150px]" />
+                                </div>
+                                <div className="flex gap-1">
+                                    <Button type="button" onClick={confirmSearchPeriod} className="py-1 px-3 text-xs min-w-[50px]">OK</Button>
+                                    <Button type="button" onClick={() => setSearchPeriod({...searchPeriod, show: false})} variant="ghost" className="py-1 px-2 text-xs">X</Button>
+                                </div>
+                            </div>
+                         )}
+                         <Button type="button" onClick={addSplit} variant="secondary" className="flex-1 sm:flex-none py-2 px-4 text-xs font-semibold whitespace-nowrap">
+                             <PlusIcon className="w-4 h-4" /> Adicionar Assessor
+                         </Button>
                     </div>
                     
                     {splits.length > 0 && (

@@ -1,6 +1,6 @@
-import firebase from "firebase/compat/app";
-import "firebase/compat/auth";
-import "firebase/compat/firestore";
+import * as firebaseApp from "firebase/app";
+import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBh-Jcq9VnmbmiEMv09i5KlAmBUmw0sTb4",
@@ -11,8 +11,9 @@ const firebaseConfig = {
   appId: "1:652429637116:web:2690c0657bf5f521826e79"
 };
 
-const app = firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const db = firebase.firestore();
+// Use namespace import and cast to any to bypass potential type definition issues
+const app = (firebaseApp as any).initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
 
 export { app, auth, db };
