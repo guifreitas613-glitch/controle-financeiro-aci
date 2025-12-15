@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, FC, ReactNode, useEffect } from 'react';
 import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType, AdvisorSplit, ImportedRevenue } from './types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area } from 'recharts';
@@ -248,6 +247,9 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         costCenter: initialData?.costCenter || 'conta-pj',
     });
     
+    // Search state for period revenues
+    const [searchPeriod, setSearchPeriod] = useState({ start: '', end: '', show: false });
+    
     const [commissionAmount, setCommissionAmount] = useState(initialData?.commissionAmount || 0);
     const [isCommissionManual, setIsCommissionManual] = useState(false);
     
@@ -316,22 +318,34 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         setSplits(newSplits);
     };
 
-    const fetchPeriodRevenues = () => {
-        if (!formData.date) {
-            alert("Selecione uma data para buscar as receitas.");
+    const handleSearchPeriod = () => {
+        setSearchPeriod({ ...searchPeriod, show: true });
+    };
+
+    const confirmSearchPeriod = () => {
+        if (!searchPeriod.start || !searchPeriod.end) {
+            alert("Selecione a data inicial e final.");
             return;
         }
-        const selectedDate = new Date(formData.date);
-        const selectedMonth = selectedDate.getMonth();
-        const selectedYear = selectedDate.getFullYear();
+        
+        const startDate = new Date(searchPeriod.start);
+        startDate.setUTCHours(0, 0, 0, 0);
+        const endDate = new Date(searchPeriod.end);
+        endDate.setUTCHours(23, 59, 59, 999);
+
+        if (startDate > endDate) {
+            alert("Data inicial não pode ser maior que data final.");
+            return;
+        }
 
         const periodRevenues = importedRevenues.filter(rev => {
-            const rDate = new Date(rev.date);
-            return rDate.getMonth() === selectedMonth && rDate.getFullYear() === selectedYear;
+            const rDate = new Date(rev.data);
+            return rDate >= startDate && rDate <= endDate;
         });
 
         if (periodRevenues.length === 0) {
-            alert("Nenhuma receita importada encontrada neste período na aba 'Receitas Importadas'.");
+            alert("Nenhuma receita importada encontrada para o período selecionado.");
+            setSearchPeriod({ ...searchPeriod, show: false });
             return;
         }
 
@@ -340,17 +354,18 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
 
         periodRevenues.forEach(rev => {
             const advisor = advisors.find(adv => 
-                adv.name.toLowerCase() === rev.advisor.toLowerCase()
+                adv.name.toLowerCase() === (rev.assessorPrincipal || '').toLowerCase()
             );
 
             if (advisor) {
-                revenueByAdvisor[advisor.id] = (revenueByAdvisor[advisor.id] || 0) + rev.amount;
-                totalRevenueFound += rev.amount;
+                revenueByAdvisor[advisor.id] = (revenueByAdvisor[advisor.id] || 0) + rev.receitaLiquidaEQI;
+                totalRevenueFound += rev.receitaLiquidaEQI;
             }
         });
 
         if (totalRevenueFound === 0) {
              alert("Receitas encontradas, mas nenhum assessor correspondente foi localizado. Verifique se os nomes na aba 'Receitas Importadas' coincidem com os cadastrados em Configurações.");
+             setSearchPeriod({ ...searchPeriod, show: false });
              return;
         }
 
@@ -366,7 +381,8 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
 
         setSplits(newSplits);
         setFormData(prev => ({ ...prev, grossAmount: totalRevenueFound.toFixed(2) }));
-        alert(`Receitas carregadas da tabela de importação! Total: ${formatCurrency(totalRevenueFound)} distribuído entre ${newSplits.length} assessores.`);
+        setSearchPeriod({ ...searchPeriod, show: false });
+        alert(`Receitas carregadas! Total: ${formatCurrency(totalRevenueFound)} distribuído entre ${newSplits.length} assessores.`);
     };
 
     const splitsDetails = useMemo(() => {
@@ -495,10 +511,27 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                 <div className="border border-border-color rounded-lg p-4 bg-background/50">
                     <div className="flex flex-col sm:flex-row justify-between items-center mb-3 gap-3">
                          <h3 className="text-sm font-bold text-text-primary self-start sm:self-center">Adicionar detalhamento por assessor</h3>
-                         <div className="flex gap-2 w-full sm:w-auto">
-                             <Button type="button" onClick={fetchPeriodRevenues} variant="secondary" className="flex-1 sm:flex-none py-2 px-4 text-xs font-semibold border border-primary/30 whitespace-nowrap" title="Busca e agrupa receitas já lançadas para os assessores neste mês">
-                                 Buscar receitas do período
-                             </Button>
+                         <div className="flex gap-2 w-full sm:w-auto items-end">
+                             {!searchPeriod.show ? (
+                                 <Button type="button" onClick={handleSearchPeriod} variant="secondary" className="flex-1 sm:flex-none py-2 px-4 text-xs font-semibold border border-primary/30 whitespace-nowrap" title="Busca e agrupa receitas já lançadas para os assessores por período">
+                                     Buscar receitas do período
+                                 </Button>
+                             ) : (
+                                <div className="flex flex-col sm:flex-row gap-2 items-end bg-surface p-2 rounded border border-border-color">
+                                    <div>
+                                        <label className="block text-[10px] text-text-secondary">De</label>
+                                        <input type="date" value={searchPeriod.start} onChange={(e) => setSearchPeriod({...searchPeriod, start: e.target.value})} className="bg-background border border-border-color rounded px-2 py-1 text-xs min-w-[150px]" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] text-text-secondary">Até</label>
+                                        <input type="date" value={searchPeriod.end} onChange={(e) => setSearchPeriod({...searchPeriod, end: e.target.value})} className="bg-background border border-border-color rounded px-2 py-1 text-xs min-w-[150px]" />
+                                    </div>
+                                    <div className="flex gap-1">
+                                        <Button type="button" onClick={confirmSearchPeriod} className="py-1 px-3 text-xs min-w-[50px]">OK</Button>
+                                        <Button type="button" onClick={() => setSearchPeriod({...searchPeriod, show: false})} variant="ghost" className="py-1 px-2 text-xs">X</Button>
+                                    </div>
+                                </div>
+                             )}
                              <Button type="button" onClick={addSplit} variant="secondary" className="flex-1 sm:flex-none py-2 px-4 text-xs font-semibold whitespace-nowrap">
                                  <PlusIcon className="w-4 h-4" /> Adicionar Assessor
                              </Button>
@@ -539,7 +572,9 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                                         <div className="col-span-2">
                                             <input 
                                                 type="number" 
-                                                step="0.1" 
+                                                step="1" 
+                                                min="0"
+                                                max="100"
                                                 value={split.percentage} 
                                                 onChange={(e) => updateSplit(index, 'percentage', e.target.value)}
                                                 className="w-full bg-background border-border-color rounded-md text-sm py-1 text-center"
@@ -724,8 +759,6 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     );
 };
 
-// ... [GoalsView, SettingsView, etc. components] ...
-
 interface GoalFormProps { onSubmit: (goal: Omit<Goal, 'id' | 'currentAmount'>) => void; onClose: () => void; initialData?: Goal | null; }
 const GoalForm: FC<GoalFormProps> = ({ onSubmit, onClose, initialData }) => { 
     const [name, setName] = useState(initialData?.name || '');
@@ -801,6 +834,139 @@ const AddProgressForm: FC<AddProgressFormProps> = ({ onSubmit, onClose }) => {
                 <Button type="submit">Adicionar</Button>
             </div>
         </form>
+    );
+};
+
+const GoalsView: FC<{ goals: Goal[], onAdd: (g: any) => void, onUpdateProgress: (id: string, amount: number) => void, onDelete: (id: string) => void }> = ({ goals, onAdd, onUpdateProgress, onDelete }) => {
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [isProgressModalOpen, setIsProgressModalOpen] = useState(false);
+    const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
+    const openProgressModal = (id: string) => { setSelectedGoalId(id); setIsProgressModalOpen(true); };
+
+    return (
+        <div className="space-y-6 animate-fade-in">
+             <div className="flex justify-between items-center">
+                <div><h2 className="text-2xl font-bold text-text-primary">Metas Financeiras</h2><p className="text-text-secondary">Defina e acompanhe seus objetivos.</p></div>
+                <Button onClick={() => setIsAddModalOpen(true)} className="flex items-center gap-2"><PlusIcon className="w-5 h-5"/> Nova Meta</Button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {goals.map(goal => {
+                    const progress = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount) * 100 : 0;
+                    return (
+                        <Card key={goal.id} className="relative group">
+                            <div className="flex justify-between items-start mb-2"><h3 className="text-lg font-bold text-text-primary">{goal.name}</h3><button onClick={() => onDelete(goal.id)} className="text-text-secondary hover:text-danger opacity-0 group-hover:opacity-100 transition-opacity"><TrashIcon className="w-4 h-4"/></button></div>
+                            <div className="mb-4"><div className="flex justify-between text-sm mb-1"><span className="text-text-secondary">Progresso</span><span className="font-bold text-primary">{Math.round(progress)}%</span></div><ProgressBar progress={progress} /></div>
+                            <div className="flex justify-between items-center text-sm mb-4"><span className="font-mono text-text-primary">{formatCurrency(goal.currentAmount)}</span><span className="text-text-secondary">de {formatCurrency(goal.targetAmount)}</span></div>
+                            <Button onClick={() => openProgressModal(goal.id)} variant="secondary" className="w-full text-sm">Adicionar Valor</Button>
+                        </Card>
+                    )
+                })}
+                {goals.length === 0 && <div className="col-span-full text-center py-12 text-text-secondary border-2 border-dashed border-border-color rounded-xl"><GoalsIcon className="w-12 h-12 mx-auto mb-4 opacity-50" /><p>Nenhuma meta definida ainda.</p></div>}
+            </div>
+            <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Nova Meta"><GoalForm onSubmit={(data) => { onAdd(data); setIsAddModalOpen(false); }} onClose={() => setIsAddModalOpen(false)} /></Modal>
+            <Modal isOpen={isProgressModalOpen} onClose={() => setIsProgressModalOpen(false)} title="Adicionar Progresso" size="sm"><AddProgressForm onSubmit={(amount) => { if(selectedGoalId) onUpdateProgress(selectedGoalId, amount); setIsProgressModalOpen(false); }} onClose={() => setIsProgressModalOpen(false)} /></Modal>
+        </div>
+    );
+};
+
+const SettingsView: FC<{
+    incomeCategories: string[]; setIncomeCategories: (v: string[]) => void;
+    expenseCategories: ExpenseCategory[]; setExpenseCategories: (v: ExpenseCategory[]) => void;
+    paymentMethods: string[]; setPaymentMethods: (v: string[]) => void;
+    costCenters: CostCenter[]; setCostCenters: (v: CostCenter[]) => void;
+    advisors: Advisor[]; setAdvisors: (v: Advisor[]) => void;
+    globalTaxRate: number; setGlobalTaxRate: (v: number) => void;
+}> = (props) => {
+    const [activeTab, setActiveTab] = useState('categories');
+    const [newItem, setNewItem] = useState('');
+    const [newAdvisorName, setNewAdvisorName] = useState('');
+    const [newAdvisorRate, setNewAdvisorRate] = useState('30');
+    const [newAdvisorCost, setNewAdvisorCost] = useState('0');
+
+    const addItem = (list: string[], setList: (v: string[]) => void) => { if(newItem && !list.includes(newItem)) { setList([...list, newItem]); setNewItem(''); } };
+    const removeItem = (list: string[], setList: (v: string[]) => void, item: string) => setList(list.filter(i => i !== item));
+    
+    const [newExpCatName, setNewExpCatName] = useState('');
+    const [newExpCatType, setNewExpCatType] = useState<ExpenseType>(ExpenseType.EXPENSE);
+    const addExpenseCat = () => { if(newExpCatName) { props.setExpenseCategories([...props.expenseCategories, { name: newExpCatName, type: newExpCatType }]); setNewExpCatName(''); } };
+    
+    const [newCCName, setNewCCName] = useState('');
+    const addCC = () => { if(newCCName) { props.setCostCenters([...props.costCenters, { id: newCCName.toLowerCase().replace(/\s/g, '-'), name: newCCName }]); setNewCCName(''); } };
+
+    const addAdvisor = () => { 
+        if(newAdvisorName) { 
+            props.setAdvisors([...props.advisors, { 
+                id: crypto.randomUUID(), 
+                name: newAdvisorName, 
+                commissionRate: parseFloat(newAdvisorRate) || 30,
+                crmCost: parseFloat(newAdvisorCost) || 0
+            }]); 
+            setNewAdvisorName(''); setNewAdvisorCost('0');
+        } 
+    };
+
+    return (
+        <div className="space-y-6 animate-fade-in">
+             <div><h2 className="text-2xl font-bold text-text-primary">Configurações</h2><p className="text-text-secondary">Personalize as categorias e opções do sistema.</p></div>
+            <div className="flex border-b border-border-color overflow-x-auto">
+                <button onClick={() => setActiveTab('categories')} className={`px-4 py-2 text-sm font-medium whitespace-nowrap ${activeTab === 'categories' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}>Categorias</button>
+                <button onClick={() => setActiveTab('payment')} className={`px-4 py-2 text-sm font-medium whitespace-nowrap ${activeTab === 'payment' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}>Pagamentos</button>
+                <button onClick={() => setActiveTab('advisors')} className={`px-4 py-2 text-sm font-medium whitespace-nowrap ${activeTab === 'advisors' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}>Assessores & Taxas</button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {activeTab === 'categories' && (
+                    <>
+                        <Card><h3 className="font-bold mb-4 text-green-400">Categorias de Receita</h3><div className="flex gap-2 mb-4"><input type="text" value={newItem} onChange={(e) => setNewItem(e.target.value)} placeholder="Nova categoria..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" /><Button onClick={() => addItem(props.incomeCategories, props.setIncomeCategories)} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button></div><ul className="space-y-2 max-h-60 overflow-y-auto">{props.incomeCategories.map((cat: string, i: number) => (<li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm"><span>{cat}</span><button onClick={() => removeItem(props.incomeCategories, props.setIncomeCategories, cat)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button></li>))}</ul></Card>
+                         <Card>
+                            <h3 className="font-bold mb-4 text-danger">Categorias de Despesa</h3>
+                            <div className="flex flex-col gap-2 mb-4">
+                                <input type="text" value={newExpCatName} onChange={(e) => setNewExpCatName(e.target.value)} placeholder="Nova categoria..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" />
+                                <div className="flex gap-2">
+                                    <select value={newExpCatType} onChange={(e) => setNewExpCatType(e.target.value as ExpenseType)} className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm">
+                                        <option value={ExpenseType.COST}>Custo</option>
+                                        <option value={ExpenseType.EXPENSE}>Despesa</option>
+                                    </select>
+                                    <Button onClick={addExpenseCat} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button>
+                                </div>
+                            </div>
+                            <ul className="space-y-2 max-h-60 overflow-y-auto">{props.expenseCategories.map((cat: ExpenseCategory, i: number) => (<li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm"><span>{cat.name} <span className="text-[10px] uppercase bg-background px-1 rounded ml-1 text-text-secondary">{cat.type}</span></span><button onClick={() => props.setExpenseCategories(props.expenseCategories.filter((_, idx) => idx !== i))} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button></li>))}</ul>
+                        </Card>
+                    </>
+                )}
+                {activeTab === 'payment' && (
+                    <>
+                        <Card><h3 className="font-bold mb-4">Formas de Pagamento</h3><div className="flex gap-2 mb-4"><input type="text" value={newItem} onChange={(e) => setNewItem(e.target.value)} placeholder="Novo método..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" /><Button onClick={() => addItem(props.paymentMethods, props.setPaymentMethods)} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button></div><ul className="space-y-2 max-h-60 overflow-y-auto">{props.paymentMethods.map((pm: string, i: number) => (<li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm"><span>{pm}</span><button onClick={() => removeItem(props.paymentMethods, props.setPaymentMethods, pm)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button></li>))}</ul></Card>
+                        <Card><h3 className="font-bold mb-4">Centros de Custo</h3><div className="flex gap-2 mb-4"><input type="text" value={newCCName} onChange={(e) => setNewCCName(e.target.value)} placeholder="Novo centro..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" /><Button onClick={addCC} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button></div><ul className="space-y-2 max-h-60 overflow-y-auto">{props.costCenters.map((cc: CostCenter, i: number) => (<li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm"><span>{cc.name}</span>{!cc.isDefault && <button onClick={() => props.setCostCenters(props.costCenters.filter(c => c.id !== cc.id))} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>}</li>))}</ul></Card>
+                    </>
+                )}
+                {activeTab === 'advisors' && (
+                    <>
+                         <Card className="md:col-span-2">
+                            <h3 className="font-bold mb-4">Gerenciar Assessores</h3>
+                            <div className="flex flex-wrap gap-2 mb-4 items-end">
+                                <div className="flex-1 min-w-[200px]"><label className="text-xs text-text-secondary block mb-1">Nome</label><input type="text" value={newAdvisorName} onChange={(e) => setNewAdvisorName(e.target.value)} placeholder="Nome do Assessor..." className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm" /></div>
+                                <div className="w-24"><label className="text-xs text-text-secondary block mb-1">Comissão (%)</label><input type="number" value={newAdvisorRate} onChange={(e) => setNewAdvisorRate(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm" /></div>
+                                <div className="w-32"><label className="text-xs text-text-secondary block mb-1">Custo CRM (-)</label><input type="number" value={newAdvisorCost} onChange={(e) => setNewAdvisorCost(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm" title="Valor fixo mensal (negativo)" /></div>
+                                <Button onClick={addAdvisor} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button>
+                            </div>
+                            <ul className="space-y-2 max-h-60 overflow-y-auto">
+                                {props.advisors.map((adv: Advisor, i: number) => (
+                                    <li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm">
+                                        <div className="flex items-center gap-4">
+                                            <span className="font-semibold">{adv.name}</span>
+                                            <span className="text-xs text-text-secondary bg-background px-2 py-1 rounded">Comissão: {adv.commissionRate}%</span>
+                                            {adv.crmCost !== undefined && adv.crmCost !== 0 && (<span className="text-xs text-danger bg-background px-2 py-1 rounded">CRM: {formatCurrency(adv.crmCost)}</span>)}
+                                        </div>
+                                        <button onClick={() => props.setAdvisors(props.advisors.filter((_: any, idx: any) => idx !== i))} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>
+                                    </li>
+                                ))}
+                            </ul>
+                        </Card>
+                        <Card className="md:col-span-2"><h3 className="font-bold mb-4">Taxas Globais</h3><div className="space-y-4"><div><label className="block text-sm text-text-secondary mb-1">Imposto Padrão (%)</label><input type="number" step="0.01" value={props.globalTaxRate} onChange={(e) => props.setGlobalTaxRate(parseFloat(e.target.value) || 0)} className="w-full md:w-1/3 bg-background border border-border-color rounded-md px-3 py-2 text-sm"/><p className="text-xs text-text-secondary mt-1">Este valor será usado para calcular o imposto sobre receitas automaticamente.</p></div></div></Card>
+                    </>
+                )}
+            </div>
+        </div>
     );
 };
 
@@ -1143,29 +1309,28 @@ const ImportedRevenuesView: FC<{
     const [clientSearch, setClientSearch] = useState('');
 
     const uniqueAdvisors = useMemo(() => {
-        const advs = new Set(importedRevenues.map(r => r.advisor));
+        const advs = new Set(importedRevenues.map(r => r.assessorPrincipal).filter(Boolean));
         return Array.from(advs).sort();
     }, [importedRevenues]);
 
     const uniqueCategories = useMemo(() => {
-        const cats = new Set(importedRevenues.map(r => r.category));
+        const cats = new Set(importedRevenues.map(r => r.produtoCategoria).filter(Boolean));
         return Array.from(cats).sort();
     }, [importedRevenues]);
 
     const filteredRevenues = useMemo(() => {
         return importedRevenues.filter(r => {
-            const rDate = new Date(r.date).toISOString().split('T')[0];
+            const rDate = new Date(r.data).toISOString().split('T')[0];
             
             if (startDate && rDate < startDate) return false;
             if (endDate && rDate > endDate) return false;
-            if (selectedAdvisor && r.advisor !== selectedAdvisor) return false;
-            if (selectedCategory && r.category !== selectedCategory) return false;
+            if (selectedAdvisor && r.assessorPrincipal !== selectedAdvisor) return false;
+            if (selectedCategory && r.produtoCategoria !== selectedCategory) return false;
             
             if (clientSearch) {
                 const searchLower = clientSearch.toLowerCase();
-                const clientMatch = r.client && r.client.toLowerCase().includes(searchLower);
-                const originMatch = r.origin && r.origin.toLowerCase().includes(searchLower);
-                if (!clientMatch && !originMatch) return false;
+                const clientMatch = r.cliente && r.cliente.toLowerCase().includes(searchLower);
+                if (!clientMatch) return false;
             }
 
             return true;
@@ -1177,7 +1342,7 @@ const ImportedRevenuesView: FC<{
             <div className="flex justify-between items-center">
                 <div><h2 className="text-2xl font-bold text-text-primary">Receitas Importadas</h2><p className="text-text-secondary">Importe planilhas para calcular comissões.</p></div>
                 <label className="bg-primary hover:bg-opacity-90 text-white shadow-md px-4 py-2 rounded-lg cursor-pointer flex items-center gap-2 font-semibold transition-all">
-                    <UploadIcon className="w-4 h-4"/> Importar Planilha
+                    <UploadIcon className="w-4 h-4"/> Importar Relatório
                      <input type="file" accept=".xlsx, .xls, .csv" className="hidden" onChange={(e) => {
                         const file = e.target.files?.[0];
                         if (file) {
@@ -1187,14 +1352,39 @@ const ImportedRevenuesView: FC<{
                                 const wb = XLSX.read(bstr, { type: 'binary' });
                                 const ws = wb.Sheets[wb.SheetNames[0]];
                                 const data = XLSX.utils.sheet_to_json(ws);
-                                const formatted = data.map((row: any) => ({
-                                    date: row['Data'] ? new Date(row['Data']).toISOString() : new Date().toISOString(),
-                                    advisor: row['Assessor'] || row['Advisor'] || '',
-                                    client: row['Cliente'] || row['Client'] || '',
-                                    category: row['Categoria'] || row['Produto'] || '',
-                                    amount: parseFloat(row['Valor'] || row['Receita Base'] || row['Receita Líquida EQI'] || 0),
-                                    origin: row['Origem'] || row['Corretora'] || ''
-                                })).filter((r: any) => r.amount > 0); // Ignore costs or zero values
+                                const formatted = data.map((row: any) => {
+                                    if (row['Classificação'] === 'CUSTOS') return null;
+                                    
+                                    // Parse date properly (assuming Excel standard)
+                                    let dateIso = new Date().toISOString();
+                                    if (row['Data']) {
+                                        // If it's a number (Excel serial date), convert it. If string, use Date constructor.
+                                        // Simple handling for now:
+                                        dateIso = new Date(row['Data']).toISOString(); 
+                                    }
+
+                                    // Parse Percentual Repasse as integer (80% -> 80)
+                                    let rawRepasse = parseFloat(row['% Repasse']) || 0;
+                                    if (rawRepasse <= 1 && rawRepasse > 0) {
+                                         rawRepasse = rawRepasse * 100;
+                                    }
+
+                                    return {
+                                        data: dateIso,
+                                        conta: row['Conta'] || '',
+                                        cliente: row['Cliente'] || '',
+                                        codAssessor: row['Cod Assessor'] || '',
+                                        assessorPrincipal: row['Assessor Principal'] || '',
+                                        classificacao: row['Classificação'] || '',
+                                        produtoCategoria: row['Produto/Categoria'] || '',
+                                        ativo: row['Ativo'] || '',
+                                        tipoReceita: row['Tipo Receita'] || '',
+                                        receitaLiquidaEQI: parseFloat(row['Receita Liquida EQI']) || 0,
+                                        percentualRepasse: Math.round(rawRepasse), // Save as Integer
+                                        comissaoLiquida: parseFloat(row['Comissão Líquida']) || 0,
+                                        tipo: row['Tipo'] || ''
+                                    };
+                                }).filter((r: any) => r !== null);
                                 onImport(formatted);
                             };
                             reader.readAsBinaryString(file);
@@ -1214,21 +1404,21 @@ const ImportedRevenuesView: FC<{
                         <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary" />
                     </div>
                      <div>
-                        <label className="block text-xs font-medium text-text-secondary mb-1">Assessor</label>
+                        <label className="block text-xs font-medium text-text-secondary mb-1">Assessor (Principal)</label>
                         <select value={selectedAdvisor} onChange={(e) => setSelectedAdvisor(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary">
                             <option value="">Todos</option>
                             {uniqueAdvisors.map(adv => <option key={adv} value={adv}>{adv}</option>)}
                         </select>
                     </div>
                     <div>
-                        <label className="block text-xs font-medium text-text-secondary mb-1">Categoria</label>
+                        <label className="block text-xs font-medium text-text-secondary mb-1">Produto / Categoria</label>
                         <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary">
                             <option value="">Todas</option>
                             {uniqueCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                         </select>
                     </div>
                      <div>
-                        <label className="block text-xs font-medium text-text-secondary mb-1">Cliente / Corretora</label>
+                        <label className="block text-xs font-medium text-text-secondary mb-1">Cliente</label>
                         <div className="relative">
                             <input type="text" value={clientSearch} onChange={(e) => setClientSearch(e.target.value)} placeholder="Buscar..." className="w-full bg-background border border-border-color rounded-md pl-8 pr-3 py-2 text-sm focus:ring-primary focus:border-primary" />
                             <SearchIcon className="w-4 h-4 text-text-secondary absolute left-2.5 top-2.5" />
@@ -1239,29 +1429,45 @@ const ImportedRevenuesView: FC<{
 
             <Card className="overflow-hidden p-0">
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left">
+                    <table className="w-full text-left whitespace-nowrap">
                         <thead className="bg-background/50 text-xs uppercase text-text-secondary">
                             <tr>
                                 <th className="p-4">Data</th>
-                                <th className="p-4">Assessor</th>
+                                <th className="p-4">Conta</th>
                                 <th className="p-4">Cliente</th>
-                                <th className="p-4">Categoria</th>
-                                <th className="p-4">Valor</th>
+                                <th className="p-4">Cod Assessor</th>
+                                <th className="p-4">Assessor Principal</th>
+                                <th className="p-4">Classificação</th>
+                                <th className="p-4">Produto/Categoria</th>
+                                <th className="p-4">Ativo</th>
+                                <th className="p-4">Tipo Receita</th>
+                                <th className="p-4">Receita Liq EQI</th>
+                                <th className="p-4">% Repasse</th>
+                                <th className="p-4">Comissão Líquida</th>
+                                <th className="p-4">Tipo</th>
                                 <th className="p-4 text-right">Ações</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-border-color/30 text-sm">
+                        <tbody className="divide-y divide-border-color/30 text-xs">
                             {filteredRevenues.map(r => (
                                 <tr key={r.id} className="hover:bg-background/50">
-                                    <td className="p-4">{formatDate(r.date)}</td>
-                                    <td className="p-4 font-medium">{r.advisor}</td>
-                                    <td className="p-4">{r.client}</td>
-                                    <td className="p-4">{r.category}</td>
-                                    <td className="p-4 font-bold text-green-400">{formatCurrency(r.amount)}</td>
+                                    <td className="p-4">{formatDate(r.data)}</td>
+                                    <td className="p-4">{r.conta}</td>
+                                    <td className="p-4 font-medium">{r.cliente}</td>
+                                    <td className="p-4">{r.codAssessor}</td>
+                                    <td className="p-4">{r.assessorPrincipal}</td>
+                                    <td className="p-4">{r.classificacao}</td>
+                                    <td className="p-4">{r.produtoCategoria}</td>
+                                    <td className="p-4">{r.ativo}</td>
+                                    <td className="p-4">{r.tipoReceita}</td>
+                                    <td className="p-4 font-bold text-green-400">{formatCurrency(r.receitaLiquidaEQI)}</td>
+                                    <td className="p-4">{Math.round(r.percentualRepasse)}%</td>
+                                    <td className="p-4 font-bold text-primary">{formatCurrency(r.comissaoLiquida)}</td>
+                                    <td className="p-4">{r.tipo}</td>
                                     <td className="p-4 text-right"><Button variant="ghostDanger" onClick={() => onDelete(r.id)}><TrashIcon className="w-4 h-4"/></Button></td>
                                 </tr>
                             ))}
-                            {filteredRevenues.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-text-secondary">Nenhuma receita importada encontrada.</td></tr>}
+                            {filteredRevenues.length === 0 && <tr><td colSpan={14} className="p-8 text-center text-text-secondary">Nenhuma receita importada encontrada.</td></tr>}
                         </tbody>
                     </table>
                 </div>
@@ -1490,88 +1696,6 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
     );
 };
 
-const GoalsView: FC<{ goals: Goal[], onAdd: (g: any) => void, onUpdateProgress: (id: string, amount: number) => void, onDelete: (id: string) => void }> = ({ goals, onAdd, onUpdateProgress, onDelete }) => {
-    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-    const [isProgressModalOpen, setIsProgressModalOpen] = useState(false);
-    const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
-    const openProgressModal = (id: string) => { setSelectedGoalId(id); setIsProgressModalOpen(true); };
-
-    return (
-        <div className="space-y-6 animate-fade-in">
-             <div className="flex justify-between items-center">
-                <div><h2 className="text-2xl font-bold text-text-primary">Metas Financeiras</h2><p className="text-text-secondary">Defina e acompanhe seus objetivos.</p></div>
-                <Button onClick={() => setIsAddModalOpen(true)} className="flex items-center gap-2"><PlusIcon className="w-5 h-5"/> Nova Meta</Button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {goals.map(goal => {
-                    const progress = (goal.currentAmount / goal.targetAmount) * 100;
-                    return (
-                        <Card key={goal.id} className="relative group">
-                            <div className="flex justify-between items-start mb-2"><h3 className="text-lg font-bold text-text-primary">{goal.name}</h3><button onClick={() => onDelete(goal.id)} className="text-text-secondary hover:text-danger opacity-0 group-hover:opacity-100 transition-opacity"><TrashIcon className="w-4 h-4"/></button></div>
-                            <div className="mb-4"><div className="flex justify-between text-sm mb-1"><span className="text-text-secondary">Progresso</span><span className="font-bold text-primary">{Math.round(progress)}%</span></div><ProgressBar progress={progress} /></div>
-                            <div className="flex justify-between items-center text-sm mb-4"><span className="font-mono text-text-primary">{formatCurrency(goal.currentAmount)}</span><span className="text-text-secondary">de {formatCurrency(goal.targetAmount)}</span></div>
-                            <Button onClick={() => openProgressModal(goal.id)} variant="secondary" className="w-full text-sm">Adicionar Valor</Button>
-                        </Card>
-                    )
-                })}
-                {goals.length === 0 && <div className="col-span-full text-center py-12 text-text-secondary border-2 border-dashed border-border-color rounded-xl"><GoalsIcon className="w-12 h-12 mx-auto mb-4 opacity-50" /><p>Nenhuma meta definida ainda.</p></div>}
-            </div>
-            <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Nova Meta"><GoalForm onSubmit={(data) => { onAdd(data); setIsAddModalOpen(false); }} onClose={() => setIsAddModalOpen(false)} /></Modal>
-            <Modal isOpen={isProgressModalOpen} onClose={() => setIsProgressModalOpen(false)} title="Adicionar Progresso" size="sm"><AddProgressForm onSubmit={(amount) => { if(selectedGoalId) onUpdateProgress(selectedGoalId, amount); setIsProgressModalOpen(false); }} onClose={() => setIsProgressModalOpen(false)} /></Modal>
-        </div>
-    );
-};
-
-const SettingsView: FC<any> = ({ incomeCategories, setIncomeCategories, expenseCategories, setExpenseCategories, paymentMethods, setPaymentMethods, costCenters, setCostCenters, advisors, setAdvisors, globalTaxRate, setGlobalTaxRate }) => {
-    const [activeTab, setActiveTab] = useState('categories');
-    const [newItem, setNewItem] = useState('');
-    const [newAdvisorName, setNewAdvisorName] = useState('');
-    const [newAdvisorCrm, setNewAdvisorCrm] = useState('');
-
-    const addIncomeCategory = () => { if(newItem) { setIncomeCategories([...incomeCategories, newItem]); setNewItem(''); } };
-    const addExpenseCategory = () => { if(newItem) { setExpenseCategories([...expenseCategories, { name: newItem, type: ExpenseType.EXPENSE }]); setNewItem(''); } };
-    const addPaymentMethod = () => { if(newItem) { setPaymentMethods([...paymentMethods, newItem]); setNewItem(''); } };
-    const addCostCenter = () => { if(newItem) { setCostCenters([...costCenters, { id: crypto.randomUUID(), name: newItem }]); setNewItem(''); } };
-    const addAdvisor = () => { if(newAdvisorName) { const crmVal = parseFloat(newAdvisorCrm); const finalCrm = isNaN(crmVal) ? 0 : (crmVal > 0 ? -crmVal : crmVal); setAdvisors([...advisors, { id: crypto.randomUUID(), name: newAdvisorName, commissionRate: 30, crmCost: finalCrm }]); setNewAdvisorName(''); setNewAdvisorCrm(''); } };
-
-    const removeIncomeCategory = (i: number) => setIncomeCategories(incomeCategories.filter((_:any, idx:any) => idx !== i));
-    const removeExpenseCategory = (i: number) => setExpenseCategories(expenseCategories.filter((_:any, idx:any) => idx !== i));
-    const removePaymentMethod = (i: number) => setPaymentMethods(paymentMethods.filter((_:any, idx:any) => idx !== i));
-    const removeCostCenter = (i: number) => setCostCenters(costCenters.filter((_:any, idx:any) => idx !== i));
-    const removeAdvisor = (i: number) => setAdvisors(advisors.filter((_:any, idx:any) => idx !== i));
-
-    return (
-        <div className="space-y-6 animate-fade-in">
-             <div><h2 className="text-2xl font-bold text-text-primary">Configurações</h2><p className="text-text-secondary">Personalize as categorias e opções do sistema.</p></div>
-            <div className="flex border-b border-border-color overflow-x-auto">
-                <button onClick={() => setActiveTab('categories')} className={`px-4 py-2 text-sm font-medium whitespace-nowrap ${activeTab === 'categories' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}>Categorias</button>
-                <button onClick={() => setActiveTab('payment')} className={`px-4 py-2 text-sm font-medium whitespace-nowrap ${activeTab === 'payment' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}>Pagamentos</button>
-                <button onClick={() => setActiveTab('advisors')} className={`px-4 py-2 text-sm font-medium whitespace-nowrap ${activeTab === 'advisors' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}>Assessores & Taxas</button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {activeTab === 'categories' && (
-                    <>
-                        <Card><h3 className="font-bold mb-4 text-green-400">Categorias de Receita</h3><div className="flex gap-2 mb-4"><input type="text" value={newItem} onChange={(e) => setNewItem(e.target.value)} placeholder="Nova categoria..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" /><Button onClick={addIncomeCategory} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button></div><ul className="space-y-2 max-h-60 overflow-y-auto">{incomeCategories.map((cat: string, i: number) => (<li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm"><span>{cat}</span><button onClick={() => removeIncomeCategory(i)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button></li>))}</ul></Card>
-                         <Card><h3 className="font-bold mb-4 text-danger">Categorias de Despesa</h3><div className="flex gap-2 mb-4"><input type="text" value={newItem} onChange={(e) => setNewItem(e.target.value)} placeholder="Nova categoria..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" /><Button onClick={addExpenseCategory} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button></div><ul className="space-y-2 max-h-60 overflow-y-auto">{expenseCategories.map((cat: ExpenseCategory, i: number) => (<li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm"><span>{cat.name} <span className="text-[10px] uppercase bg-background px-1 rounded ml-1 text-text-secondary">{cat.type}</span></span><button onClick={() => removeExpenseCategory(i)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button></li>))}</ul></Card>
-                    </>
-                )}
-                {activeTab === 'payment' && (
-                    <>
-                        <Card><h3 className="font-bold mb-4">Formas de Pagamento</h3><div className="flex gap-2 mb-4"><input type="text" value={newItem} onChange={(e) => setNewItem(e.target.value)} placeholder="Novo método..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" /><Button onClick={addPaymentMethod} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button></div><ul className="space-y-2 max-h-60 overflow-y-auto">{paymentMethods.map((pm: string, i: number) => (<li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm"><span>{pm}</span><button onClick={() => removePaymentMethod(i)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button></li>))}</ul></Card>
-                        <Card><h3 className="font-bold mb-4">Centros de Custo</h3><div className="flex gap-2 mb-4"><input type="text" value={newItem} onChange={(e) => setNewItem(e.target.value)} placeholder="Novo centro..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" /><Button onClick={addCostCenter} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button></div><ul className="space-y-2 max-h-60 overflow-y-auto">{costCenters.map((cc: CostCenter, i: number) => (<li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm"><span>{cc.name}</span>{!cc.isDefault && <button onClick={() => removeCostCenter(i)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>}</li>))}</ul></Card>
-                    </>
-                )}
-                {activeTab === 'advisors' && (
-                    <>
-                         <Card><h3 className="font-bold mb-4">Gerenciar Assessores</h3><div className="flex gap-2 mb-4"><input type="text" value={newAdvisorName} onChange={(e) => setNewAdvisorName(e.target.value)} placeholder="Nome do Assessor..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" /><input type="number" value={newAdvisorCrm} onChange={(e) => setNewAdvisorCrm(e.target.value)} placeholder="Custo CRM (-)" className="w-24 bg-background border border-border-color rounded-md px-3 py-2 text-sm" title="Valor fixo mensal (negativo)" /><Button onClick={addAdvisor} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button></div><ul className="space-y-2 max-h-60 overflow-y-auto">{advisors.map((adv: Advisor, i: number) => (<li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm"><div><span className="font-semibold block">{adv.name}</span>{adv.crmCost !== undefined && adv.crmCost !== 0 && (<span className="text-xs text-danger">CRM: {formatCurrency(adv.crmCost)}</span>)}</div><button onClick={() => removeAdvisor(i)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button></li>))}</ul></Card>
-                        <Card><h3 className="font-bold mb-4">Taxas Globais</h3><div className="space-y-4"><div><label className="block text-sm text-text-secondary mb-1">Imposto Padrão (%)</label><input type="number" step="0.01" value={globalTaxRate} onChange={(e) => setGlobalTaxRate(parseFloat(e.target.value) || 0)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm"/><p className="text-xs text-text-secondary mt-1">Este valor será usado para calcular o imposto sobre receitas automaticamente.</p></div></div></Card>
-                    </>
-                )}
-            </div>
-        </div>
-    );
-};
-
 const ReportsView: FC<{ transactions: Transaction[] }> = ({ transactions }) => {
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
@@ -1732,8 +1856,6 @@ const ReportsView: FC<{ transactions: Transaction[] }> = ({ transactions }) => {
         </div>
     );
 };
-
-// ... [Main App Component and other views logic] ...
 
 // --- COMPONENTES PRINCIPAL (APP) ---
 

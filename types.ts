@@ -44,12 +44,19 @@ export interface Transaction {
 
 export interface ImportedRevenue {
     id: string;
-    date: string; // ISO string
-    advisor: string;
-    client: string;
-    category: string;
-    amount: number; // Receita Base
-    origin: string; // Corretora/Origem
+    data: string; // ISO string (coluna Data)
+    conta: string; // coluna Conta
+    cliente: string; // coluna Cliente
+    codAssessor: string; // coluna Cod Assessor
+    assessorPrincipal: string; // coluna Assessor Principal
+    classificacao: string; // coluna Classificação
+    produtoCategoria: string; // coluna Produto/Categoria
+    ativo: string; // coluna Ativo
+    tipoReceita: string; // coluna Tipo Receita
+    receitaLiquidaEQI: number; // coluna Receita Liquida EQI
+    percentualRepasse: number; // coluna % Repasse
+    comissaoLiquida: number; // coluna Comissão Líquida
+    tipo: string; // coluna Tipo
 }
 
 export interface AdvisorSplit {
