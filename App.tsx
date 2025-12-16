@@ -370,8 +370,8 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                 );
 
                 if (advisor) {
-                    // EXPLICIT SUM: Only use receitaLiquidaEQI
-                    const val = rev.receitaLiquidaEQI || 0;
+                    // EXPLICIT SUM: Only use comissaoLiquida
+                    const val = rev.comissaoLiquida || 0;
                     revenueByAdvisor[advisor.id] = (revenueByAdvisor[advisor.id] || 0) + val;
                     totalRevenueFound += val;
                 }
