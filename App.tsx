@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, FC, ReactNode, useEffect } from 'react';
 import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType, AdvisorSplit, ImportedRevenue, AdvisorCost } from './types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area } from 'recharts';
@@ -1789,6 +1788,17 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         return { totalIncome: income, totalExpense: expense, netProfit: income - expense, mostProfitableMonth, largestExpense, taxProvisionBalanceForPeriod: totalProvisioned - totalTaxPaid };
     }, [filteredTransactions]);
     
+    // KPI Saldo Hoje adicionado aqui
+    const saldoHoje = useMemo(() => {
+        const now = new Date();
+        return transactions.reduce((acc, t) => {
+            if (new Date(t.date) <= now) {
+                return acc + (t.type === TransactionType.INCOME ? t.amount : -t.amount);
+            }
+            return acc;
+        }, 0);
+    }, [transactions]);
+
     const achievedGoals = useMemo(() => goals.filter(g => g.currentAmount >= g.targetAmount).length, [goals]);
     const upcomingBills = useMemo(() => {
         const today = new Date();
@@ -1841,6 +1851,11 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+                <Card className={`transform hover:scale-105 transition-transform duration-300 border-l-4 ${saldoHoje >= 0 ? 'border-primary' : 'border-danger'}`}>
+                    <h3 className="text-text-secondary font-semibold text-sm uppercase tracking-wider">Saldo Hoje</h3>
+                    <p className={`text-3xl font-bold mt-1 ${saldoHoje >= 0 ? 'text-primary' : 'text-danger'}`}>{formatCurrency(saldoHoje)}</p>
+                </Card>
+
                 <Card className="transform hover:scale-105 transition-transform duration-300 border-l-4 border-green-400">
                     <h3 className="text-text-secondary font-semibold text-sm uppercase tracking-wider">Receita Líquida</h3>
                     <p className="text-3xl font-bold text-green-400 mt-1">{formatCurrency(totalIncome)}</p>
