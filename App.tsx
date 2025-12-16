@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, FC, ReactNode, useEffect } from 'react';
 import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType, AdvisorSplit, ImportedRevenue, AdvisorCost } from './types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area } from 'recharts';
@@ -289,7 +290,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             alert("Cadastre assessores primeiro nas Configurações.");
             return;
         }
-        setSplits([...splits, { advisorId: advisors[0].id, advisorName: advisors[0].name, revenueAmount: 0, percentage: 30 }]);
+        setSplits([...splits, { advisorId: advisors[0].id, advisorName: advisors[0].name, revenueAmount: 0, percentage: 30, additionalCost: 0 }]);
     };
 
     const removeSplit = (index: number) => {
@@ -304,7 +305,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             split.advisorId = value;
             const advisor = advisors.find(a => a.id === value);
             split.advisorName = advisor ? advisor.name : '';
-        } else if (field === 'revenueAmount' || field === 'percentage') {
+        } else if (field === 'revenueAmount' || field === 'percentage' || field === 'additionalCost') {
             (split as any)[field] = parseFloat(value) || 0;
         }
         
@@ -388,7 +389,8 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                     advisorId: advisor.id,
                     advisorName: advisor.name,
                     revenueAmount: revenueByAdvisor[advId],
-                    percentage: advisor.commissionRate || 30
+                    percentage: advisor.commissionRate || 30,
+                    additionalCost: 0
                 };
             });
 
@@ -404,28 +406,18 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
 
     const splitsDetails = useMemo(() => {
         return splits.map(split => {
-             const advisor = advisors.find(a => a.id === split.advisorId);
-             
-             // NEW: Sum all costs for the advisor
-             const totalAdvisorCost = (advisor?.costs || []).reduce((acc, c) => acc + c.value, 0);
-             
-             const prop = gross > 0 ? split.revenueAmount / gross : 0;
-             const basePostTaxI = basePostTax * prop;
-             const grossPayoutI = basePostTaxI * (split.percentage / 100);
-             
-             // NEW: Add total costs (which are negative) to the payout
-             const netPayoutI = grossPayoutI + totalAdvisorCost;
+             // Logic adjusted for specific request: repasseLiq = receitaIndividual * (percentualRepasse / 100) - custoAdicional
+             const calculatedPayout = (split.revenueAmount * (split.percentage / 100)) - (split.additionalCost || 0);
 
              return {
                  ...split,
-                 crmCost: totalAdvisorCost, // Storing total cost in the old field for compatibility/display
-                 netPayout: netPayoutI
+                 netPayout: calculatedPayout
              }
         });
-    }, [splits, gross, basePostTax, advisors]);
+    }, [splits]);
 
     const totalSplitRevenue = splits.reduce((acc, s) => acc + s.revenueAmount, 0);
-    const totalNetPayouts = splitsDetails.reduce((acc, s) => acc + s.netPayout, 0);
+    const totalNetPayouts = splitsDetails.reduce((acc, s) => acc + (s.netPayout || 0), 0);
     const splitRevenueDifference = gross - totalSplitRevenue;
     const officeShare = basePostTax - totalNetPayouts;
 
@@ -474,7 +466,11 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             submissionData.taxAmount = taxAmount;
             submissionData.grossAmount = parsedGrossAmount;
             if (splits.length > 0) {
-                submissionData.splits = splitsDetails;
+                // Remove additionalCost property before saving, but keep calculated netPayout
+                submissionData.splits = splitsDetails.map(s => {
+                    const { additionalCost, ...rest } = s;
+                    return rest;
+                });
             } else {
                 submissionData.commissionAmount = commissionAmount;
                 submissionData.advisorId = advisorId;
@@ -560,16 +556,17 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                     {splits.length > 0 && (
                         <div className="space-y-3 mb-4">
                              <div className="hidden sm:grid grid-cols-12 gap-2 text-xs text-text-secondary font-medium px-1">
-                                <div className="col-span-4">Assessor</div>
+                                <div className="col-span-3">Assessor</div>
                                 <div className="col-span-3">Receita Individual</div>
-                                <div className="col-span-2 text-center">% Repasse</div>
+                                <div className="col-span-1 text-center">%</div>
+                                <div className="col-span-2 text-center">Custo Adicional</div>
                                 <div className="col-span-2 text-right">Repasse (Liq)</div>
                                 <div className="col-span-1"></div>
                              </div>
                              {splitsDetails.map((split, index) => {
                                  return (
                                      <div key={index} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center bg-surface p-2 rounded-md">
-                                        <div className="col-span-4">
+                                        <div className="col-span-3">
                                             <select 
                                                 value={split.advisorId} 
                                                 onChange={(e) => updateSplit(index, 'advisorId', e.target.value)}
@@ -580,15 +577,17 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                                         </div>
                                         <div className="col-span-3">
                                             <input 
-                                                type="number" 
-                                                step="0.01" 
-                                                value={split.revenueAmount} 
-                                                onChange={(e) => updateSplit(index, 'revenueAmount', e.target.value)}
-                                                placeholder="Receita"
+                                                type="text" 
+                                                value={Number(split.revenueAmount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                                onChange={(e) => {
+                                                    const rawValue = e.target.value.replace(/\D/g, '');
+                                                    updateSplit(index, 'revenueAmount', Number(rawValue) / 100);
+                                                }}
+                                                placeholder="R$ 0,00"
                                                 className="w-full bg-background border-border-color rounded-md text-sm py-1"
                                             />
                                         </div>
-                                        <div className="col-span-2">
+                                        <div className="col-span-1">
                                             <input 
                                                 type="number" 
                                                 step="1" 
@@ -599,8 +598,20 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                                                 className="w-full bg-background border-border-color rounded-md text-sm py-1 text-center"
                                             />
                                         </div>
-                                        <div className="col-span-2 text-right font-bold text-danger text-sm" title={`Custos Totais: ${formatCurrency(split.crmCost || 0)}`}>
-                                            {formatCurrency(split.netPayout)}
+                                        <div className="col-span-2">
+                                            <input 
+                                                type="text" 
+                                                value={Number(split.additionalCost || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                                onChange={(e) => {
+                                                    const rawValue = e.target.value.replace(/\D/g, '');
+                                                    updateSplit(index, 'additionalCost', Number(rawValue) / 100);
+                                                }}
+                                                placeholder="R$ 0,00"
+                                                className="w-full bg-background border-border-color rounded-md text-sm py-1"
+                                            />
+                                        </div>
+                                        <div className="col-span-2 text-right font-bold text-danger text-sm">
+                                            {Number(split.netPayout || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                                         </div>
                                         <div className="col-span-1 text-right">
                                             <button type="button" onClick={() => removeSplit(index)} className="text-text-secondary hover:text-danger">
@@ -613,12 +624,12 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                             <div className="mt-3 p-3 bg-surface rounded-lg border border-border-color text-xs space-y-1">
                                 <div className="flex justify-between">
                                     <span className="text-text-secondary">Total Receita Informada:</span>
-                                    <span className="font-mono">{formatCurrency(gross)}</span>
+                                    <span className="font-mono">{Number(gross || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-text-secondary">Soma Receitas Individuais:</span>
                                     <span className={`font-mono ${Math.abs(splitRevenueDifference) > 0.05 ? 'text-danger' : 'text-green-400'}`}>
-                                        {formatCurrency(totalSplitRevenue)}
+                                        {Number(totalSplitRevenue || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                                     </span>
                                 </div>
                                 {Math.abs(splitRevenueDifference) > 0.05 && (

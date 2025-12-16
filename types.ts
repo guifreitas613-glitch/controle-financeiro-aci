@@ -67,6 +67,7 @@ export interface AdvisorSplit {
     // Computed fields optionally stored
     crmCost?: number; // Mantido para compatibilidade, mas agora representa a soma dos custos
     netPayout?: number;
+    additionalCost?: number; // Campo local para custo adicional na tela de rateio
 }
 
 export interface Goal {
