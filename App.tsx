@@ -1,11 +1,11 @@
 import React, { useState, useMemo, FC, ReactNode, useEffect } from 'react';
-import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType, AdvisorSplit, ImportedRevenue } from './types';
+import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType, AdvisorSplit, ImportedRevenue, AdvisorCost } from './types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area } from 'recharts';
 import Login from './Login';
 import { auth } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { logoutUser } from './auth';
-import { getTransactions, saveTransaction, updateTransaction, deleteTransaction as deleteTransactionFromDb, getImportedRevenues, saveImportedRevenue, deleteImportedRevenue, getRevenuesByPeriod } from './firestore';
+import { getTransactions, saveTransaction, updateTransaction, deleteTransaction as deleteTransactionFromDb, getImportedRevenues, saveImportedRevenue, deleteImportedRevenue, getRevenuesByPeriod, deduplicateImportedRevenues } from './firestore';
 
 
 // --- ÍCONES ---
@@ -355,19 +355,24 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             let totalRevenueFound = 0;
 
             periodRevenues.forEach(rev => {
-                // Use rev.date instead of rev.data
+                // EXPLICIT FILTER: Ignore records classified as 'CUSTOS'
+                if (rev.classificacao === 'CUSTOS') return;
+
+                // Match advisor by name
                 const advisor = advisors.find(adv => 
                     adv.name.toLowerCase() === (rev.assessorPrincipal || '').toLowerCase()
                 );
 
                 if (advisor) {
-                    revenueByAdvisor[advisor.id] = (revenueByAdvisor[advisor.id] || 0) + rev.receitaLiquidaEQI;
-                    totalRevenueFound += rev.receitaLiquidaEQI;
+                    // EXPLICIT SUM: Only use receitaLiquidaEQI
+                    const val = rev.receitaLiquidaEQI || 0;
+                    revenueByAdvisor[advisor.id] = (revenueByAdvisor[advisor.id] || 0) + val;
+                    totalRevenueFound += val;
                 }
             });
 
             if (totalRevenueFound === 0) {
-                alert("Receitas encontradas, mas nenhum assessor correspondente foi localizado. Verifique se os nomes na aba 'Receitas Importadas' coincidem com os cadastrados em Configurações.");
+                alert("Receitas encontradas, mas nenhum assessor correspondente foi localizado ou todas eram 'CUSTOS'. Verifique os dados.");
                 setSearchPeriod({ ...searchPeriod, show: false });
                 return;
             }
@@ -395,15 +400,20 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     const splitsDetails = useMemo(() => {
         return splits.map(split => {
              const advisor = advisors.find(a => a.id === split.advisorId);
-             const crmCost = advisor?.crmCost || 0;
+             
+             // NEW: Sum all costs for the advisor
+             const totalAdvisorCost = (advisor?.costs || []).reduce((acc, c) => acc + c.value, 0);
+             
              const prop = gross > 0 ? split.revenueAmount / gross : 0;
              const basePostTaxI = basePostTax * prop;
              const grossPayoutI = basePostTaxI * (split.percentage / 100);
-             const netPayoutI = grossPayoutI + crmCost;
+             
+             // NEW: Add total costs (which are negative) to the payout
+             const netPayoutI = grossPayoutI + totalAdvisorCost;
 
              return {
                  ...split,
-                 crmCost,
+                 crmCost: totalAdvisorCost, // Storing total cost in the old field for compatibility/display
                  netPayout: netPayoutI
              }
         });
@@ -584,7 +594,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                                                 className="w-full bg-background border-border-color rounded-md text-sm py-1 text-center"
                                             />
                                         </div>
-                                        <div className="col-span-2 text-right font-bold text-danger text-sm" title={`CRM: ${formatCurrency(split.crmCost)}`}>
+                                        <div className="col-span-2 text-right font-bold text-danger text-sm" title={`Custos Totais: ${formatCurrency(split.crmCost || 0)}`}>
                                             {formatCurrency(split.netPayout)}
                                         </div>
                                         <div className="col-span-1 text-right">
@@ -873,6 +883,79 @@ const GoalsView: FC<{ goals: Goal[], onAdd: (g: any) => void, onUpdateProgress: 
     );
 };
 
+const AdvisorSettingsItem: FC<{ 
+    advisor: Advisor; 
+    onDelete: () => void; 
+    onUpdate: (updated: Advisor) => void; 
+}> = ({ advisor, onDelete, onUpdate }) => {
+    const [newCostDesc, setNewCostDesc] = useState('');
+    const [newCostVal, setNewCostVal] = useState('');
+
+    const totalCost = (advisor.costs || []).reduce((acc, c) => acc + c.value, 0);
+
+    const addCost = () => {
+        if (!newCostDesc || !newCostVal) return;
+        const val = parseFloat(newCostVal);
+        if (isNaN(val)) return;
+
+        const updatedAdvisor = {
+            ...advisor,
+            costs: [...(advisor.costs || []), { description: newCostDesc, value: val }]
+        };
+        onUpdate(updatedAdvisor);
+        setNewCostDesc('');
+        setNewCostVal('');
+    };
+
+    const removeCost = (index: number) => {
+        const newCosts = [...(advisor.costs || [])];
+        newCosts.splice(index, 1);
+        onUpdate({ ...advisor, costs: newCosts });
+    };
+
+    return (
+        <li className="flex flex-col bg-background/50 p-3 rounded text-sm gap-2">
+            <div className="flex justify-between items-center">
+                <div className="flex items-center gap-4">
+                    <span className="font-semibold">{advisor.name}</span>
+                    <span className="text-xs text-text-secondary bg-background px-2 py-1 rounded">Comissão: {advisor.commissionRate}%</span>
+                    <span className="text-xs text-danger bg-background px-2 py-1 rounded" title="Soma dos custos">Custos: {formatCurrency(totalCost)}</span>
+                </div>
+                <button onClick={onDelete} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>
+            </div>
+            
+            {/* Costs Repeater */}
+            <div className="pl-4 border-l-2 border-border-color ml-2 space-y-2">
+                {(advisor.costs || []).map((cost, idx) => (
+                    <div key={idx} className="flex justify-between items-center text-xs text-text-secondary">
+                        <span className="flex-1">{cost.description}</span>
+                        <span className="font-mono text-danger mr-4">{formatCurrency(cost.value)}</span>
+                        <button onClick={() => removeCost(idx)} className="hover:text-danger"><TrashIcon className="w-3 h-3"/></button>
+                    </div>
+                ))}
+                
+                <div className="flex gap-2 items-center mt-2">
+                    <input 
+                        type="text" 
+                        placeholder="Novo custo (ex: CRM)" 
+                        value={newCostDesc} 
+                        onChange={e => setNewCostDesc(e.target.value)} 
+                        className="flex-1 bg-background border border-border-color rounded px-2 py-1 text-xs"
+                    />
+                    <input 
+                        type="number" 
+                        placeholder="Valor (-)" 
+                        value={newCostVal} 
+                        onChange={e => setNewCostVal(e.target.value)} 
+                        className="w-20 bg-background border border-border-color rounded px-2 py-1 text-xs"
+                    />
+                    <Button onClick={addCost} variant="secondary" className="py-1 px-2 text-xs"><PlusIcon className="w-3 h-3"/></Button>
+                </div>
+            </div>
+        </li>
+    );
+};
+
 const SettingsView: FC<{
     incomeCategories: string[]; setIncomeCategories: (v: string[]) => void;
     expenseCategories: ExpenseCategory[]; setExpenseCategories: (v: ExpenseCategory[]) => void;
@@ -885,7 +968,6 @@ const SettingsView: FC<{
     const [newItem, setNewItem] = useState('');
     const [newAdvisorName, setNewAdvisorName] = useState('');
     const [newAdvisorRate, setNewAdvisorRate] = useState('30');
-    const [newAdvisorCost, setNewAdvisorCost] = useState('0');
 
     const addItem = (list: string[], setList: (v: string[]) => void) => { if(newItem && !list.includes(newItem)) { setList([...list, newItem]); setNewItem(''); } };
     const removeItem = (list: string[], setList: (v: string[]) => void, item: string) => setList(list.filter(i => i !== item));
@@ -903,10 +985,15 @@ const SettingsView: FC<{
                 id: crypto.randomUUID(), 
                 name: newAdvisorName, 
                 commissionRate: parseFloat(newAdvisorRate) || 30,
-                crmCost: parseFloat(newAdvisorCost) || 0
+                costs: [] 
             }]); 
-            setNewAdvisorName(''); setNewAdvisorCost('0');
+            setNewAdvisorName(''); 
         } 
+    };
+
+    const updateAdvisor = (updated: Advisor) => {
+        const newAdvisors = props.advisors.map(adv => adv.id === updated.id ? updated : adv);
+        props.setAdvisors(newAdvisors);
     };
 
     return (
@@ -950,19 +1037,17 @@ const SettingsView: FC<{
                             <div className="flex flex-wrap gap-2 mb-4 items-end">
                                 <div className="flex-1 min-w-[200px]"><label className="text-xs text-text-secondary block mb-1">Nome</label><input type="text" value={newAdvisorName} onChange={(e) => setNewAdvisorName(e.target.value)} placeholder="Nome do Assessor..." className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm" /></div>
                                 <div className="w-24"><label className="text-xs text-text-secondary block mb-1">Comissão (%)</label><input type="number" value={newAdvisorRate} onChange={(e) => setNewAdvisorRate(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm" /></div>
-                                <div className="w-32"><label className="text-xs text-text-secondary block mb-1">Custo CRM (-)</label><input type="number" value={newAdvisorCost} onChange={(e) => setNewAdvisorCost(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm" title="Valor fixo mensal (negativo)" /></div>
+                                {/* Removed Cost Input from Creation */}
                                 <Button onClick={addAdvisor} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button>
                             </div>
-                            <ul className="space-y-2 max-h-60 overflow-y-auto">
+                            <ul className="space-y-2 max-h-96 overflow-y-auto">
                                 {props.advisors.map((adv: Advisor, i: number) => (
-                                    <li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm">
-                                        <div className="flex items-center gap-4">
-                                            <span className="font-semibold">{adv.name}</span>
-                                            <span className="text-xs text-text-secondary bg-background px-2 py-1 rounded">Comissão: {adv.commissionRate}%</span>
-                                            {adv.crmCost !== undefined && adv.crmCost !== 0 && (<span className="text-xs text-danger bg-background px-2 py-1 rounded">CRM: {formatCurrency(adv.crmCost)}</span>)}
-                                        </div>
-                                        <button onClick={() => props.setAdvisors(props.advisors.filter((_: any, idx: any) => idx !== i))} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>
-                                    </li>
+                                    <AdvisorSettingsItem 
+                                        key={adv.id} 
+                                        advisor={adv} 
+                                        onUpdate={updateAdvisor}
+                                        onDelete={() => props.setAdvisors(props.advisors.filter((_, idx) => idx !== i))}
+                                    />
                                 ))}
                             </ul>
                         </Card>
@@ -1091,7 +1176,7 @@ const TransactionsView: FC<{
         const years = [...new Set(transactions.map(t => new Date(t.date).getFullYear()))];
         const currentYear = new Date().getFullYear();
         if (!years.includes(currentYear)) years.push(currentYear);
-        return years.sort((a, b) => b - a);
+        return years.sort((a: number, b: number) => b - a);
     }, [transactions]);
 
     const filtered = useMemo(() => {
@@ -1278,7 +1363,7 @@ const TransactionsView: FC<{
                         </tbody>
                     </table>
                 </div>
-            </div>
+            </Card>
 
             <Modal isOpen={isModalOpen} onClose={handleClose} title={editingId ? "Editar Transação" : "Nova Transação"}>
                 <TransactionForm 
@@ -1311,6 +1396,7 @@ const ImportedRevenuesView: FC<{
     const [selectedAdvisor, setSelectedAdvisor] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('');
     const [clientSearch, setClientSearch] = useState('');
+    const [isDeduplicating, setIsDeduplicating] = useState(false);
 
     const uniqueAdvisors = useMemo(() => {
         const advs = new Set(importedRevenues.map(r => r.assessorPrincipal).filter(Boolean));
@@ -1341,69 +1427,88 @@ const ImportedRevenuesView: FC<{
         });
     }, [importedRevenues, startDate, endDate, selectedAdvisor, selectedCategory, clientSearch]);
 
+    const handleDeduplicate = async () => {
+        setIsDeduplicating(true);
+        try {
+            const result = await deduplicateImportedRevenues();
+            alert(`Limpeza concluída!\n\nRegistros atualizados (ID gerado): ${result.updatedCount}\nDuplicatas removidas: ${result.deletedCount}`);
+            // Force reload by simply reloading page or trigger a callback if available, 
+            // but since we don't have a reload callback here, let's just alert.
+            // In a real app we would refresh the data context.
+            window.location.reload(); 
+        } catch (error) {
+            console.error(error);
+            alert("Erro ao executar deduplicação.");
+        } finally {
+            setIsDeduplicating(false);
+        }
+    };
+
     return (
          <div className="space-y-6 animate-fade-in">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div><h2 className="text-2xl font-bold text-text-primary">Receitas Importadas</h2><p className="text-text-secondary">Importe planilhas para calcular comissões.</p></div>
-                <label className="bg-primary hover:bg-opacity-90 text-white shadow-md px-4 py-2 rounded-lg cursor-pointer flex items-center gap-2 font-semibold transition-all">
-                    <UploadIcon className="w-4 h-4"/> Importar Relatório
-                     <input type="file" accept=".xlsx, .xls, .csv" className="hidden" onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                            const reader = new FileReader();
-                            reader.onload = (evt) => {
-                                const bstr = evt.target?.result;
-                                const wb = XLSX.read(bstr, { type: 'binary' });
-                                const ws = wb.Sheets[wb.SheetNames[0]];
-                                const data = XLSX.utils.sheet_to_json(ws);
-                                const formatted = data.map((row: any) => {
-                                    if (row['Classificação'] === 'CUSTOS') return null;
-                                    
-                                    // Parse date properly (assuming Excel standard)
-                                    let dateIso = new Date().toISOString();
-                                    const rawDate = row['Data'];
+                <div className="flex gap-2">
+                    <Button onClick={handleDeduplicate} variant="secondary" className="text-xs" disabled={isDeduplicating}>
+                        {isDeduplicating ? 'Processando...' : 'Limpar Duplicatas'}
+                    </Button>
+                    <label className="bg-primary hover:bg-opacity-90 text-white shadow-md px-4 py-2 rounded-lg cursor-pointer flex items-center gap-2 font-semibold transition-all">
+                        <UploadIcon className="w-4 h-4"/> Importar Relatório
+                        <input type="file" accept=".xlsx, .xls, .csv" className="hidden" onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                                const reader = new FileReader();
+                                reader.onload = (evt) => {
+                                    const bstr = evt.target?.result;
+                                    const wb = XLSX.read(bstr, { type: 'binary' });
+                                    const ws = wb.Sheets[wb.SheetNames[0]];
+                                    const data = XLSX.utils.sheet_to_json(ws);
+                                    const formatted = data.map((row: any) => {
+                                        if (row['Classificação'] === 'CUSTOS') return null;
+                                        
+                                        // Parse date properly (assuming Excel standard)
+                                        let dateIso = new Date().toISOString();
+                                        const rawDate = row['Data'];
 
-                                    if (typeof rawDate === 'number') {
-                                        // Excel date to JS Date
-                                        // Excel base date: Dec 30 1899 usually for PC.
-                                        // Javascript base date: Jan 1 1970.
-                                        // Difference is 25569 days.
-                                        const jsDate = new Date(((Number(rawDate)) - 25569) * 86400 * 1000);
-                                        jsDate.setHours(12, 0, 0); 
-                                        dateIso = jsDate.toISOString();
-                                    } else if (rawDate) {
-                                        // Try parsing string
-                                         dateIso = new Date(rawDate).toISOString();
-                                    }
+                                        if (typeof rawDate === 'number') {
+                                            // Excel date to JS Date
+                                            const jsDate = new Date((rawDate - 25569) * 86400 * 1000);
+                                            jsDate.setHours(12, 0, 0); 
+                                            dateIso = jsDate.toISOString();
+                                        } else if (rawDate) {
+                                            // Try parsing string
+                                            dateIso = new Date(rawDate).toISOString();
+                                        }
 
-                                    // Parse Percentual Repasse as integer (80% -> 80)
-                                    let rawRepasse = parseFloat(row['% Repasse']) || 0;
-                                    if (rawRepasse <= 1 && rawRepasse > 0) {
-                                         rawRepasse = rawRepasse * 100;
-                                    }
+                                        // Parse Percentual Repasse as integer (80% -> 80)
+                                        let rawRepasse = parseFloat(row['% Repasse']) || 0;
+                                        if (rawRepasse <= 1 && rawRepasse > 0) {
+                                            rawRepasse = rawRepasse * 100;
+                                        }
 
-                                    return {
-                                        date: dateIso,
-                                        conta: row['Conta'] || '',
-                                        cliente: row['Cliente'] || '',
-                                        codAssessor: row['Cod Assessor'] || '',
-                                        assessorPrincipal: row['Assessor Principal'] || '',
-                                        classificacao: row['Classificação'] || '',
-                                        produtoCategoria: row['Produto/Categoria'] || '',
-                                        ativo: row['Ativo'] || '',
-                                        tipoReceita: row['Tipo Receita'] || '',
-                                        receitaLiquidaEQI: parseFloat(row['Receita Liquida EQI']) || 0,
-                                        percentualRepasse: Math.round(rawRepasse), // Save as Integer
-                                        comissaoLiquida: parseFloat(row['Comissão Líquida']) || 0,
-                                        tipo: row['Tipo'] || ''
-                                    };
-                                }).filter((r: any) => r !== null);
-                                onImport(formatted);
-                            };
-                            reader.readAsBinaryString(file);
-                        }
-                    }} />
-                </label>
+                                        return {
+                                            date: dateIso,
+                                            conta: row['Conta'] || '',
+                                            cliente: row['Cliente'] || '',
+                                            codAssessor: row['Cod Assessor'] || '',
+                                            assessorPrincipal: row['Assessor Principal'] || '',
+                                            classificacao: row['Classificação'] || '',
+                                            produtoCategoria: row['Produto/Categoria'] || '',
+                                            ativo: row['Ativo'] || '',
+                                            tipoReceita: row['Tipo Receita'] || '',
+                                            receitaLiquidaEQI: parseFloat(row['Receita Liquida EQI']) || 0,
+                                            percentualRepasse: Math.round(rawRepasse), // Save as Integer
+                                            comissaoLiquida: parseFloat(row['Comissão Líquida']) || 0,
+                                            tipo: row['Tipo'] || ''
+                                        };
+                                    }).filter((r: any) => r !== null);
+                                    onImport(formatted);
+                                };
+                                reader.readAsBinaryString(file);
+                            }
+                        }} />
+                    </label>
+                </div>
             </div>
             
             <Card className="p-4">
@@ -1528,7 +1633,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         const years = [...new Set(transactions.map(t => new Date(t.date).getFullYear()))];
         const currentYear = new Date().getFullYear();
         if (!years.includes(currentYear)) years.push(currentYear);
-        return years.sort((a, b) => b - a);
+        return years.sort((a: number, b: number) => b - a);
     }, [transactions]);
     const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
@@ -1845,6 +1950,7 @@ const App: FC = () => {
         if (!user) return;
         const newRevenues: ImportedRevenue[] = [];
         let count = 0;
+        let skipped = 0;
         
         for (const item of data) {
              try {
@@ -1853,13 +1959,17 @@ const App: FC = () => {
                  const docRef = await saveImportedRevenue(cleanItem, user.uid);
                  newRevenues.push({ ...cleanItem, id: docRef.id });
                  count++;
-             } catch (e) {
-                 console.error("Failed to save imported revenue", e);
+             } catch (e: any) {
+                 if (e.message === "Duplicata detectada") {
+                     skipped++;
+                 } else {
+                     console.error("Failed to save imported revenue", e);
+                 }
              }
         }
-        if (count > 0) {
-            setImportedRevenues(prev => [...newRevenues, ...prev]);
-            alert(`${count} receitas importadas para a tabela de gestão de comissões.`);
+        if (count > 0 || skipped > 0) {
+            if (count > 0) setImportedRevenues(prev => [...newRevenues, ...prev]);
+            alert(`${count} receitas importadas para a tabela.${skipped > 0 ? `\n${skipped} duplicatas ignoradas.` : ''}`);
         }
     };
 

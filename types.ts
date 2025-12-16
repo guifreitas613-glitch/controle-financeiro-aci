@@ -65,7 +65,7 @@ export interface AdvisorSplit {
     revenueAmount: number;
     percentage: number;
     // Computed fields optionally stored
-    crmCost?: number;
+    crmCost?: number; // Mantido para compatibilidade, mas agora representa a soma dos custos
     netPayout?: number;
 }
 
@@ -83,11 +83,17 @@ export interface CostCenter {
   isDefault?: boolean;
 }
 
+export interface AdvisorCost {
+    description: string;
+    value: number; // Valor negativo geralmente
+}
+
 export interface Advisor {
     id: string;
     name: string;
     commissionRate: number; // Percentage
-    crmCost?: number; // Valor negativo fixo mensal
+    costs?: AdvisorCost[]; // Lista de custos variáveis
+    // Deprecated: crmCost?: number; 
 }
 
 export interface ExpenseCategory {

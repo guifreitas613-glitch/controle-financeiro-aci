@@ -1,4 +1,3 @@
-
 import { db } from "./firebase";
 import { 
   collection, 
@@ -10,7 +9,9 @@ import {
   updateDoc, 
   deleteDoc,
   serverTimestamp,
-  where
+  where,
+  QuerySnapshot,
+  DocumentData
 } from "firebase/firestore";
 import { Transaction, ImportedRevenue } from './types';
 
@@ -51,37 +52,119 @@ export function deleteTransaction(id: string) {
     return deleteDoc(transactionDoc);
 }
 
-// --- RECEITAS IMPORTADAS ---
+// --- Funções para Receitas Importadas ---
 
-export function saveImportedRevenue(data: ImportedRevenueData, userId: string) {
-    const col = collection(db, "transacoes");
-    return addDoc(col, {
+// Helper para gerar ID único determinístico
+function generateRevenueId(data: ImportedRevenueData): string {
+    // Cria uma string única baseada nos campos principais para detecção de duplicidade
+    // hash(Data + Conta + Cliente + codAssessor + assessorPrincipal + classificacao + ativo + tipoReceita + receitaLiquidaEQI)
+    const raw = [
+        data.date,
+        data.conta,
+        data.cliente,
+        data.codAssessor,
+        data.assessorPrincipal,
+        data.classificacao,
+        data.ativo,
+        data.tipoReceita,
+        data.receitaLiquidaEQI
+    ].join('|');
+
+    // Simple hash implementation for the string
+    let hash = 0;
+    for (let i = 0; i < raw.length; i++) {
+        const char = raw.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32bit integer
+    }
+    // Hex string of the hash + length to minimize collisions
+    return `rev_${Math.abs(hash).toString(16)}_${raw.length}`;
+}
+
+// Salvar receita importada com verificação de duplicidade
+export async function saveImportedRevenue(data: ImportedRevenueData, userId: string) {
+    const collectionRef = collection(db, "receitas_importadas");
+    const idUnico = generateRevenueId(data);
+
+    // Verificar se já existe documento com este idUnico
+    const q = query(collectionRef, where('idUnico', '==', idUnico));
+    const existingDocs = await getDocs(q);
+
+    if (!existingDocs.empty) {
+        throw new Error("Duplicata detectada");
+    }
+
+    return addDoc(collectionRef, {
         ...data,
-        tipoInterno: "receita_importada",
+        idUnico,
+        tipoInterno: 'receita_importada',
         criadoPor: userId,
         criadoEm: serverTimestamp()
     });
 }
 
+// Ler todas as receitas importadas
 export function getImportedRevenues() {
-    const col = collection(db, "transacoes");
-    const q = query(col, where("tipoInterno", "==", "receita_importada"), orderBy("date", "desc"));
+    const collectionRef = collection(db, "receitas_importadas");
+    const q = query(collectionRef, orderBy("date", "desc"));
     return getDocs(q);
 }
 
-export function getRevenuesByPeriod(startDate: string, endDate: string) {
-    const col = collection(db, "transacoes");
+// Deletar receita importada
+export function deleteImportedRevenue(id: string) {
+    const docRef = doc(db, "receitas_importadas", id);
+    return deleteDoc(docRef);
+}
+
+// Buscar receitas por período
+export function getRevenuesByPeriod(startDateIso: string, endDateIso: string) {
+    const collectionRef = collection(db, "receitas_importadas");
     const q = query(
-        col, 
-        where("tipoInterno", "==", "receita_importada"),
-        where("date", ">=", startDate),
-        where("date", "<=", endDate),
-        orderBy("date", "asc")
+        collectionRef,
+        where("date", ">=", startDateIso),
+        where("date", "<=", endDateIso)
     );
     return getDocs(q);
 }
 
-export function deleteImportedRevenue(id: string) {
-    const docRef = doc(db, "transacoes", id);
-    return deleteDoc(docRef);
+// Rotina de Deduplicação e Limpeza
+export async function deduplicateImportedRevenues() {
+    const collectionRef = collection(db, "receitas_importadas");
+    const snapshot = await getDocs(collectionRef);
+
+    const processedIds = new Set<string>();
+    let deletedCount = 0;
+    let updatedCount = 0;
+
+    // Ordenar por data de criação (ou data do registro) para manter o mais antigo/primeiro
+    const docs = snapshot.docs.sort((a, b) => {
+        const dataA = a.data();
+        const dataB = b.data();
+        // Se tiver criadoEm, usa. Senão usa a data do registro.
+        const timeA = dataA.criadoEm?.seconds || new Date(dataA.date).getTime();
+        const timeB = dataB.criadoEm?.seconds || new Date(dataB.date).getTime();
+        return timeA - timeB;
+    });
+
+    for (const docSnapshot of docs) {
+        const data = docSnapshot.data() as ImportedRevenueData & { idUnico?: string };
+        let idUnico = data.idUnico;
+
+        // Se não tiver idUnico, gera e atualiza
+        if (!idUnico) {
+            idUnico = generateRevenueId(data);
+            await updateDoc(docSnapshot.ref, { idUnico });
+            updatedCount++;
+        }
+
+        // Se já processamos esse ID, é duplicata -> deleta
+        if (processedIds.has(idUnico)) {
+            await deleteDoc(docSnapshot.ref);
+            deletedCount++;
+        } else {
+            processedIds.add(idUnico);
+        }
+    }
+
+    return { updatedCount, deletedCount };
 }
