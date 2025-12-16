@@ -218,9 +218,10 @@ interface TransactionFormProps {
     globalTaxRate: number;
     transactions?: Transaction[];
     importedRevenues?: ImportedRevenue[];
+    userId?: string;
 }
 
-const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialData, defaultType, incomeCategories, expenseCategories, paymentMethods, costCenters, advisors, globalTaxRate, transactions = [], importedRevenues = [] }) => {
+const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialData, defaultType, incomeCategories, expenseCategories, paymentMethods, costCenters, advisors, globalTaxRate, transactions = [], importedRevenues = [], userId }) => {
     const [type, setType] = useState<TransactionType>(initialData?.type || defaultType || TransactionType.EXPENSE);
     const [nature, setNature] = useState<ExpenseNature>(initialData?.nature || ExpenseNature.VARIABLE);
     const [advisorId, setAdvisorId] = useState(initialData?.advisorId || '');
@@ -323,6 +324,10 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     };
 
     const confirmSearchPeriod = async () => {
+        if (!userId) {
+            alert("Erro de autenticação.");
+            return;
+        }
         if (!searchPeriod.start || !searchPeriod.end) {
             alert("Selecione a data inicial e final.");
             return;
@@ -342,7 +347,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         }
 
         try {
-            const snapshot = await getRevenuesByPeriod(startDateIso, endDateIso);
+            const snapshot = await getRevenuesByPeriod(startDateIso, endDateIso, userId);
             const periodRevenues = snapshot.docs.map(doc => doc.data() as ImportedRevenue);
 
             if (periodRevenues.length === 0) {
@@ -1162,7 +1167,8 @@ const TransactionsView: FC<{
     onImportTransactions: (data: any[]) => void;
     globalTaxRate: number;
     importedRevenues: ImportedRevenue[];
-}> = ({ transactions, onAdd, onEdit, onDelete, onSetPaid, incomeCategories, expenseCategories, paymentMethods, costCenters, advisors, onImportTransactions, globalTaxRate, importedRevenues }) => {
+    userId?: string;
+}> = ({ transactions, onAdd, onEdit, onDelete, onSetPaid, incomeCategories, expenseCategories, paymentMethods, costCenters, advisors, onImportTransactions, globalTaxRate, importedRevenues, userId }) => {
     const [filterYear, setFilterYear] = useState<number | 'all'>('all');
     const [filterMonth, setFilterMonth] = useState<number | 'all'>('all');
     const [activeTab, setActiveTab] = useState<TransactionType>(TransactionType.EXPENSE);
@@ -1379,6 +1385,7 @@ const TransactionsView: FC<{
                     globalTaxRate={globalTaxRate}
                     transactions={transactions}
                     importedRevenues={importedRevenues}
+                    userId={userId}
                 />
             </Modal>
         </div>
@@ -1390,7 +1397,8 @@ const ImportedRevenuesView: FC<{
     advisors: Advisor[];
     onImport: (data: any[]) => void;
     onDelete: (id: string) => void;
-}> = ({ importedRevenues, advisors, onImport, onDelete }) => {
+    userId?: string;
+}> = ({ importedRevenues, advisors, onImport, onDelete, userId }) => {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [selectedAdvisor, setSelectedAdvisor] = useState('');
@@ -1428,9 +1436,10 @@ const ImportedRevenuesView: FC<{
     }, [importedRevenues, startDate, endDate, selectedAdvisor, selectedCategory, clientSearch]);
 
     const handleDeduplicate = async () => {
+        if (!userId) return;
         setIsDeduplicating(true);
         try {
-            const result = await deduplicateImportedRevenues();
+            const result = await deduplicateImportedRevenues(userId);
             alert(`Limpeza concluída!\n\nRegistros atualizados (ID gerado): ${result.updatedCount}\nDuplicatas removidas: ${result.deletedCount}`);
             // Force reload by simply reloading page or trigger a callback if available, 
             // but since we don't have a reload callback here, let's just alert.
@@ -1609,16 +1618,91 @@ interface DashboardViewProps {
 }
 
 const ReportsView: FC<{ transactions: Transaction[] }> = ({ transactions }) => {
+    const [period, setPeriod] = useState<'month' | 'year' | 'all'>('year');
+    
+    const chartData = useMemo(() => {
+        let filtered = transactions;
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
+
+        if (period === 'year') {
+            filtered = transactions.filter(t => new Date(t.date).getFullYear() === currentYear);
+        } else if (period === 'month') {
+            filtered = transactions.filter(t => {
+                const d = new Date(t.date);
+                return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
+            });
+        }
+
+        const expenseCats: Record<string, number> = {};
+        const incomeCats: Record<string, number> = {};
+
+        filtered.forEach(t => {
+            if (t.type === TransactionType.EXPENSE) {
+                expenseCats[t.category] = (expenseCats[t.category] || 0) + t.amount;
+            } else {
+                incomeCats[t.category] = (incomeCats[t.category] || 0) + t.amount;
+            }
+        });
+
+        return {
+            expenses: Object.entries(expenseCats).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value),
+            income: Object.entries(incomeCats).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value)
+        };
+    }, [transactions, period]);
+
+    const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658'];
+
     return (
         <div className="space-y-6 animate-fade-in">
              <div className="flex justify-between items-center">
-                <div><h2 className="text-2xl font-bold text-text-primary">Relatórios</h2><p className="text-text-secondary">Análises detalhadas.</p></div>
+                <h2 className="text-2xl font-bold text-text-primary">Relatórios</h2>
+                <div className="flex gap-2">
+                    <button onClick={() => setPeriod('month')} className={`px-3 py-1 rounded text-sm transition-colors ${period === 'month' ? 'bg-primary text-white' : 'bg-surface text-text-secondary hover:text-text-primary'}`}>Mês</button>
+                    <button onClick={() => setPeriod('year')} className={`px-3 py-1 rounded text-sm transition-colors ${period === 'year' ? 'bg-primary text-white' : 'bg-surface text-text-secondary hover:text-text-primary'}`}>Ano</button>
+                    <button onClick={() => setPeriod('all')} className={`px-3 py-1 rounded text-sm transition-colors ${period === 'all' ? 'bg-primary text-white' : 'bg-surface text-text-secondary hover:text-text-primary'}`}>Tudo</button>
+                </div>
             </div>
-            <Card className="p-12 text-center text-text-secondary border-2 border-dashed border-border-color">
-                <ReportsIcon className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                <h3 className="text-lg font-bold mb-2">Relatórios em Desenvolvimento</h3>
-                <p>Em breve você poderá visualizar relatórios avançados de fluxo de caixa e DRE.</p>
-            </Card>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Card className="min-h-[350px] flex flex-col">
+                    <h3 className="font-bold mb-4 text-center text-danger">Despesas por Categoria</h3>
+                    <div className="flex-1 w-full h-64">
+                        {chartData.expenses.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie data={chartData.expenses} cx="50%" cy="50%" innerRadius={60} outerRadius={80} fill="#8884d8" paddingAngle={5} dataKey="value">
+                                        {chartData.expenses.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip content={<CustomPieTooltip />} />
+                                    <Legend />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        ) : <div className="flex items-center justify-center h-full text-text-secondary">Sem dados para o período</div>}
+                    </div>
+                </Card>
+                 <Card className="min-h-[350px] flex flex-col">
+                    <h3 className="font-bold mb-4 text-center text-green-400">Receitas por Categoria</h3>
+                     <div className="flex-1 w-full h-64">
+                         {chartData.income.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie data={chartData.income} cx="50%" cy="50%" innerRadius={60} outerRadius={80} fill="#82ca9d" paddingAngle={5} dataKey="value">
+                                        {chartData.income.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip content={<CustomPieTooltip />} />
+                                    <Legend />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        ) : <div className="flex items-center justify-center h-full text-text-secondary">Sem dados para o período</div>}
+                    </div>
+                </Card>
+            </div>
         </div>
     );
 };
@@ -1863,8 +1947,8 @@ const App: FC = () => {
         if (!user) return;
         const loadData = async () => {
             try {
-                // Load Transactions
-                const snapshot = await getTransactions();
+                // Load Transactions (Filtrando por userId)
+                const snapshot = await getTransactions(user.uid);
                 // CHANGE: Filter out 'receita_importada' so they don't appear in the main dashboard/list
                 const data = snapshot.docs
                     .map(doc => ({ id: doc.id, ...doc.data() } as any))
@@ -1872,8 +1956,8 @@ const App: FC = () => {
                     .map(t => t as Transaction);
                 setTransactions(data);
 
-                // Load Imported Revenues
-                const importedSnapshot = await getImportedRevenues();
+                // Load Imported Revenues (Filtrando por userId)
+                const importedSnapshot = await getImportedRevenues(user.uid);
                 const importedData = importedSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ImportedRevenue));
                 setImportedRevenues(importedData);
 
@@ -2042,6 +2126,7 @@ const App: FC = () => {
                             onImportTransactions={handleImportTransactions}
                             globalTaxRate={globalTaxRate}
                             importedRevenues={importedRevenues}
+                            userId={user.uid}
                         />
                     )}
                     {activeView === 'imported-revenues' && (
@@ -2050,6 +2135,7 @@ const App: FC = () => {
                             advisors={advisors}
                             onImport={handleImportToRevenueTable}
                             onDelete={handleDeleteImportedRevenue}
+                            userId={user.uid}
                         />
                     )}
                     {activeView === 'goals' && (
