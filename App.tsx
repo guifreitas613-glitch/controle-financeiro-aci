@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, FC, ReactNode, useEffect } from 'react';
 import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType, AdvisorSplit, ImportedRevenue, AdvisorCost } from './types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area } from 'recharts';
@@ -1618,42 +1617,58 @@ interface DashboardViewProps {
     importedRevenues: ImportedRevenue[];
 }
 
-const ReportsView: FC<{ transactions: Transaction[] }> = ({ transactions }) => {
+const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: ImportedRevenue[] }> = ({ transactions, importedRevenues = [] }) => {
     const [period, setPeriod] = useState<'month' | 'year' | 'all'>('year');
-    
-    const chartData = useMemo(() => {
-        let filtered = transactions;
+
+    const dreData = useMemo(() => {
         const now = new Date();
         const currentYear = now.getFullYear();
         const currentMonth = now.getMonth();
 
-        if (period === 'year') {
-            filtered = transactions.filter(t => new Date(t.date).getFullYear() === currentYear);
-        } else if (period === 'month') {
-            filtered = transactions.filter(t => {
-                const d = new Date(t.date);
-                return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
-            });
-        }
+        const filterDate = (dateStr: string) => {
+            const d = new Date(dateStr);
+            if (period === 'all') return true;
+            if (period === 'year') return d.getFullYear() === currentYear;
+            if (period === 'month') return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
+            return false;
+        };
 
-        const expenseCats: Record<string, number> = {};
-        const incomeCats: Record<string, number> = {};
+        const filteredTrans = transactions.filter(t => filterDate(t.date));
+        const filteredImports = importedRevenues.filter(r => filterDate(r.date));
 
-        filtered.forEach(t => {
-            if (t.type === TransactionType.EXPENSE) {
-                expenseCats[t.category] = (expenseCats[t.category] || 0) + t.amount;
-            } else {
-                incomeCats[t.category] = (incomeCats[t.category] || 0) + t.amount;
-            }
+        // Calculate Revenue
+        const manualRevenue = filteredTrans
+            .filter(t => t.type === TransactionType.INCOME)
+            .reduce((sum, t) => sum + t.amount, 0);
+        
+        const importedRevenue = filteredImports
+            .reduce((sum, r) => sum + (r.receitaLiquidaEQI || 0), 0);
+
+        const totalRevenue = manualRevenue + importedRevenue;
+
+        // Calculate Expenses
+        const expenseTrans = filteredTrans.filter(t => t.type === TransactionType.EXPENSE);
+        const totalExpense = expenseTrans.reduce((sum, t) => sum + t.amount, 0);
+
+        // Expenses by Category
+        const expensesByCategory: Record<string, number> = {};
+        expenseTrans.forEach(t => {
+            expensesByCategory[t.category] = (expensesByCategory[t.category] || 0) + t.amount;
         });
 
-        return {
-            expenses: Object.entries(expenseCats).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value),
-            income: Object.entries(incomeCats).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value)
-        };
-    }, [transactions, period]);
+        const sortedExpenses = Object.entries(expensesByCategory)
+            .map(([name, value]) => ({ name, value }))
+            .sort((a, b) => b.value - a.value);
 
-    const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658'];
+        const result = totalRevenue - totalExpense;
+
+        return {
+            totalRevenue,
+            totalExpense,
+            sortedExpenses,
+            result
+        };
+    }, [transactions, importedRevenues, period]);
 
     return (
         <div className="space-y-6 animate-fade-in">
@@ -1666,44 +1681,49 @@ const ReportsView: FC<{ transactions: Transaction[] }> = ({ transactions }) => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card className="min-h-[350px] flex flex-col">
-                    <h3 className="font-bold mb-4 text-center text-danger">Despesas por Categoria</h3>
-                    <div className="flex-1 w-full h-64">
-                        {chartData.expenses.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie data={chartData.expenses} cx="50%" cy="50%" innerRadius={60} outerRadius={80} fill="#8884d8" paddingAngle={5} dataKey="value">
-                                        {chartData.expenses.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip content={<CustomPieTooltip />} />
-                                    <Legend />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        ) : <div className="flex items-center justify-center h-full text-text-secondary">Sem dados para o período</div>}
+            <Card className="max-w-4xl mx-auto">
+                <div className="border-b border-border-color pb-4 mb-4">
+                    <h3 className="text-xl font-bold text-text-primary text-center">Demonstrativo do Resultado (DRE)</h3>
+                    <p className="text-center text-text-secondary text-sm">
+                        {period === 'month' ? 'Mês Atual' : period === 'year' ? 'Ano Atual' : 'Período Completo'}
+                    </p>
+                </div>
+
+                <div className="space-y-3 font-mono text-sm sm:text-base">
+                    {/* Receita */}
+                    <div className="flex justify-between items-center py-2">
+                        <span className="font-bold text-text-primary">RECEITA OPERACIONAL BRUTA</span>
+                        <span className="font-bold text-green-400">{formatCurrency(dreData.totalRevenue)}</span>
                     </div>
-                </Card>
-                 <Card className="min-h-[350px] flex flex-col">
-                    <h3 className="font-bold mb-4 text-center text-green-400">Receitas por Categoria</h3>
-                     <div className="flex-1 w-full h-64">
-                         {chartData.income.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie data={chartData.income} cx="50%" cy="50%" innerRadius={60} outerRadius={80} fill="#82ca9d" paddingAngle={5} dataKey="value">
-                                        {chartData.income.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip content={<CustomPieTooltip />} />
-                                    <Legend />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        ) : <div className="flex items-center justify-center h-full text-text-secondary">Sem dados para o período</div>}
+
+                    {/* Despesas Header */}
+                    <div className="flex justify-between items-center py-2 border-t border-border-color/30 mt-2">
+                        <span className="font-bold text-text-primary">(-) DESPESAS OPERACIONAIS</span>
+                        <span className="font-bold text-danger">{formatCurrency(dreData.totalExpense)}</span>
                     </div>
-                </Card>
-            </div>
+
+                    {/* Despesas Detalhes */}
+                    <div className="pl-4 sm:pl-8 space-y-1">
+                        {dreData.sortedExpenses.map((exp, idx) => (
+                            <div key={idx} className="flex justify-between text-text-secondary text-xs sm:text-sm hover:bg-background/50 px-2 rounded">
+                                <span>{exp.name}</span>
+                                <span>{formatCurrency(exp.value)}</span>
+                            </div>
+                        ))}
+                        {dreData.sortedExpenses.length === 0 && (
+                            <div className="text-text-secondary italic text-xs">Nenhuma despesa registrada.</div>
+                        )}
+                    </div>
+
+                    {/* Resultado */}
+                    <div className="flex justify-between items-center py-3 border-t-2 border-border-color mt-4 bg-background/30 px-2 rounded">
+                        <span className="font-bold text-lg text-text-primary">RESULTADO DO PERÍODO</span>
+                        <span className={`font-bold text-lg ${dreData.result >= 0 ? 'text-green-400' : 'text-danger'}`}>
+                            {formatCurrency(dreData.result)}
+                        </span>
+                    </div>
+                </div>
+            </Card>
         </div>
     );
 };
@@ -2142,7 +2162,7 @@ const App: FC = () => {
                     {activeView === 'goals' && (
                         <GoalsView goals={goals} onAdd={handleAddGoal} onUpdateProgress={handleUpdateGoalProgress} onDelete={handleDeleteGoal} />
                     )}
-                    {activeView === 'reports' && <ReportsView transactions={transactions} />}
+                    {activeView === 'reports' && <ReportsView transactions={transactions} importedRevenues={importedRevenues} />}
                     {activeView === 'settings' && (
                         <SettingsView 
                             incomeCategories={incomeCategories} setIncomeCategories={setIncomeCategories}
