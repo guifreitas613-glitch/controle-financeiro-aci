@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, FC, ReactNode, useEffect } from 'react';
 import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType, AdvisorSplit, ImportedRevenue, AdvisorCost } from './types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area } from 'recharts';
@@ -1369,7 +1370,7 @@ const TransactionsView: FC<{
                         </tbody>
                     </table>
                 </div>
-            </Card>
+            </div>
 
             <Modal isOpen={isModalOpen} onClose={handleClose} title={editingId ? "Editar Transação" : "Nova Transação"}>
                 <TransactionForm 
