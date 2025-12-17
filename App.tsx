@@ -254,8 +254,32 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     const [commissionAmount, setCommissionAmount] = useState(initialData?.commissionAmount || 0);
     const [isCommissionManual, setIsCommissionManual] = useState(false);
     
+    // Tax Controls
+    const [applyTax, setApplyTax] = useState(true);
+    const [customTaxRate, setCustomTaxRate] = useState(globalTaxRate);
+
+    useEffect(() => {
+        if (initialData && initialData.type === TransactionType.INCOME) {
+            const iGross = initialData.grossAmount ?? initialData.amount ?? 0;
+            const iTax = initialData.taxAmount ?? 0;
+            // Heuristic: If tax is 0 but gross is not, assume tax was disabled or rate was 0.
+            if (iGross > 0 && iTax === 0) {
+                setApplyTax(false);
+                setCustomTaxRate(globalTaxRate); // Reset to default for UI if re-enabled
+            } else if (iGross > 0) {
+                setApplyTax(true);
+                // Reverse calculate rate
+                setCustomTaxRate(parseFloat(((iTax / iGross) * 100).toFixed(2)));
+            }
+        } else if (!initialData) {
+            setCustomTaxRate(globalTaxRate);
+            setApplyTax(true);
+        }
+    }, [initialData, globalTaxRate]);
+
     const gross = parseFloat(formData.grossAmount) || 0;
-    const taxAmount = type === TransactionType.INCOME ? (gross * globalTaxRate / 100) : 0;
+    const effectiveRate = applyTax ? customTaxRate : 0;
+    const taxAmount = type === TransactionType.INCOME ? (gross * effectiveRate / 100) : 0;
     const basePostTax = gross - taxAmount;
 
     useEffect(() => {
@@ -660,13 +684,44 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                 </div>
 
                  <div className="bg-background p-3 rounded-lg border border-border-color">
+                     {/* Checkbox "Aplicar imposto" */}
+                    <div className="flex justify-end mb-2">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                             <span className="text-xs text-text-secondary">Aplicar imposto</span>
+                             <input 
+                                 type="checkbox" 
+                                 checked={applyTax} 
+                                 onChange={e => setApplyTax(e.target.checked)} 
+                                 className="rounded text-primary focus:ring-primary h-4 w-4 bg-surface border-border-color" 
+                             />
+                        </label>
+                     </div>
+
                     <div className="grid grid-cols-3 gap-4 text-center mb-2">
                         <div>
                             <p className="text-xs text-text-secondary">Receita Total</p>
                             <p className="font-semibold">{formatCurrency(gross)}</p>
                         </div>
                         <div className="border-l border-r border-border-color px-2">
-                            <p className="text-xs text-text-secondary">(-) Imposto ({globalTaxRate}%)</p>
+                            {/* Input Editável para % */}
+                            <div className="flex items-center justify-center gap-1">
+                                <p className="text-xs text-text-secondary">(-) Imposto</p>
+                                {applyTax ? (
+                                    <div className="flex items-center">
+                                        <span className="text-xs text-text-secondary">(</span>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            value={customTaxRate}
+                                            onChange={e => setCustomTaxRate(parseFloat(e.target.value) || 0)}
+                                            className="w-10 bg-transparent text-xs text-center border-b border-border-color focus:outline-none p-0"
+                                        />
+                                        <span className="text-xs text-text-secondary">%)</span>
+                                    </div>
+                                ) : (
+                                    <span className="text-xs text-text-secondary">(0%)</span>
+                                )}
+                            </div>
                             <p className="font-semibold text-danger">
                                 {formatCurrency(taxAmount)}
                             </p>
