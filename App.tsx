@@ -1843,12 +1843,35 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         return { totalIncome: income, totalExpense: expense, netProfit: income - expense, mostProfitableMonth, largestExpense, taxProvisionBalanceForPeriod: totalProvisioned - totalTaxPaid };
     }, [filteredTransactions]);
     
-    // KPI Saldo Hoje adicionado aqui
+    // KPI Saldo Hoje (Conta PJ + Provisão)
     const saldoHoje = useMemo(() => {
         const now = new Date();
         return transactions.reduce((acc, t) => {
             if (new Date(t.date) <= now) {
-                return acc + (t.type === TransactionType.INCOME ? t.amount : -t.amount);
+                let val = 0;
+                if (t.type === TransactionType.INCOME) {
+                    // Use gross amount (amount + taxAmount if grossAmount missing) to include provision in total balance
+                    // If t.amount is Net, and we want Total Cash, we need Net + Tax.
+                    val = t.grossAmount ?? (t.amount + (t.taxAmount || 0)); 
+                } else {
+                    val = -t.amount;
+                }
+                return acc + val;
+            }
+            return acc;
+        }, 0);
+    }, [transactions]);
+
+    // KPI Saldo Provisão de Impostos (Apenas Provisão)
+    const saldoProvisaoHoje = useMemo(() => {
+        const now = new Date();
+        return transactions.reduce((acc, t) => {
+            if (new Date(t.date) <= now) {
+                if (t.type === TransactionType.INCOME) {
+                    return acc + (t.taxAmount || 0);
+                } else if (t.type === TransactionType.EXPENSE && t.costCenter === 'provisao-impostos') {
+                    return acc - t.amount;
+                }
             }
             return acc;
         }, 0);
@@ -1905,12 +1928,25 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-                <Card className={`transform hover:scale-105 transition-transform duration-300 border-l-4 ${saldoHoje >= 0 ? 'border-primary' : 'border-danger'}`}>
-                    <h3 className="text-text-secondary font-semibold text-sm uppercase tracking-wider">Saldo Hoje</h3>
-                    <p className={`text-3xl font-bold mt-1 ${saldoHoje >= 0 ? 'text-primary' : 'text-danger'}`}>{formatCurrency(saldoHoje)}</p>
+            {/* Top Row: Balance KPIs (Smaller, Discreet) */}
+            <div className="flex flex-col md:flex-row gap-4">
+                <Card className={`flex-1 p-4 border-l-4 ${saldoHoje >= 0 ? 'border-primary' : 'border-danger'} flex items-center justify-between`}>
+                     <div>
+                        <h3 className="text-text-secondary font-semibold text-xs uppercase tracking-wider">Saldo Hoje</h3>
+                        <p className={`text-2xl font-bold mt-1 ${saldoHoje >= 0 ? 'text-primary' : 'text-danger'}`}>{formatCurrency(saldoHoje)}</p>
+                     </div>
                 </Card>
 
+                <Card className={`flex-1 p-4 border-l-4 ${saldoProvisaoHoje >= 0 ? 'border-primary' : 'border-danger'} flex items-center justify-between`}>
+                     <div>
+                        <h3 className="text-text-secondary font-semibold text-xs uppercase tracking-wider">Saldo Provisão de Impostos</h3>
+                        <p className={`text-2xl font-bold mt-1 ${saldoProvisaoHoje >= 0 ? 'text-primary' : 'text-danger'}`}>{formatCurrency(saldoProvisaoHoje)}</p>
+                     </div>
+                </Card>
+            </div>
+
+            {/* Main KPIs Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                 <Card className="transform hover:scale-105 transition-transform duration-300 border-l-4 border-green-400">
                     <h3 className="text-text-secondary font-semibold text-sm uppercase tracking-wider">Receita Líquida</h3>
                     <p className="text-3xl font-bold text-green-400 mt-1">{formatCurrency(totalIncome)}</p>
@@ -2005,7 +2041,6 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                  <div className="space-y-4">
                     <div className="flex justify-between items-center p-3 bg-background rounded-lg border border-border-color/50"><span className="text-text-secondary">Mês mais lucrativo:</span><span className="font-bold text-primary">{mostProfitableMonth}</span></div>
                     <div className="flex justify-between items-center p-3 bg-background rounded-lg border border-border-color/50"><span className="text-text-secondary">Maior despesa única:</span>{largestExpense ? <span className="font-bold text-danger text-right">{largestExpense.description}<br/><span className="text-sm">{formatCurrency(largestExpense.amount)}</span></span> : <span className="font-bold text-text-secondary">N/A</span>}</div>
-                     <div className="flex justify-between items-center p-3 bg-background rounded-lg border border-border-color/50"><span className="text-text-secondary">Saldo Provisão de Impostos:</span><span className={`font-bold ${taxProvisionBalanceForPeriod >= 0 ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(taxProvisionBalanceForPeriod)}</span></div>
                  </div>
             </Card>
 
