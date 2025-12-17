@@ -257,30 +257,41 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     // Tax Controls
     const [applyTax, setApplyTax] = useState(true);
     const [customTaxRate, setCustomTaxRate] = useState(globalTaxRate);
+    const [manualTaxAmount, setManualTaxAmount] = useState(0);
+
+    const gross = parseFloat(formData.grossAmount) || 0;
 
     useEffect(() => {
+        const currentGross = parseFloat(formData.grossAmount) || 0;
         if (initialData && initialData.type === TransactionType.INCOME) {
             const iGross = initialData.grossAmount ?? initialData.amount ?? 0;
             const iTax = initialData.taxAmount ?? 0;
-            // Heuristic: If tax is 0 but gross is not, assume tax was disabled or rate was 0.
             if (iGross > 0 && iTax === 0) {
                 setApplyTax(false);
-                setCustomTaxRate(globalTaxRate); // Reset to default for UI if re-enabled
+                setCustomTaxRate(globalTaxRate);
+                setManualTaxAmount(0);
             } else if (iGross > 0) {
                 setApplyTax(true);
-                // Reverse calculate rate
-                setCustomTaxRate(parseFloat(((iTax / iGross) * 100).toFixed(2)));
+                const r = (iTax / iGross) * 100;
+                setCustomTaxRate(parseFloat(r.toFixed(2)));
+                setManualTaxAmount(iTax);
             }
         } else if (!initialData) {
             setCustomTaxRate(globalTaxRate);
             setApplyTax(true);
+            setManualTaxAmount(currentGross * globalTaxRate / 100);
         }
     }, [initialData, globalTaxRate]);
 
-    const gross = parseFloat(formData.grossAmount) || 0;
-    const effectiveRate = applyTax ? customTaxRate : 0;
-    const taxAmount = type === TransactionType.INCOME ? (gross * effectiveRate / 100) : 0;
-    const basePostTax = gross - taxAmount;
+    useEffect(() => {
+        if (applyTax) {
+            setManualTaxAmount(gross * customTaxRate / 100);
+        }
+    }, [gross, applyTax]); 
+
+    // Derived values
+    const effectiveTaxAmount = applyTax ? manualTaxAmount : 0;
+    const basePostTax = gross - effectiveTaxAmount;
 
     useEffect(() => {
         const newCats = type === TransactionType.INCOME ? incomeCategories : expenseCategories.map(c => c.name);
@@ -486,7 +497,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         };
         
         if (type === TransactionType.INCOME) {
-            submissionData.taxAmount = taxAmount;
+            submissionData.taxAmount = effectiveTaxAmount;
             submissionData.grossAmount = parsedGrossAmount;
             if (splits.length > 0) {
                 // Remove additionalCost property before saving, but keep calculated netPayout
@@ -702,29 +713,51 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                             <p className="text-xs text-text-secondary">Receita Total</p>
                             <p className="font-semibold">{formatCurrency(gross)}</p>
                         </div>
-                        <div className="border-l border-r border-border-color px-2">
+                        <div className="border-l border-r border-border-color px-2 py-1">
                             {/* Input Editável para % */}
-                            <div className="flex items-center justify-center gap-1">
+                            <div className="flex items-center justify-center gap-1 mb-1">
                                 <p className="text-xs text-text-secondary">(-) Imposto</p>
-                                {applyTax ? (
-                                    <div className="flex items-center">
-                                        <span className="text-xs text-text-secondary">(</span>
+                                {!applyTax && <span className="text-xs text-text-secondary">(0%)</span>}
+                            </div>
+                            
+                            {applyTax ? (
+                                <div className="flex flex-col gap-1">
+                                    <div className="relative">
                                         <input
                                             type="number"
                                             step="0.01"
                                             value={customTaxRate}
-                                            onChange={e => setCustomTaxRate(parseFloat(e.target.value) || 0)}
-                                            className="w-10 bg-transparent text-xs text-center border-b border-border-color focus:outline-none p-0"
+                                            onChange={(e) => {
+                                                const val = parseFloat(e.target.value) || 0;
+                                                setCustomTaxRate(val);
+                                                setManualTaxAmount(gross * val / 100);
+                                            }}
+                                            className="w-full bg-surface border border-border-color rounded px-2 py-1 text-xs text-center focus:ring-primary focus:border-primary"
+                                            placeholder="%"
                                         />
-                                        <span className="text-xs text-text-secondary">%)</span>
+                                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-text-secondary">%</span>
                                     </div>
-                                ) : (
-                                    <span className="text-xs text-text-secondary">(0%)</span>
-                                )}
-                            </div>
-                            <p className="font-semibold text-danger">
-                                {formatCurrency(taxAmount)}
-                            </p>
+                                    <div className="relative">
+                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-text-secondary">R$</span>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            value={manualTaxAmount.toFixed(2)}
+                                            onChange={(e) => {
+                                                const val = parseFloat(e.target.value) || 0;
+                                                setManualTaxAmount(val);
+                                                if (gross > 0) setCustomTaxRate((val / gross) * 100);
+                                            }}
+                                            className="w-full bg-surface border border-border-color rounded pl-6 pr-2 py-1 text-xs text-center font-bold text-danger focus:ring-primary focus:border-primary"
+                                            placeholder="R$"
+                                        />
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="font-semibold text-danger">
+                                    {formatCurrency(0)}
+                                </p>
+                            )}
                         </div>
                         <div>
                             <p className="text-xs text-text-secondary">(=) Base Pós-Imposto</p>
@@ -2051,246 +2084,183 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
     );
 };
 
-// --- COMPONENTES PRINCIPAL (APP) ---
-
 const App: FC = () => {
     const [user, setUser] = useState<User | null>(null);
-    const [loading, setLoading] = useState(true);
+    const [loadingAuth, setLoadingAuth] = useState(true);
     const [activeView, setActiveView] = useState<View>('dashboard');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-    
-    // Estado global de dados
+
+    const [incomeCategories, setIncomeCategories] = useLocalStorage<string[]>('incomeCategories', initialIncomeCategories);
+    const [expenseCategories, setExpenseCategories] = useLocalStorage<ExpenseCategory[]>('expenseCategories', initialExpenseCategories);
+    const [paymentMethods, setPaymentMethods] = useLocalStorage<string[]>('paymentMethods', initialPaymentMethods);
+    const [costCenters, setCostCenters] = useLocalStorage<CostCenter[]>('costCenters', initialCostCenters);
+    const [advisors, setAdvisors] = useLocalStorage<Advisor[]>('advisors', initialAdvisors);
+    const [globalTaxRate, setGlobalTaxRate] = useLocalStorage<number>('globalTaxRate', 6);
+    const [goals, setGoals] = useLocalStorage<Goal[]>('goals', getInitialGoals());
+
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [importedRevenues, setImportedRevenues] = useState<ImportedRevenue[]>([]);
-    const [goals, setGoals] = useLocalStorage<Goal[]>('goals', getInitialGoals());
-    
-    // Configurações Globais
-    const [incomeCategories, setIncomeCategories] = useLocalStorage('incomeCategories', initialIncomeCategories);
-    const [expenseCategories, setExpenseCategories] = useLocalStorage('expenseCategories', initialExpenseCategories);
-    const [paymentMethods, setPaymentMethods] = useLocalStorage('paymentMethods', initialPaymentMethods);
-    const [costCenters, setCostCenters] = useLocalStorage('costCenters', initialCostCenters);
-    const [advisors, setAdvisors] = useLocalStorage('advisors', initialAdvisors);
-    const [globalTaxRate, setGlobalTaxRate] = useLocalStorage('globalTaxRate', 16.33);
+    const [loadingData, setLoadingData] = useState(false);
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
             setUser(currentUser);
-            setLoading(false);
+            setLoadingAuth(false);
         });
         return () => unsubscribe();
     }, []);
 
     useEffect(() => {
-        if (!user) return;
-        const loadData = async () => {
-            try {
-                // Load Transactions (Filtrando por userId)
-                const snapshot = await getTransactions(user.uid);
-                // CHANGE: Filter out 'receita_importada' so they don't appear in the main dashboard/list
-                const data = snapshot.docs
-                    .map(doc => ({ id: doc.id, ...doc.data() } as any))
-                    .filter(t => t.tipoInterno !== 'receita_importada')
-                    .map(t => t as Transaction);
-                setTransactions(data);
-
-                // Load Imported Revenues (Filtrando por userId)
-                const importedSnapshot = await getImportedRevenues(user.uid);
-                const importedData = importedSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ImportedRevenue));
-                setImportedRevenues(importedData);
-
-            } catch (error) {
-                console.error("Erro ao carregar dados:", error);
-            }
-        };
-        loadData();
+        if (user) {
+            setLoadingData(true);
+            Promise.all([
+                getTransactions(user.uid),
+                getImportedRevenues(user.uid)
+            ]).then(([transSnap, revSnap]) => {
+                const transDocs = transSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
+                const revDocs = revSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ImportedRevenue));
+                setTransactions(transDocs);
+                setImportedRevenues(revDocs);
+            }).catch(console.error)
+            .finally(() => setLoadingData(false));
+        } else {
+            setTransactions([]);
+            setImportedRevenues([]);
+        }
     }, [user]);
 
     const handleAddTransaction = async (data: TransactionFormValues) => {
         if (!user) return;
         try {
             const docRef = await saveTransaction(data as any, user.uid);
-            const newTransaction = { ...data, id: docRef.id } as Transaction;
-            setTransactions(prev => [newTransaction, ...prev]);
+            const newTrans = { id: docRef.id, ...data } as unknown as Transaction;
+            setTransactions(prev => [newTrans, ...prev]);
         } catch (error) {
-            console.error("Erro ao adicionar transação:", error);
-            alert("Erro ao salvar no banco de dados.");
+            console.error("Error adding transaction", error);
+            alert("Erro ao salvar transação.");
         }
     };
 
     const handleEditTransaction = async (id: string, data: TransactionFormValues) => {
+        if (!user) return;
         try {
-            await updateTransaction(id, data);
-            setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...data } as Transaction : t));
+             await updateTransaction(id, data);
+             setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...data } as unknown as Transaction : t));
         } catch (error) {
-            console.error("Erro ao editar transação:", error);
-            alert("Erro ao atualizar no banco de dados.");
+            console.error("Error updating transaction", error);
+             alert("Erro ao atualizar transação.");
         }
     };
 
     const handleDeleteTransaction = async (id: string) => {
-        if(!confirm("Tem certeza que deseja excluir?")) return;
-        try {
-            await deleteTransactionFromDb(id);
-            setTransactions(prev => prev.filter(t => t.id !== id));
-        } catch (error) {
-            console.error("Erro ao excluir transação:", error);
-            alert("Erro ao excluir do banco de dados.");
-        }
+         if (!user) return;
+         if (!window.confirm("Tem certeza que deseja excluir?")) return;
+         try {
+             await deleteTransactionFromDb(id);
+             setTransactions(prev => prev.filter(t => t.id !== id));
+         } catch (error) {
+             console.error("Error deleting transaction", error);
+             alert("Erro ao excluir transação.");
+         }
     };
 
     const handleSetPaid = async (id: string) => {
+        if (!user) return;
         try {
             await updateTransaction(id, { status: ExpenseStatus.PAID });
             setTransactions(prev => prev.map(t => t.id === id ? { ...t, status: ExpenseStatus.PAID } : t));
         } catch (error) {
-            console.error("Erro ao atualizar status:", error);
+            console.error("Error updating transaction status", error);
         }
     };
-    
-    // Only for OFX
-    const handleImportTransactions = async (data: any[]) => {
-         if (!user) return;
-         const newTransactions: Transaction[] = [];
-         let errorCount = 0;
-         for (const item of data) {
-             const { tempId, selected, ...transactionData } = item;
-             if (!transactionData.description) continue;
-             try {
-                 const docRef = await saveTransaction(transactionData, user.uid);
-                 newTransactions.push({ ...transactionData, id: docRef.id } as Transaction);
-             } catch (err) { errorCount++; }
-         }
-         if (newTransactions.length > 0) {
-             setTransactions(prev => [...newTransactions, ...prev]);
-             alert(`${newTransactions.length} transações importadas com sucesso.${errorCount > 0 ? ` Falha em ${errorCount} itens.` : ''}`);
-         }
-    };
 
-    // New handler for Imported Revenues
-    const handleImportToRevenueTable = async (data: Partial<ImportedRevenue>[]) => {
+    const handleImportTransactions = (data: any[]) => {
         if (!user) return;
-        const newRevenues: ImportedRevenue[] = [];
-        let count = 0;
-        let skipped = 0;
-        
-        for (const item of data) {
-             try {
-                 // Clean object for firestore
-                 const cleanItem = JSON.parse(JSON.stringify(item));
-                 const docRef = await saveImportedRevenue(cleanItem, user.uid);
-                 newRevenues.push({ ...cleanItem, id: docRef.id });
-                 count++;
-             } catch (e: any) {
-                 if (e.message === "Duplicata detectada") {
-                     skipped++;
-                 } else {
-                     console.error("Failed to save imported revenue", e);
-                 }
-             }
-        }
-        if (count > 0 || skipped > 0) {
-            if (count > 0) setImportedRevenues(prev => [...newRevenues, ...prev]);
-            alert(`${count} receitas importadas para a tabela.${skipped > 0 ? `\n${skipped} duplicatas ignoradas.` : ''}`);
-        }
+        const promises = data.map(item => {
+             const { tempId, selected, ...rest } = item;
+             return saveTransaction(rest, user.uid).then(docRef => ({ id: docRef.id, ...rest } as Transaction));
+        });
+
+        Promise.all(promises).then(newItems => {
+             setTransactions(prev => [...newItems, ...prev]);
+             alert(`${newItems.length} transações importadas com sucesso!`);
+        }).catch(err => {
+             console.error("Error importing transactions", err);
+             alert("Erro ao importar transações.");
+        });
     };
 
-    const handleDeleteImportedRevenue = async (id: string) => {
-        if (!confirm("Excluir esta receita importada?")) return;
+    const handleImportRevenues = (data: any[]) => {
+         if (!user) return;
+         let successCount = 0;
+         let duplicateCount = 0;
+         const promises = data.map(item => 
+             saveImportedRevenue(item, user.uid)
+                .then(docRef => {
+                    successCount++;
+                    return { id: docRef.id, ...item } as ImportedRevenue;
+                })
+                .catch(err => {
+                    if (err.message === "Duplicata detectada") duplicateCount++;
+                    else console.error(err);
+                    return null;
+                })
+         );
+
+         Promise.all(promises).then(results => {
+             const newRevenues = results.filter(r => r !== null) as ImportedRevenue[];
+             setImportedRevenues(prev => [...newRevenues, ...prev]);
+             alert(`Importação concluída.\nSucesso: ${successCount}\nDuplicatas ignoradas: ${duplicateCount}`);
+         });
+    };
+
+    const handleDeleteRevenue = async (id: string) => {
+        if (!user) return;
+        if (!window.confirm("Excluir esta receita importada?")) return;
         try {
             await deleteImportedRevenue(id);
             setImportedRevenues(prev => prev.filter(r => r.id !== id));
-        } catch (e) {
-            console.error(e);
-            alert("Erro ao excluir.");
+        } catch (error) {
+             console.error("Error deleting revenue", error);
+             alert("Erro ao excluir receita.");
         }
-    }
-
-    const handleAddGoal = (goalData: Omit<Goal, 'id' | 'currentAmount'>) => {
-        const newGoal: Goal = { id: crypto.randomUUID(), currentAmount: 0, ...goalData };
-        setGoals(prev => [...prev, newGoal]);
     };
+
+    const handleAddGoal = (goalData: any) => {
+        setGoals(prev => [...prev, { ...goalData, id: crypto.randomUUID(), currentAmount: 0 }]);
+    };
+    
     const handleUpdateGoalProgress = (id: string, amount: number) => {
         setGoals(prev => prev.map(g => g.id === id ? { ...g, currentAmount: g.currentAmount + amount } : g));
     };
+
     const handleDeleteGoal = (id: string) => {
-        if (window.confirm("Tem certeza que deseja excluir esta meta?")) setGoals(prev => prev.filter(g => g.id !== id));
+        setGoals(prev => prev.filter(g => g.id !== id));
     };
 
-    if (loading) return <div className="flex items-center justify-center h-screen bg-background text-text-primary">Carregando...</div>;
+    if (loadingAuth) return <div className="min-h-screen flex items-center justify-center bg-background text-text-primary">Carregando...</div>;
     if (!user) return <Login />;
 
     return (
-        <div className="flex h-screen bg-background font-sans overflow-hidden">
-            <Sidebar activeView={activeView} setActiveView={(v) => { setActiveView(v); setIsSidebarOpen(false); }} isSidebarOpen={isSidebarOpen} user={user} />
-            
-            <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
-                <Header pageTitle={
-                    activeView === 'dashboard' ? 'Dashboard' : 
-                    activeView === 'transactions' ? 'Transações' :
-                    activeView === 'imported-revenues' ? 'Receitas Importadas' :
-                    activeView === 'goals' ? 'Metas' :
-                    activeView === 'reports' ? 'Relatórios' : 'Configurações'
-                } onMenuClick={() => setIsSidebarOpen(true)} />
-                
-                <main className="flex-1 overflow-y-auto p-4 sm:p-8 relative">
-                    {activeView === 'dashboard' && (
-                        <DashboardView 
-                            transactions={transactions} 
-                            goals={goals} 
-                            onSetPaid={handleSetPaid}
-                            onEdit={handleEditTransaction}
-                            incomeCategories={incomeCategories}
-                            expenseCategories={expenseCategories}
-                            paymentMethods={paymentMethods}
-                            costCenters={costCenters}
-                            advisors={advisors}
-                            globalTaxRate={globalTaxRate}
-                            importedRevenues={importedRevenues}
-                        />
-                    )}
-                    {activeView === 'transactions' && (
-                        <TransactionsView 
-                            transactions={transactions} 
-                            onAdd={handleAddTransaction} 
-                            onEdit={handleEditTransaction} 
-                            onDelete={handleDeleteTransaction} 
-                            onSetPaid={handleSetPaid}
-                            incomeCategories={incomeCategories}
-                            expenseCategories={expenseCategories}
-                            paymentMethods={paymentMethods}
-                            costCenters={costCenters}
-                            advisors={advisors}
-                            onImportTransactions={handleImportTransactions}
-                            globalTaxRate={globalTaxRate}
-                            importedRevenues={importedRevenues}
-                            userId={user.uid}
-                        />
-                    )}
-                    {activeView === 'imported-revenues' && (
-                        <ImportedRevenuesView 
-                            importedRevenues={importedRevenues}
-                            advisors={advisors}
-                            onImport={handleImportToRevenueTable}
-                            onDelete={handleDeleteImportedRevenue}
-                            userId={user.uid}
-                        />
-                    )}
-                    {activeView === 'goals' && (
-                        <GoalsView goals={goals} onAdd={handleAddGoal} onUpdateProgress={handleUpdateGoalProgress} onDelete={handleDeleteGoal} />
-                    )}
-                    {activeView === 'reports' && <ReportsView transactions={transactions} importedRevenues={importedRevenues} />}
-                    {activeView === 'settings' && (
-                        <SettingsView 
-                            incomeCategories={incomeCategories} setIncomeCategories={setIncomeCategories}
-                            expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories}
-                            paymentMethods={paymentMethods} setPaymentMethods={setPaymentMethods}
-                            costCenters={costCenters} setCostCenters={setCostCenters}
-                            advisors={advisors} setAdvisors={setAdvisors}
-                            globalTaxRate={globalTaxRate} setGlobalTaxRate={setGlobalTaxRate}
-                        />
+        <div className="flex h-screen bg-background text-text-primary overflow-hidden font-sans">
+             <Sidebar activeView={activeView} setActiveView={(v) => { setActiveView(v); setIsSidebarOpen(false); }} isSidebarOpen={isSidebarOpen} user={user} />
+             <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
+                <Header pageTitle={activeView === 'dashboard' ? 'Dashboard' : activeView === 'transactions' ? 'Transações' : activeView === 'imported-revenues' ? 'Receitas Importadas' : activeView === 'reports' ? 'Relatórios' : activeView === 'goals' ? 'Metas' : 'Configurações'} onMenuClick={() => setIsSidebarOpen(true)} />
+                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-background p-4 md:p-6 relative">
+                    {loadingData ? (
+                        <div className="flex items-center justify-center h-full">Carregando dados...</div>
+                    ) : (
+                        <>
+                            {activeView === 'dashboard' && <DashboardView transactions={transactions} goals={goals} onSetPaid={handleSetPaid} onEdit={handleEditTransaction} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} globalTaxRate={globalTaxRate} importedRevenues={importedRevenues} />}
+                            {activeView === 'transactions' && <TransactionsView transactions={transactions} onAdd={handleAddTransaction} onEdit={handleEditTransaction} onDelete={handleDeleteTransaction} onSetPaid={handleSetPaid} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} onImportTransactions={handleImportTransactions} globalTaxRate={globalTaxRate} importedRevenues={importedRevenues} userId={user.uid} />}
+                            {activeView === 'imported-revenues' && <ImportedRevenuesView importedRevenues={importedRevenues} advisors={advisors} onImport={handleImportRevenues} onDelete={handleDeleteRevenue} userId={user.uid} />}
+                            {activeView === 'reports' && <ReportsView transactions={transactions} importedRevenues={importedRevenues} />}
+                            {activeView === 'goals' && <GoalsView goals={goals} onAdd={handleAddGoal} onUpdateProgress={handleUpdateGoalProgress} onDelete={handleDeleteGoal} />}
+                            {activeView === 'settings' && <SettingsView incomeCategories={incomeCategories} setIncomeCategories={setIncomeCategories} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} paymentMethods={paymentMethods} setPaymentMethods={setPaymentMethods} costCenters={costCenters} setCostCenters={setCostCenters} advisors={advisors} setAdvisors={setAdvisors} globalTaxRate={globalTaxRate} setGlobalTaxRate={setGlobalTaxRate} />}
+                        </>
                     )}
                 </main>
-            </div>
+             </div>
         </div>
     );
 };
