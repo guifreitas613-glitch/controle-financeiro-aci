@@ -1,4 +1,4 @@
-import React, { useState, useMemo, FC, ReactNode, useEffect } from 'react';
+import React, { useState, useMemo, FC, ReactNode, useEffect, useRef } from 'react';
 import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType, AdvisorSplit, ImportedRevenue, AdvisorCost } from './types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area } from 'recharts';
 import Login from './Login';
@@ -204,6 +204,7 @@ interface TransactionFormValues {
     advisorId?: string;
     recurringCount?: number;
     splits?: AdvisorSplit[];
+    taxRate?: number; // Added for persistence
 }
 interface TransactionFormProps { 
     onSubmit: (data: TransactionFormValues) => void;
@@ -230,6 +231,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
 
     const isAddingFromTab = !!defaultType;
     const isEditing = !!initialData;
+    const isInitializing = useRef(true); // Ref to block automatic sync on initial load
     const currentCategories = useMemo(() => 
         type === TransactionType.INCOME 
             ? incomeCategories 
@@ -254,44 +256,87 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     const [commissionAmount, setCommissionAmount] = useState(initialData?.commissionAmount || 0);
     const [isCommissionManual, setIsCommissionManual] = useState(false);
     
-    // Tax Controls
+    // Improved Tax State Management
     const [applyTax, setApplyTax] = useState(true);
-    const [customTaxRate, setCustomTaxRate] = useState(globalTaxRate);
-    const [manualTaxAmount, setManualTaxAmount] = useState(0);
+    const [taxRateInput, setTaxRateInput] = useState<string>(globalTaxRate.toString());
+    const [taxValueCents, setTaxValueCents] = useState<number>(0);
 
     const gross = parseFloat(formData.grossAmount) || 0;
 
+    // PRIMARY INITIALIZATION: Set states once based on initialData
     useEffect(() => {
-        const currentGross = parseFloat(formData.grossAmount) || 0;
         if (initialData && initialData.type === TransactionType.INCOME) {
             const iGross = initialData.grossAmount ?? initialData.amount ?? 0;
             const iTax = initialData.taxAmount ?? 0;
-            if (iGross > 0 && iTax === 0) {
-                setApplyTax(false);
-                setCustomTaxRate(globalTaxRate);
-                setManualTaxAmount(0);
-            } else if (iGross > 0) {
+            const storedRate = (initialData as any).taxRate;
+
+            if (iTax > 0 || (storedRate !== undefined && storedRate > 0)) {
                 setApplyTax(true);
-                const r = (iTax / iGross) * 100;
-                setCustomTaxRate(parseFloat(r.toFixed(2)));
-                setManualTaxAmount(iTax);
+                // Prioritize saved rate string for exact decimal display
+                const rateStr = storedRate !== undefined ? storedRate.toString() : (iGross > 0 ? ((iTax / iGross) * 100).toFixed(2) : globalTaxRate.toString());
+                setTaxRateInput(rateStr);
+                // Set exact cents from stored tax amount
+                setTaxValueCents(Math.round(iTax * 100));
+            } else {
+                setApplyTax(false);
+                setTaxRateInput(globalTaxRate.toString());
+                setTaxValueCents(0);
             }
         } else if (!initialData) {
-            setCustomTaxRate(globalTaxRate);
             setApplyTax(true);
-            setManualTaxAmount(currentGross * globalTaxRate / 100);
+            setTaxRateInput(globalTaxRate.toString());
+            const val = gross * (globalTaxRate / 100);
+            setTaxValueCents(Math.round(val * 100));
         }
-    }, [initialData, globalTaxRate]);
+        
+        // Mark initialization complete after this frame
+        setTimeout(() => { isInitializing.current = false; }, 0);
+    }, [initialData, globalTaxRate, gross]);
 
+    // Recalculate R$ when gross changes (maintaining fixed %), ONLY IF NOT INITIALIZING
     useEffect(() => {
-        if (applyTax) {
-            setManualTaxAmount(gross * customTaxRate / 100);
+        if (!isInitializing.current && applyTax) {
+            const rate = parseFloat(taxRateInput) || 0;
+            const val = gross * (rate / 100);
+            setTaxValueCents(Math.round(val * 100));
         }
-    }, [gross, applyTax]); 
+    }, [gross, applyTax, taxRateInput]); 
 
-    // Derived values
-    const effectiveTaxAmount = applyTax ? manualTaxAmount : 0;
+    // Handlers for bidirectional sync
+    const handleRateInputChange = (val: string) => {
+        setTaxRateInput(val);
+        const rate = parseFloat(val) || 0;
+        const valR = gross * (rate / 100);
+        setTaxValueCents(Math.round(valR * 100));
+    };
+
+    const handleValueInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const raw = e.target.value.replace(/\D/g, '');
+        const cents = raw ? parseInt(raw, 10) : 0;
+        setTaxValueCents(cents);
+        
+        const valR = cents / 100;
+        if (gross > 0) {
+            const rate = (valR / gross) * 100;
+            // Limit to 2 decimals for the UI field to keep it clean
+            setTaxRateInput(rate.toFixed(2).replace(/\.00$/, ''));
+        }
+    };
+
+    const handleApplyTaxCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const checked = e.target.checked;
+        setApplyTax(checked);
+        if (checked) {
+            const rate = parseFloat(taxRateInput) || globalTaxRate;
+            const val = gross * (rate / 100);
+            setTaxValueCents(Math.round(val * 100));
+        }
+    };
+
+    // Derived values for the UI
+    const effectiveTaxAmount = applyTax ? (taxValueCents / 100) : 0;
     const basePostTax = gross - effectiveTaxAmount;
+    const formattedTaxValue = (taxValueCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
     useEffect(() => {
         const newCats = type === TransactionType.INCOME ? incomeCategories : expenseCategories.map(c => c.name);
@@ -308,7 +353,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     }, [nature]);
 
     useEffect(() => {
-        if (!isCommissionManual && type === TransactionType.INCOME && advisorId && splits.length === 0) {
+        if (!isInitializing.current && !isCommissionManual && type === TransactionType.INCOME && advisorId && splits.length === 0) {
              const comm = basePostTax * 0.30;
              setCommissionAmount(comm > 0 ? comm : 0);
         }
@@ -395,16 +440,11 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             let totalRevenueFound = 0;
 
             periodRevenues.forEach(rev => {
-                // EXPLICIT FILTER: Ignore records classified as 'CUSTOS'
                 if (rev.classificacao === 'CUSTOS') return;
-
-                // Match advisor by name
                 const advisor = advisors.find(adv => 
                     adv.name.toLowerCase() === (rev.assessorPrincipal || '').toLowerCase()
                 );
-
                 if (advisor) {
-                    // EXPLICIT SUM: Only use comissaoLiquida
                     const val = rev.comissaoLiquida || 0;
                     revenueByAdvisor[advisor.id] = (revenueByAdvisor[advisor.id] || 0) + val;
                     totalRevenueFound += val;
@@ -434,19 +474,14 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             alert(`Receitas carregadas! Total: ${formatCurrency(totalRevenueFound)} distribuído entre ${newSplits.length} assessores.`);
         } catch (error) {
             console.error("Erro ao buscar receitas:", error);
-            alert("Erro ao buscar receitas do período. Verifique se existe um índice composto para 'tipoInterno' e 'date' no Firebase.");
+            alert("Erro ao buscar receitas do período.");
         }
     };
 
     const splitsDetails = useMemo(() => {
         return splits.map(split => {
-             // Logic adjusted for specific request: repasseLiq = receitaIndividual * (percentualRepasse / 100) - custoAdicional
              const calculatedPayout = (split.revenueAmount * (split.percentage / 100)) - (split.additionalCost || 0);
-
-             return {
-                 ...split,
-                 netPayout: calculatedPayout
-             }
+             return { ...split, netPayout: calculatedPayout }
         });
     }, [splits]);
 
@@ -480,7 +515,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
 
         if (splits.length > 0) {
             if (Math.abs(splitRevenueDifference) > 0.05) {
-                alert(`A soma das receitas individuais (R$ ${formatCurrency(totalSplitRevenue)}) deve ser igual ao valor total da receita (R$ ${formatCurrency(parsedGrossAmount)}). Diferença: ${formatCurrency(splitRevenueDifference)}`);
+                alert(`A soma das receitas individuais deve ser igual ao valor total.`);
                 return;
             }
         }
@@ -499,8 +534,9 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         if (type === TransactionType.INCOME) {
             submissionData.taxAmount = effectiveTaxAmount;
             submissionData.grossAmount = parsedGrossAmount;
+            submissionData.taxRate = parseFloat(taxRateInput) || 0;
+
             if (splits.length > 0) {
-                // Remove additionalCost property before saving, but keep calculated netPayout
                 submissionData.splits = splitsDetails.map(s => {
                     const { additionalCost, ...rest } = s;
                     return rest;
@@ -597,64 +633,36 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                                 <div className="col-span-2 text-right">Repasse (Liq)</div>
                                 <div className="col-span-1"></div>
                              </div>
-                             {splitsDetails.map((split, index) => {
-                                 return (
+                             {splitsDetails.map((split, index) => (
                                      <div key={index} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center bg-surface p-2 rounded-md">
                                         <div className="col-span-3">
-                                            <select 
-                                                value={split.advisorId} 
-                                                onChange={(e) => updateSplit(index, 'advisorId', e.target.value)}
-                                                className="w-full bg-background border-border-color rounded-md text-sm py-1"
-                                            >
+                                            <select value={split.advisorId} onChange={(e) => updateSplit(index, 'advisorId', e.target.value)} className="w-full bg-background border-border-color rounded-md text-sm py-1">
                                                 {advisors.map(adv => <option key={adv.id} value={adv.id}>{adv.name}</option>)}
                                             </select>
                                         </div>
                                         <div className="col-span-3">
-                                            <input 
-                                                type="text" 
-                                                value={Number(split.revenueAmount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                                                onChange={(e) => {
+                                            <input type="text" value={Number(split.revenueAmount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} onChange={(e) => {
                                                     const rawValue = e.target.value.replace(/\D/g, '');
                                                     updateSplit(index, 'revenueAmount', Number(rawValue) / 100);
-                                                }}
-                                                placeholder="R$ 0,00"
-                                                className="w-full bg-background border-border-color rounded-md text-sm py-1"
-                                            />
+                                                }} placeholder="R$ 0,00" className="w-full bg-background border-border-color rounded-md text-sm py-1" />
                                         </div>
                                         <div className="col-span-1">
-                                            <input 
-                                                type="number" 
-                                                step="1" 
-                                                min="0"
-                                                max="100"
-                                                value={split.percentage} 
-                                                onChange={(e) => updateSplit(index, 'percentage', e.target.value)}
-                                                className="w-full bg-background border-border-color rounded-md text-sm py-1 text-center"
-                                            />
+                                            <input type="number" step="1" min="0" max="100" value={split.percentage} onChange={(e) => updateSplit(index, 'percentage', e.target.value)} className="w-full bg-background border-border-color rounded-md text-sm py-1 text-center" />
                                         </div>
                                         <div className="col-span-2">
-                                            <input 
-                                                type="text" 
-                                                value={Number(split.additionalCost || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                                                onChange={(e) => {
+                                            <input type="text" value={Number(split.additionalCost || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} onChange={(e) => {
                                                     const rawValue = e.target.value.replace(/\D/g, '');
                                                     updateSplit(index, 'additionalCost', Number(rawValue) / 100);
-                                                }}
-                                                placeholder="R$ 0,00"
-                                                className="w-full bg-background border-border-color rounded-md text-sm py-1"
-                                            />
+                                                }} placeholder="R$ 0,00" className="w-full bg-background border-border-color rounded-md text-sm py-1" />
                                         </div>
                                         <div className="col-span-2 text-right font-bold text-danger text-sm">
                                             {Number(split.netPayout || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                                         </div>
                                         <div className="col-span-1 text-right">
-                                            <button type="button" onClick={() => removeSplit(index)} className="text-text-secondary hover:text-danger">
-                                                <TrashIcon className="w-4 h-4"/>
-                                            </button>
+                                            <button type="button" onClick={() => removeSplit(index)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>
                                         </div>
                                      </div>
-                                 )
-                             })}
+                                 ))}
                             <div className="mt-3 p-3 bg-surface rounded-lg border border-border-color text-xs space-y-1">
                                 <div className="flex justify-between">
                                     <span className="text-text-secondary">Total Receita Informada:</span>
@@ -671,9 +679,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                                         <span>Diferença:</span>
                                         <div className="flex items-center gap-2">
                                             <span>{formatCurrency(splitRevenueDifference)}</span>
-                                            <button type="button" onClick={autoAdjustSplits} className="text-[10px] bg-secondary/20 hover:bg-secondary/40 px-2 py-0.5 rounded text-text-primary font-normal">
-                                                Ajustar Proporcionalmente
-                                            </button>
+                                            <button type="button" onClick={autoAdjustSplits} className="text-[10px] bg-secondary/20 hover:bg-secondary/40 px-2 py-0.5 rounded text-text-primary font-normal">Ajustar Proporcionalmente</button>
                                         </div>
                                     </div>
                                 )}
@@ -695,16 +701,10 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                 </div>
 
                  <div className="bg-background p-3 rounded-lg border border-border-color">
-                     {/* Checkbox "Aplicar imposto" */}
                     <div className="flex justify-end mb-2">
                         <label className="flex items-center gap-2 cursor-pointer select-none">
                              <span className="text-xs text-text-secondary">Aplicar imposto</span>
-                             <input 
-                                 type="checkbox" 
-                                 checked={applyTax} 
-                                 onChange={e => setApplyTax(e.target.checked)} 
-                                 className="rounded text-primary focus:ring-primary h-4 w-4 bg-surface border-border-color" 
-                             />
+                             <input type="checkbox" checked={applyTax} onChange={handleApplyTaxCheckboxChange} className="rounded text-primary focus:ring-primary h-4 w-4 bg-surface border-border-color" />
                         </label>
                      </div>
 
@@ -714,50 +714,20 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                             <p className="font-semibold">{formatCurrency(gross)}</p>
                         </div>
                         <div className="border-l border-r border-border-color px-2 py-1">
-                            {/* Input Editável para % */}
                             <div className="flex items-center justify-center gap-1 mb-1">
                                 <p className="text-xs text-text-secondary">(-) Imposto</p>
                                 {!applyTax && <span className="text-xs text-text-secondary">(0%)</span>}
                             </div>
                             
-                            {applyTax ? (
-                                <div className="flex flex-col gap-1">
-                                    <div className="relative">
-                                        <input
-                                            type="number"
-                                            step="0.01"
-                                            value={customTaxRate}
-                                            onChange={(e) => {
-                                                const val = parseFloat(e.target.value) || 0;
-                                                setCustomTaxRate(val);
-                                                setManualTaxAmount(gross * val / 100);
-                                            }}
-                                            className="w-full bg-surface border border-border-color rounded px-2 py-1 text-xs text-center focus:ring-primary focus:border-primary"
-                                            placeholder="%"
-                                        />
-                                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-text-secondary">%</span>
-                                    </div>
-                                    <div className="relative">
-                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-text-secondary">R$</span>
-                                        <input
-                                            type="number"
-                                            step="0.01"
-                                            value={manualTaxAmount.toFixed(2)}
-                                            onChange={(e) => {
-                                                const val = parseFloat(e.target.value) || 0;
-                                                setManualTaxAmount(val);
-                                                if (gross > 0) setCustomTaxRate((val / gross) * 100);
-                                            }}
-                                            className="w-full bg-surface border border-border-color rounded pl-6 pr-2 py-1 text-xs text-center font-bold text-danger focus:ring-primary focus:border-primary"
-                                            placeholder="R$"
-                                        />
-                                    </div>
+                            <div className={`flex flex-col gap-1 ${!applyTax ? 'opacity-50 pointer-events-none' : ''}`}>
+                                <div className="relative">
+                                    <input type="number" step="0.01" value={taxRateInput} onChange={(e) => handleRateInputChange(e.target.value)} className="w-full bg-surface border border-border-color rounded px-2 py-1 text-xs text-center focus:ring-primary focus:border-primary" placeholder="0" disabled={!applyTax} />
+                                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-text-secondary">%</span>
                                 </div>
-                            ) : (
-                                <p className="font-semibold text-danger">
-                                    {formatCurrency(0)}
-                                </p>
-                            )}
+                                <div className="relative">
+                                    <input type="text" value={formattedTaxValue} onChange={handleValueInputChange} className="w-full bg-surface border border-border-color rounded px-2 py-1 text-xs text-center font-bold text-danger focus:ring-primary focus:border-primary" placeholder="R$ 0,00" disabled={!applyTax} />
+                                </div>
+                            </div>
                         </div>
                         <div>
                             <p className="text-xs text-text-secondary">(=) Base Pós-Imposto</p>
@@ -773,9 +743,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                             </div>
                             <div className="flex justify-between items-center text-sm mt-1">
                                 <span className="text-text-secondary">Parcela Escritório:</span>
-                                <span className={`font-bold ${(officeShare) >= 0 ? 'text-primary' : 'text-danger'}`}>
-                                    {formatCurrency(officeShare)}
-                                </span>
+                                <span className={`font-bold ${(officeShare) >= 0 ? 'text-primary' : 'text-danger'}`}>{formatCurrency(officeShare)}</span>
                             </div>
                         </div>
                     )}
@@ -788,17 +756,12 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                             </div>
                              {isCommissionManual ? (
                                 <div className="flex items-center gap-2">
-                                    <input
-                                        type="number" step="0.01"
-                                        value={commissionAmount.toFixed(2)}
-                                        onChange={(e) => {
+                                    <input type="number" step="0.01" value={commissionAmount.toFixed(2)} onChange={(e) => {
                                             const val = parseFloat(e.target.value);
                                             if (!isNaN(val)) {
                                                 setCommissionAmount(val);
                                             }
-                                        }}
-                                        className="w-28 bg-surface p-1 rounded-md border border-border-color text-danger font-semibold text-center"
-                                    />
+                                        }} className="w-28 bg-surface p-1 rounded-md border border-border-color text-danger font-semibold text-center" />
                                     <Button type="button" variant="secondary" className="py-1 px-2 text-xs" onClick={() => setIsCommissionManual(false)}>Recalcular (Auto)</Button>
                                 </div>
                             ) : (
@@ -837,25 +800,12 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                          {nature === ExpenseNature.FIXED && !isEditing && (
                             <div>
                                 <label className="block text-sm font-medium text-text-secondary">Repetir por (meses)</label>
-                                <input
-                                    type="number"
-                                    min="1"
-                                    step="1"
-                                    value={recurringCount}
-                                    onChange={(e) => {
+                                <input type="number" min="1" step="1" value={recurringCount} onChange={(e) => {
                                         const val = parseInt(e.target.value, 10);
                                         if (val > 0 || e.target.value === '') {
                                             setRecurringCount(e.target.value);
                                         }
-                                    }}
-                                    disabled={isEditing}
-                                    className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary disabled:opacity-70 disabled:cursor-not-allowed"
-                                />
-                            </div>
-                         )}
-                         {isEditing && initialData?.nature === ExpenseNature.FIXED && (
-                            <div className="flex items-end">
-                                <p className="text-xs text-text-secondary mb-1">A recorrência não pode ser editada. Para alterar, exclua e crie novamente.</p>
+                                    }} disabled={isEditing} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary disabled:opacity-70 disabled:cursor-not-allowed" />
                             </div>
                          )}
                         <div>
@@ -1027,7 +977,6 @@ const AdvisorSettingsItem: FC<{
                 <button onClick={onDelete} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>
             </div>
             
-            {/* Costs Repeater */}
             <div className="pl-4 border-l-2 border-border-color ml-2 space-y-2">
                 {(advisor.costs || []).map((cost, idx) => (
                     <div key={idx} className="flex justify-between items-center text-xs text-text-secondary">
@@ -1038,20 +987,8 @@ const AdvisorSettingsItem: FC<{
                 ))}
                 
                 <div className="flex gap-2 items-center mt-2">
-                    <input 
-                        type="text" 
-                        placeholder="Novo custo (ex: CRM)" 
-                        value={newCostDesc} 
-                        onChange={e => setNewCostDesc(e.target.value)} 
-                        className="flex-1 bg-background border border-border-color rounded px-2 py-1 text-xs"
-                    />
-                    <input 
-                        type="number" 
-                        placeholder="Valor (-)" 
-                        value={newCostVal} 
-                        onChange={e => setNewCostVal(e.target.value)} 
-                        className="w-20 bg-background border border-border-color rounded px-2 py-1 text-xs"
-                    />
+                    <input type="text" placeholder="Novo custo (ex: CRM)" value={newCostDesc} onChange={e => setNewCostDesc(e.target.value)} className="flex-1 bg-background border border-border-color rounded px-2 py-1 text-xs" />
+                    <input type="number" placeholder="Valor (-)" value={newCostVal} onChange={e => setNewCostVal(e.target.value)} className="w-20 bg-background border border-border-color rounded px-2 py-1 text-xs" />
                     <Button onClick={addCost} variant="secondary" className="py-1 px-2 text-xs"><PlusIcon className="w-3 h-3"/></Button>
                 </div>
             </div>
@@ -1084,12 +1021,7 @@ const SettingsView: FC<{
 
     const addAdvisor = () => { 
         if(newAdvisorName) { 
-            props.setAdvisors([...props.advisors, { 
-                id: crypto.randomUUID(), 
-                name: newAdvisorName, 
-                commissionRate: parseFloat(newAdvisorRate) || 30,
-                costs: [] 
-            }]); 
+            props.setAdvisors([...props.advisors, { id: crypto.randomUUID(), name: newAdvisorName, commissionRate: parseFloat(newAdvisorRate) || 30, costs: [] }]); 
             setNewAdvisorName(''); 
         } 
     };
@@ -1140,17 +1072,11 @@ const SettingsView: FC<{
                             <div className="flex flex-wrap gap-2 mb-4 items-end">
                                 <div className="flex-1 min-w-[200px]"><label className="text-xs text-text-secondary block mb-1">Nome</label><input type="text" value={newAdvisorName} onChange={(e) => setNewAdvisorName(e.target.value)} placeholder="Nome do Assessor..." className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm" /></div>
                                 <div className="w-24"><label className="text-xs text-text-secondary block mb-1">Comissão (%)</label><input type="number" value={newAdvisorRate} onChange={(e) => setNewAdvisorRate(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm" /></div>
-                                {/* Removed Cost Input from Creation */}
                                 <Button onClick={addAdvisor} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button>
                             </div>
                             <ul className="space-y-2 max-h-96 overflow-y-auto">
                                 {props.advisors.map((adv: Advisor, i: number) => (
-                                    <AdvisorSettingsItem 
-                                        key={adv.id} 
-                                        advisor={adv} 
-                                        onUpdate={updateAdvisor}
-                                        onDelete={() => props.setAdvisors(props.advisors.filter((_, idx) => idx !== i))}
-                                    />
+                                    <AdvisorSettingsItem key={adv.id} advisor={adv} onUpdate={updateAdvisor} onDelete={() => props.setAdvisors(props.advisors.filter((_, idx) => idx !== i))} />
                                 ))}
                             </ul>
                         </Card>
@@ -1163,7 +1089,6 @@ const SettingsView: FC<{
 };
 
 const Sidebar: FC<{ activeView: View; setActiveView: (view: View) => void; isSidebarOpen: boolean; user: User | null; }> = ({ activeView, setActiveView, isSidebarOpen, user }) => {
-    
     const getUserDisplayName = (user: User | null) => {
         if (!user) return "";
         if (user.displayName) return user.displayName;
@@ -1173,7 +1098,6 @@ const Sidebar: FC<{ activeView: View; setActiveView: (view: View) => void; isSid
         }
         return "Usuário";
     }
-
     const allNavItems: { view: View; label: string; icon: ReactNode; }[] = [
         { view: 'dashboard', label: 'Dashboard', icon: <DashboardIcon className="w-6 h-6"/> },
         { view: 'transactions', label: 'Transações', icon: <TransactionsIcon className="w-6 h-6"/> },
@@ -1182,17 +1106,12 @@ const Sidebar: FC<{ activeView: View; setActiveView: (view: View) => void; isSid
         { view: 'goals', label: 'Metas', icon: <GoalsIcon className="w-6 h-6"/> },
         { view: 'settings', label: 'Configurações', icon: <SettingsIcon className="w-6 h-6"/> },
     ];
-    
     return (
         <aside className={`absolute md:relative z-20 md:z-auto bg-surface md:translate-x-0 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} transition-transform duration-300 ease-in-out w-64 p-4 flex flex-col`}>
              <h1 className="text-3xl font-bold text-text-primary mb-8">ACI<span className="text-primary">Capital</span></h1>
              <nav className="flex flex-col space-y-2 flex-grow">
                 {allNavItems.map(item => (
-                    <button
-                        key={item.view}
-                        onClick={() => setActiveView(item.view)}
-                        className={`px-4 py-3 text-sm font-semibold rounded-lg flex items-center gap-3 transition-colors duration-200 text-left ${activeView === item.view ? 'bg-primary text-white' : 'text-text-secondary hover:bg-background hover:text-white'}`}
-                    >
+                    <button key={item.view} onClick={() => setActiveView(item.view)} className={`px-4 py-3 text-sm font-semibold rounded-lg flex items-center gap-3 transition-colors duration-200 text-left ${activeView === item.view ? 'bg-primary text-white' : 'text-text-secondary hover:bg-background hover:text-white'}`}>
                         {item.icon} {item.label}
                     </button>
                 ))}
@@ -1201,10 +1120,7 @@ const Sidebar: FC<{ activeView: View; setActiveView: (view: View) => void; isSid
                  <div className="px-2 mb-4">
                     <p className="text-sm font-semibold text-text-primary truncate" title={getUserDisplayName(user)}>{getUserDisplayName(user)}</p>
                  </div>
-                 <button
-                    onClick={logoutUser}
-                    className="w-full px-4 py-3 text-sm font-semibold rounded-lg flex items-center justify-center gap-3 transition-colors duration-200 text-text-secondary hover:bg-danger hover:text-white"
-                >
+                 <button onClick={logoutUser} className="w-full px-4 py-3 text-sm font-semibold rounded-lg flex items-center justify-center gap-3 transition-colors duration-200 text-text-secondary hover:bg-danger hover:text-white">
                     <LogoutIcon className="w-5 h-5"/> Sair
                 </button>
             </div>
@@ -1222,11 +1138,8 @@ const CustomPieTooltip: FC<any> = ({ active, payload }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       let percentVal = 0;
-      if (typeof data.percent === 'number') {
-          percentVal = data.percent;
-      } else if (typeof payload[0].percent === 'number') {
-          percentVal = payload[0].percent * 100;
-      }
+      if (typeof data.percent === 'number') percentVal = data.percent;
+      else if (typeof payload[0].percent === 'number') percentVal = payload[0].percent * 100;
       const percentDisplay = percentVal.toFixed(1);
       return (
         <div className="bg-surface border border-border-color p-3 rounded-lg shadow-xl text-text-primary backdrop-blur-sm bg-opacity-95 z-50 min-w-[150px]">
@@ -1234,9 +1147,7 @@ const CustomPieTooltip: FC<any> = ({ active, payload }) => {
           <div className="space-y-1">
                <div className="flex justify-between gap-4 text-xs text-text-secondary">
                   <span>Valor:</span>
-                  <span className="font-mono text-text-primary font-bold">
-                       {typeof data.amount === 'number' ? formatCurrency(data.amount) : formatCurrency(data.value)}
-                  </span>
+                  <span className="font-mono text-text-primary font-bold">{typeof data.amount === 'number' ? formatCurrency(data.amount) : formatCurrency(data.value)}</span>
               </div>
               <div className="flex justify-between gap-4 text-xs text-text-secondary">
                   <span>Participação:</span>
@@ -1248,8 +1159,6 @@ const CustomPieTooltip: FC<any> = ({ active, payload }) => {
     }
     return null;
 };
-
-// --- VISUALIZAÇÕES ---
 
 const TransactionsView: FC<{
     transactions: Transaction[];
@@ -1290,18 +1199,12 @@ const TransactionsView: FC<{
             if (filterMonth !== 'all' && d.getMonth() !== filterMonth) return false;
             if (t.type !== activeTab) return false;
             if (filterCategory !== 'all' && t.category !== filterCategory) return false;
-            
             if (searchTerm) {
                 const lower = searchTerm.toLowerCase();
-                return (
-                    (t.description || '').toLowerCase().includes(lower) ||
-                    (t.clientSupplier || '').toLowerCase().includes(lower) ||
-                    (t.category || '').toLowerCase().includes(lower)
-                );
+                return (t.description || '').toLowerCase().includes(lower) || (t.clientSupplier || '').toLowerCase().includes(lower) || (t.category || '').toLowerCase().includes(lower);
             }
             return true;
         });
-
         if (sortConfig !== null) {
             items.sort((a, b) => {
                 const valA = a[sortConfig.key as keyof Transaction] as (string | number);
@@ -1314,55 +1217,17 @@ const TransactionsView: FC<{
         return items;
     }, [transactions, filterYear, filterMonth, activeTab, filterCategory, searchTerm, sortConfig]);
 
-    const totalFilteredAmount = useMemo(() => {
-        return filtered.reduce<number>((sum, t) => sum + t.amount, 0);
-    }, [filtered]);
+    const totalFilteredAmount = useMemo(() => filtered.reduce<number>((sum, t) => sum + t.amount, 0), [filtered]);
 
     const requestSort = (key: keyof Transaction) => {
         let direction: 'asc' | 'desc' = 'asc';
-        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
-            direction = 'desc';
-        }
+        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
         setSortConfig({ key, direction });
     };
 
     const getSortIndicator = (key: keyof Transaction) => {
         if (!sortConfig || sortConfig.key !== key) return null;
         return sortConfig.direction === 'asc' ? <ArrowUpIcon className="w-4 h-4 ml-1 inline" /> : <ArrowDownIcon className="w-4 h-4 ml-1 inline" />;
-    };
-
-    const exportToExcel = () => {
-        const ws = XLSX.utils.json_to_sheet(filtered.map(t => ({
-            Data: formatDate(t.date),
-            Descrição: t.description,
-            Valor: t.amount,
-            Tipo: t.type === TransactionType.INCOME ? 'Receita' : 'Despesa',
-            Categoria: t.category,
-            "Cliente/Fornecedor": t.clientSupplier,
-            "Forma de Pagamento": t.paymentMethod,
-            Status: t.status,
-            Natureza: t.nature,
-        })));
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Transações");
-        XLSX.writeFile(wb, "transacoes.xlsx");
-    };
-
-    const exportToPdf = () => {
-        const { jsPDF } = jspdf;
-        const doc = new jsPDF();
-        doc.autoTable({
-            head: [['Data', 'Descrição', 'Valor', 'Tipo', 'Categoria', 'Status']],
-            body: filtered.map(t => [
-                formatDate(t.date),
-                t.description,
-                formatCurrency(t.amount),
-                t.type === TransactionType.INCOME ? 'Receita' : 'Despesa',
-                t.category,
-                t.status || '-'
-            ]),
-        });
-        doc.save('transacoes.pdf');
     };
 
     const handleEdit = (t: Transaction) => { setEditingId(t.id); setIsModalOpen(true); };
@@ -1374,8 +1239,6 @@ const TransactionsView: FC<{
              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div><h2 className="text-2xl font-bold text-text-primary">Transações</h2><p className="text-text-secondary">Gerencie suas receitas e despesas.</p></div>
                 <div className="flex flex-wrap gap-2">
-                    <Button variant="secondary" onClick={exportToExcel} className="text-sm"><ExportIcon className="w-4 h-4" /> Excel</Button>
-                    <Button variant="secondary" onClick={exportToPdf} className="text-sm"><ExportIcon className="w-4 h-4" /> PDF</Button>
                     <label className="bg-surface hover:bg-surface/80 text-text-primary px-4 py-2 rounded-lg cursor-pointer border border-border-color flex items-center gap-2 text-sm font-semibold transition-all">
                         <UploadIcon className="w-4 h-4"/> Importar OFX
                         <input type="file" accept=".ofx" className="hidden" onChange={(e) => {
@@ -1470,21 +1333,7 @@ const TransactionsView: FC<{
             </div>
 
             <Modal isOpen={isModalOpen} onClose={handleClose} title={editingId ? "Editar Transação" : "Nova Transação"}>
-                <TransactionForm 
-                    onSubmit={handleSubmit} 
-                    onClose={handleClose} 
-                    initialData={editingId ? transactions.find(t => t.id === editingId) : null}
-                    defaultType={activeTab}
-                    incomeCategories={incomeCategories}
-                    expenseCategories={expenseCategories}
-                    paymentMethods={paymentMethods}
-                    costCenters={costCenters}
-                    advisors={advisors}
-                    globalTaxRate={globalTaxRate}
-                    transactions={transactions}
-                    importedRevenues={importedRevenues}
-                    userId={userId}
-                />
+                <TransactionForm onSubmit={handleSubmit} onClose={handleClose} initialData={editingId ? transactions.find(t => t.id === editingId) : null} defaultType={activeTab} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} globalTaxRate={globalTaxRate} transactions={transactions} importedRevenues={importedRevenues} userId={userId} />
             </Modal>
         </div>
     );
@@ -1504,31 +1353,17 @@ const ImportedRevenuesView: FC<{
     const [clientSearch, setClientSearch] = useState('');
     const [isDeduplicating, setIsDeduplicating] = useState(false);
 
-    const uniqueAdvisors = useMemo(() => {
-        const advs = new Set(importedRevenues.map(r => r.assessorPrincipal).filter(Boolean));
-        return Array.from(advs).sort();
-    }, [importedRevenues]);
-
-    const uniqueCategories = useMemo(() => {
-        const cats = new Set(importedRevenues.map(r => r.produtoCategoria).filter(Boolean));
-        return Array.from(cats).sort();
-    }, [importedRevenues]);
+    const uniqueAdvisors = useMemo(() => Array.from(new Set(importedRevenues.map(r => r.assessorPrincipal).filter(Boolean))).sort(), [importedRevenues]);
+    const uniqueCategories = useMemo(() => Array.from(new Set(importedRevenues.map(r => r.produtoCategoria).filter(Boolean))).sort(), [importedRevenues]);
 
     const filteredRevenues = useMemo(() => {
         return importedRevenues.filter(r => {
             const rDate = new Date(r.date).toISOString().split('T')[0];
-            
             if (startDate && rDate < startDate) return false;
             if (endDate && rDate > endDate) return false;
             if (selectedAdvisor && r.assessorPrincipal !== selectedAdvisor) return false;
             if (selectedCategory && r.produtoCategoria !== selectedCategory) return false;
-            
-            if (clientSearch) {
-                const searchLower = clientSearch.toLowerCase();
-                const clientMatch = r.cliente && r.cliente.toLowerCase().includes(searchLower);
-                if (!clientMatch) return false;
-            }
-
+            if (clientSearch && (!r.cliente || !r.cliente.toLowerCase().includes(clientSearch.toLowerCase()))) return false;
             return true;
         });
     }, [importedRevenues, startDate, endDate, selectedAdvisor, selectedCategory, clientSearch]);
@@ -1538,10 +1373,7 @@ const ImportedRevenuesView: FC<{
         setIsDeduplicating(true);
         try {
             const result = await deduplicateImportedRevenues(userId);
-            alert(`Limpeza concluída!\n\nRegistros atualizados (ID gerado): ${result.updatedCount}\nDuplicatas removidas: ${result.deletedCount}`);
-            // Force reload by simply reloading page or trigger a callback if available, 
-            // but since we don't have a reload callback here, let's just alert.
-            // In a real app we would refresh the data context.
+            alert(`Limpeza concluída!\nRegistros atualizados: ${result.updatedCount}\nDuplicatas removidas: ${result.deletedCount}`);
             window.location.reload(); 
         } catch (error) {
             console.error(error);
@@ -1556,9 +1388,7 @@ const ImportedRevenuesView: FC<{
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div><h2 className="text-2xl font-bold text-text-primary">Receitas Importadas</h2><p className="text-text-secondary">Importe planilhas para calcular comissões.</p></div>
                 <div className="flex gap-2">
-                    <Button onClick={handleDeduplicate} variant="secondary" className="text-xs" disabled={isDeduplicating}>
-                        {isDeduplicating ? 'Processando...' : 'Limpar Duplicatas'}
-                    </Button>
+                    <Button onClick={handleDeduplicate} variant="secondary" className="text-xs" disabled={isDeduplicating}>{isDeduplicating ? 'Processando...' : 'Limpar Duplicatas'}</Button>
                     <label className="bg-primary hover:bg-opacity-90 text-white shadow-md px-4 py-2 rounded-lg cursor-pointer flex items-center gap-2 font-semibold transition-all">
                         <UploadIcon className="w-4 h-4"/> Importar Relatório
                         <input type="file" accept=".xlsx, .xls, .csv" className="hidden" onChange={(e) => {
@@ -1568,31 +1398,17 @@ const ImportedRevenuesView: FC<{
                                 reader.onload = (evt) => {
                                     const bstr = evt.target?.result;
                                     const wb = XLSX.read(bstr, { type: 'binary' });
-                                    const ws = wb.Sheets[wb.SheetNames[0]];
-                                    const data = XLSX.utils.sheet_to_json(ws);
+                                    const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
                                     const formatted = data.map((row: any) => {
                                         if (row['Classificação'] === 'CUSTOS') return null;
-                                        
-                                        // Parse date properly (assuming Excel standard)
                                         let dateIso = new Date().toISOString();
-                                        const rawDate = row['Data'];
-
-                                        if (typeof rawDate === 'number') {
-                                            // Excel date to JS Date
-                                            const jsDate = new Date((rawDate - 25569) * 86400 * 1000);
+                                        if (typeof row['Data'] === 'number') {
+                                            const jsDate = new Date((row['Data'] - 25569) * 86400 * 1000);
                                             jsDate.setHours(12, 0, 0); 
                                             dateIso = jsDate.toISOString();
-                                        } else if (rawDate) {
-                                            // Try parsing string
-                                            dateIso = new Date(rawDate).toISOString();
-                                        }
-
-                                        // Parse Percentual Repasse as integer (80% -> 80)
+                                        } else if (row['Data']) dateIso = new Date(row['Data']).toISOString();
                                         let rawRepasse = parseFloat(row['% Repasse']) || 0;
-                                        if (rawRepasse <= 1 && rawRepasse > 0) {
-                                            rawRepasse = rawRepasse * 100;
-                                        }
-
+                                        if (rawRepasse <= 1 && rawRepasse > 0) rawRepasse *= 100;
                                         return {
                                             date: dateIso,
                                             conta: row['Conta'] || '',
@@ -1604,7 +1420,7 @@ const ImportedRevenuesView: FC<{
                                             ativo: row['Ativo'] || '',
                                             tipoReceita: row['Tipo Receita'] || '',
                                             receitaLiquidaEQI: parseFloat(row['Receita Liquida EQI']) || 0,
-                                            percentualRepasse: Math.round(rawRepasse), // Save as Integer
+                                            percentualRepasse: Math.round(rawRepasse),
                                             comissaoLiquida: parseFloat(row['Comissão Líquida']) || 0,
                                             tipo: row['Tipo'] || ''
                                         };
@@ -1620,30 +1436,21 @@ const ImportedRevenuesView: FC<{
             
             <Card className="p-4">
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                     <div>
-                        <label className="block text-xs font-medium text-text-secondary mb-1">Data Inicial</label>
-                        <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary" />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-medium text-text-secondary mb-1">Data Final</label>
-                        <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary" />
-                    </div>
-                     <div>
-                        <label className="block text-xs font-medium text-text-secondary mb-1">Assessor (Principal)</label>
+                    <div><label className="block text-xs font-medium text-text-secondary mb-1">Data Inicial</label><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary" /></div>
+                    <div><label className="block text-xs font-medium text-text-secondary mb-1">Data Final</label><input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary" /></div>
+                    <div><label className="block text-xs font-medium text-text-secondary mb-1">Assessor (Principal)</label>
                         <select value={selectedAdvisor} onChange={(e) => setSelectedAdvisor(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary">
                             <option value="">Todos</option>
                             {uniqueAdvisors.map(adv => <option key={adv} value={adv}>{adv}</option>)}
                         </select>
                     </div>
-                    <div>
-                        <label className="block text-xs font-medium text-text-secondary mb-1">Produto / Categoria</label>
+                    <div><label className="block text-xs font-medium text-text-secondary mb-1">Produto / Categoria</label>
                         <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary">
                             <option value="">Todas</option>
                             {uniqueCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                         </select>
                     </div>
-                     <div>
-                        <label className="block text-xs font-medium text-text-secondary mb-1">Cliente</label>
+                    <div><label className="block text-xs font-medium text-text-secondary mb-1">Cliente</label>
                         <div className="relative">
                             <input type="text" value={clientSearch} onChange={(e) => setClientSearch(e.target.value)} placeholder="Buscar..." className="w-full bg-background border border-border-color rounded-md pl-8 pr-3 py-2 text-sm focus:ring-primary focus:border-primary" />
                             <SearchIcon className="w-4 h-4 text-text-secondary absolute left-2.5 top-2.5" />
@@ -1654,42 +1461,14 @@ const ImportedRevenuesView: FC<{
 
             <Card className="overflow-hidden p-0">
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left whitespace-nowrap">
-                        <thead className="bg-background/50 text-xs uppercase text-text-secondary">
-                            <tr>
-                                <th className="p-4">Data</th>
-                                <th className="p-4">Conta</th>
-                                <th className="p-4">Cliente</th>
-                                <th className="p-4">Cod Assessor</th>
-                                <th className="p-4">Assessor Principal</th>
-                                <th className="p-4">Classificação</th>
-                                <th className="p-4">Produto/Categoria</th>
-                                <th className="p-4">Ativo</th>
-                                <th className="p-4">Tipo Receita</th>
-                                <th className="p-4">Receita Liq EQI</th>
-                                <th className="p-4">% Repasse</th>
-                                <th className="p-4">Comissão Líquida</th>
-                                <th className="p-4">Tipo</th>
-                                <th className="p-4 text-right">Ações</th>
-                            </tr>
+                    <table className="w-full text-left whitespace-nowrap text-xs">
+                        <thead className="bg-background/50 uppercase text-text-secondary">
+                            <tr><th className="p-4">Data</th><th className="p-4">Conta</th><th className="p-4">Cliente</th><th className="p-4">Cod Assessor</th><th className="p-4">Assessor Principal</th><th className="p-4">Classificação</th><th className="p-4">Produto/Categoria</th><th className="p-4">Ativo</th><th className="p-4">Tipo Receita</th><th className="p-4">Receita Liq EQI</th><th className="p-4">% Repasse</th><th className="p-4">Comissão Líquida</th><th className="p-4">Tipo</th><th className="p-4 text-right">Ações</th></tr>
                         </thead>
-                        <tbody className="divide-y divide-border-color/30 text-xs">
+                        <tbody className="divide-y divide-border-color/30">
                             {filteredRevenues.map(r => (
                                 <tr key={r.id} className="hover:bg-background/50">
-                                    <td className="p-4">{formatDate(r.date)}</td>
-                                    <td className="p-4">{r.conta}</td>
-                                    <td className="p-4 font-medium">{r.cliente}</td>
-                                    <td className="p-4">{r.codAssessor}</td>
-                                    <td className="p-4">{r.assessorPrincipal}</td>
-                                    <td className="p-4">{r.classificacao}</td>
-                                    <td className="p-4">{r.produtoCategoria}</td>
-                                    <td className="p-4">{r.ativo}</td>
-                                    <td className="p-4">{r.tipoReceita}</td>
-                                    <td className="p-4 font-bold text-green-400">{formatCurrency(r.receitaLiquidaEQI)}</td>
-                                    <td className="p-4">{Math.round(r.percentualRepasse)}%</td>
-                                    <td className="p-4 font-bold text-primary">{formatCurrency(r.comissaoLiquida)}</td>
-                                    <td className="p-4">{r.tipo}</td>
-                                    <td className="p-4 text-right"><Button variant="ghostDanger" onClick={() => onDelete(r.id)}><TrashIcon className="w-4 h-4"/></Button></td>
+                                    <td className="p-4">{formatDate(r.date)}</td><td className="p-4">{r.conta}</td><td className="p-4 font-medium">{r.cliente}</td><td className="p-4">{r.codAssessor}</td><td className="p-4">{r.assessorPrincipal}</td><td className="p-4">{r.classificacao}</td><td className="p-4">{r.produtoCategoria}</td><td className="p-4">{r.ativo}</td><td className="p-4">{r.tipoReceita}</td><td className="p-4 font-bold text-green-400">{formatCurrency(r.receitaLiquidaEQI)}</td><td className="p-4">{Math.round(r.percentualRepasse)}%</td><td className="p-4 font-bold text-primary">{formatCurrency(r.comissaoLiquida)}</td><td className="p-4">{r.tipo}</td><td className="p-4 text-right"><Button variant="ghostDanger" onClick={() => onDelete(r.id)}><TrashIcon className="w-4 h-4"/></Button></td>
                                 </tr>
                             ))}
                             {filteredRevenues.length === 0 && <tr><td colSpan={14} className="p-8 text-center text-text-secondary">Nenhuma receita importada encontrada.</td></tr>}
@@ -1700,6 +1479,54 @@ const ImportedRevenuesView: FC<{
          </div>
     )
 };
+
+const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: ImportedRevenue[] }> = ({ transactions, importedRevenues = [] }) => {
+    const [period, setPeriod] = useState<'month' | 'year' | 'all'>('year');
+    const dreData = useMemo(() => {
+        const now = new Date();
+        const filterDate = (dateStr: string) => {
+            const d = new Date(dateStr);
+            if (period === 'all') return true;
+            if (period === 'year') return d.getFullYear() === now.getFullYear();
+            if (period === 'month') return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+            return false;
+        };
+        const fTrans = transactions.filter(t => filterDate(t.date));
+        const manualRevenue = fTrans.filter(t => t.type === TransactionType.INCOME).reduce((sum, t) => sum + t.amount, 0);
+        const importedRevenue = importedRevenues.filter(r => filterDate(r.date)).reduce((sum, r) => sum + (r.receitaLiquidaEQI || 0), 0);
+        const totalRevenue = manualRevenue + importedRevenue;
+        const expenseTrans = fTrans.filter(t => t.type === TransactionType.EXPENSE);
+        const totalExpense = expenseTrans.reduce((sum, t) => sum + t.amount, 0);
+        const expensesByCategory: Record<string, number> = {};
+        expenseTrans.forEach(t => { expensesByCategory[t.category] = (expensesByCategory[t.category] || 0) + t.amount; });
+        const sortedExpenses = Object.entries(expensesByCategory).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+        return { totalRevenue, totalExpense, sortedExpenses, result: totalRevenue - totalExpense };
+    }, [transactions, importedRevenues, period]);
+    return (
+        <div className="space-y-6 animate-fade-in">
+             <div className="flex justify-between items-center"><h2 className="text-2xl font-bold text-text-primary">Relatórios</h2>
+                <div className="flex gap-2">
+                    {['month','year','all'].map(p => <button key={p} onClick={() => setPeriod(p as any)} className={`px-3 py-1 rounded text-sm transition-colors ${period === p ? 'bg-primary text-white' : 'bg-surface text-text-secondary hover:text-text-primary'}`}>{p === 'month' ? 'Mês' : p === 'year' ? 'Ano' : 'Tudo'}</button>)}
+                </div>
+            </div>
+            <Card className="max-w-4xl mx-auto"><div className="border-b border-border-color pb-4 mb-4"><h3 className="text-xl font-bold text-text-primary text-center">Demonstrativo do Resultado (DRE)</h3><p className="text-center text-text-secondary text-sm">{period === 'month' ? 'Mês Atual' : period === 'year' ? 'Ano Atual' : 'Período Completo'}</p></div>
+                <div className="space-y-3 font-mono text-sm sm:text-base">
+                    <div className="flex justify-between items-center py-2"><span className="font-bold text-text-primary">RECEITA OPERACIONAL BRUTA</span><span className="font-bold text-green-400">{formatCurrency(dreData.totalRevenue)}</span></div>
+                    <div className="flex justify-between items-center py-2 border-t border-border-color/30 mt-2"><span className="font-bold text-text-primary">(-) DESPESAS OPERACIONAIS</span><span className="font-bold text-danger">{formatCurrency(dreData.totalExpense)}</span></div>
+                    <div className="pl-4 sm:pl-8 space-y-1">
+                        {dreData.sortedExpenses.map((exp, idx) => (
+                            <div key={idx} className="flex justify-between text-text-secondary text-xs sm:text-sm hover:bg-background/50 px-2 rounded"><span>{exp.name}</span><span>{formatCurrency(exp.value)}</span></div>
+                        ))}
+                    </div>
+                    <div className="flex justify-between items-center py-3 border-t-2 border-border-color mt-4 bg-background/30 px-2 rounded"><span className="font-bold text-lg text-text-primary">RESULTADO DO PERÍODO</span><span className={`font-bold text-lg ${dreData.result >= 0 ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(dreData.result)}</span></div>
+                </div>
+            </Card>
+        </div>
+    );
+};
+
+// --- Missing props and constants for DashboardView ---
+const COLORS = ['#D1822A', '#10B981', '#EF4444', '#3B82F6', '#F59E0B', '#6366F1'];
 
 interface DashboardViewProps {
     transactions: Transaction[];
@@ -1715,368 +1542,87 @@ interface DashboardViewProps {
     importedRevenues: ImportedRevenue[];
 }
 
-const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: ImportedRevenue[] }> = ({ transactions, importedRevenues = [] }) => {
-    const [period, setPeriod] = useState<'month' | 'year' | 'all'>('year');
-
-    const dreData = useMemo(() => {
-        const now = new Date();
-        const currentYear = now.getFullYear();
-        const currentMonth = now.getMonth();
-
-        const filterDate = (dateStr: string) => {
-            const d = new Date(dateStr);
-            if (period === 'all') return true;
-            if (period === 'year') return d.getFullYear() === currentYear;
-            if (period === 'month') return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
-            return false;
-        };
-
-        const filteredTrans = transactions.filter(t => filterDate(t.date));
-        const filteredImports = importedRevenues.filter(r => filterDate(r.date));
-
-        // Calculate Revenue
-        const manualRevenue = filteredTrans
-            .filter(t => t.type === TransactionType.INCOME)
-            .reduce((sum, t) => sum + t.amount, 0);
-        
-        const importedRevenue = filteredImports
-            .reduce((sum, r) => sum + (r.receitaLiquidaEQI || 0), 0);
-
-        const totalRevenue = manualRevenue + importedRevenue;
-
-        // Calculate Expenses
-        const expenseTrans = filteredTrans.filter(t => t.type === TransactionType.EXPENSE);
-        const totalExpense = expenseTrans.reduce((sum, t) => sum + t.amount, 0);
-
-        // Expenses by Category
-        const expensesByCategory: Record<string, number> = {};
-        expenseTrans.forEach(t => {
-            expensesByCategory[t.category] = (expensesByCategory[t.category] || 0) + t.amount;
-        });
-
-        const sortedExpenses = Object.entries(expensesByCategory)
-            .map(([name, value]) => ({ name, value }))
-            .sort((a, b) => b.value - a.value);
-
-        const result = totalRevenue - totalExpense;
-
-        return {
-            totalRevenue,
-            totalExpense,
-            sortedExpenses,
-            result
-        };
-    }, [transactions, importedRevenues, period]);
-
-    return (
-        <div className="space-y-6 animate-fade-in">
-             <div className="flex justify-between items-center">
-                <h2 className="text-2xl font-bold text-text-primary">Relatórios</h2>
-                <div className="flex gap-2">
-                    <button onClick={() => setPeriod('month')} className={`px-3 py-1 rounded text-sm transition-colors ${period === 'month' ? 'bg-primary text-white' : 'bg-surface text-text-secondary hover:text-text-primary'}`}>Mês</button>
-                    <button onClick={() => setPeriod('year')} className={`px-3 py-1 rounded text-sm transition-colors ${period === 'year' ? 'bg-primary text-white' : 'bg-surface text-text-secondary hover:text-text-primary'}`}>Ano</button>
-                    <button onClick={() => setPeriod('all')} className={`px-3 py-1 rounded text-sm transition-colors ${period === 'all' ? 'bg-primary text-white' : 'bg-surface text-text-secondary hover:text-text-primary'}`}>Tudo</button>
-                </div>
-            </div>
-
-            <Card className="max-w-4xl mx-auto">
-                <div className="border-b border-border-color pb-4 mb-4">
-                    <h3 className="text-xl font-bold text-text-primary text-center">Demonstrativo do Resultado (DRE)</h3>
-                    <p className="text-center text-text-secondary text-sm">
-                        {period === 'month' ? 'Mês Atual' : period === 'year' ? 'Ano Atual' : 'Período Completo'}
-                    </p>
-                </div>
-
-                <div className="space-y-3 font-mono text-sm sm:text-base">
-                    {/* Receita */}
-                    <div className="flex justify-between items-center py-2">
-                        <span className="font-bold text-text-primary">RECEITA OPERACIONAL BRUTA</span>
-                        <span className="font-bold text-green-400">{formatCurrency(dreData.totalRevenue)}</span>
-                    </div>
-
-                    {/* Despesas Header */}
-                    <div className="flex justify-between items-center py-2 border-t border-border-color/30 mt-2">
-                        <span className="font-bold text-text-primary">(-) DESPESAS OPERACIONAIS</span>
-                        <span className="font-bold text-danger">{formatCurrency(dreData.totalExpense)}</span>
-                    </div>
-
-                    {/* Despesas Detalhes */}
-                    <div className="pl-4 sm:pl-8 space-y-1">
-                        {dreData.sortedExpenses.map((exp, idx) => (
-                            <div key={idx} className="flex justify-between text-text-secondary text-xs sm:text-sm hover:bg-background/50 px-2 rounded">
-                                <span>{exp.name}</span>
-                                <span>{formatCurrency(exp.value)}</span>
-                            </div>
-                        ))}
-                        {dreData.sortedExpenses.length === 0 && (
-                            <div className="text-text-secondary italic text-xs">Nenhuma despesa registrada.</div>
-                        )}
-                    </div>
-
-                    {/* Resultado */}
-                    <div className="flex justify-between items-center py-3 border-t-2 border-border-color mt-4 bg-background/30 px-2 rounded">
-                        <span className="font-bold text-lg text-text-primary">RESULTADO DO PERÍODO</span>
-                        <span className={`font-bold text-lg ${dreData.result >= 0 ? 'text-green-400' : 'text-danger'}`}>
-                            {formatCurrency(dreData.result)}
-                        </span>
-                    </div>
-                </div>
-            </Card>
-        </div>
-    );
-};
-
 const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid, onEdit, incomeCategories, expenseCategories, paymentMethods, costCenters, advisors, globalTaxRate, importedRevenues }) => {
     const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
     const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
-
-    const availableYears = useMemo(() => {
-        const years = [...new Set(transactions.map(t => new Date(t.date).getFullYear()))];
-        const currentYear = new Date().getFullYear();
-        if (!years.includes(currentYear)) years.push(currentYear);
-        return years.sort((a: number, b: number) => b - a);
-    }, [transactions]);
-    const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-
-    const filteredTransactions = useMemo(() => {
-        return transactions.filter(t => {
+    const availableYears = useMemo(() => Array.from(new Set(transactions.map(t => new Date(t.date).getFullYear()))).sort((a,b)=>b-a), [transactions]);
+    const filteredTransactions = useMemo(() => transactions.filter(t => {
             const date = new Date(t.date);
-            const yearMatches = selectedYear === 'all' || date.getFullYear() === selectedYear;
-            const monthMatches = selectedMonth === 'all' || date.getMonth() === selectedMonth;
-            return yearMatches && monthMatches;
-        });
-    }, [transactions, selectedYear, selectedMonth]);
-
-    const { totalIncome, totalExpense, netProfit, mostProfitableMonth, largestExpense, taxProvisionBalanceForPeriod } = useMemo(() => {
+            return (selectedYear === 'all' || date.getFullYear() === selectedYear) && (selectedMonth === 'all' || date.getMonth() === selectedMonth);
+        }), [transactions, selectedYear, selectedMonth]);
+    const { totalIncome, totalExpense, netProfit, mostProfitableMonth, largestExpense } = useMemo(() => {
         const income = filteredTransactions.filter(t => t.type === TransactionType.INCOME).reduce<number>((acc, t) => acc + t.amount, 0);
         const expense = filteredTransactions.filter(t => t.type === TransactionType.EXPENSE).reduce<number>((acc, t) => acc + t.amount, 0);
-        let largestExpense: Transaction | null = null;
-        if (filteredTransactions.length > 0) {
-            const expenses = filteredTransactions.filter(t => t.type === TransactionType.EXPENSE);
-            if (expenses.length > 0) largestExpense = expenses.reduce((max, t) => t.amount > max.amount ? t : max);
-        }
-        
+        const expOnly = filteredTransactions.filter(t => t.type === TransactionType.EXPENSE);
+        const largestExpense = expOnly.length > 0 ? expOnly.reduce((max, t) => t.amount > max.amount ? t : max) : null;
         const monthProfits = filteredTransactions.reduce((acc, t) => {
             const month = getMonthYear(t.date);
-            const amount = t.type === TransactionType.INCOME ? t.amount : -t.amount;
-            const current = acc[month] || 0;
-            acc[month] = current + amount;
+            acc[month] = (acc[month] || 0) + (t.type === TransactionType.INCOME ? t.amount : -t.amount);
             return acc;
         }, {} as Record<string, number>);
-        
-        const mostProfitableMonth = Object.keys(monthProfits).length > 0
-            ? (Object.entries(monthProfits) as [string, number][]).reduce<[string, number]>((max, entry) => entry[1] > max[1] ? entry : max, ["N/A", -Infinity])[0]
-            : "N/A";
-            
-        const totalProvisioned = filteredTransactions.filter(t => t.type === TransactionType.INCOME && t.taxAmount).reduce<number>((sum, t) => sum + (t.taxAmount || 0), 0);
-        const totalTaxPaid = filteredTransactions.filter(t => t.type === TransactionType.EXPENSE && t.costCenter === 'provisao-impostos').reduce<number>((sum, t) => sum + t.amount, 0);
-        
-        return { totalIncome: income, totalExpense: expense, netProfit: income - expense, mostProfitableMonth, largestExpense, taxProvisionBalanceForPeriod: totalProvisioned - totalTaxPaid };
+        const mostProfitableMonth = Object.keys(monthProfits).length > 0 ? (Object.entries(monthProfits) as [string, number][]).reduce<[string, number]>((max, entry) => entry[1] > max[1] ? entry : max, ["N/A", -Infinity])[0] : "N/A";
+        return { totalIncome: income, totalExpense: expense, netProfit: income - expense, mostProfitableMonth, largestExpense };
     }, [filteredTransactions]);
-    
-    // KPI Saldo Hoje (Conta PJ + Provisão)
-    const saldoHoje = useMemo(() => {
-        const now = new Date();
-        return transactions.reduce((acc, t) => {
-            if (new Date(t.date) <= now) {
-                let val = 0;
-                if (t.type === TransactionType.INCOME) {
-                    // Use gross amount (amount + taxAmount if grossAmount missing) to include provision in total balance
-                    // If t.amount is Net, and we want Total Cash, we need Net + Tax.
-                    val = t.grossAmount ?? (t.amount + (t.taxAmount || 0)); 
-                } else {
-                    val = -t.amount;
-                }
-                return acc + val;
-            }
-            return acc;
-        }, 0);
-    }, [transactions]);
 
-    // KPI Saldo Provisão de Impostos (Apenas Provisão)
-    const saldoProvisaoHoje = useMemo(() => {
-        const now = new Date();
-        return transactions.reduce((acc, t) => {
-            if (new Date(t.date) <= now) {
-                if (t.type === TransactionType.INCOME) {
-                    return acc + (t.taxAmount || 0);
-                } else if (t.type === TransactionType.EXPENSE && t.costCenter === 'provisao-impostos') {
-                    return acc - t.amount;
-                }
-            }
-            return acc;
-        }, 0);
-    }, [transactions]);
-
+    // Fix: Use .getTime() for date comparison to avoid arithmetic operation errors on Date objects in strict TypeScript.
+    const saldoHoje = useMemo(() => transactions.reduce((acc, t) => new Date(t.date).getTime() <= new Date().getTime() ? acc + (t.type === TransactionType.INCOME ? (t.grossAmount ?? (t.amount + (t.taxAmount || 0))) : -t.amount) : acc, 0), [transactions]);
+    const saldoProvisaoHoje = useMemo(() => transactions.reduce((acc, t) => new Date(t.date).getTime() <= new Date().getTime() ? acc + (t.type === TransactionType.INCOME ? (t.taxAmount || 0) : (t.costCenter === 'provisao-impostos' ? -t.amount : 0)) : acc, 0), [transactions]);
     const achievedGoals = useMemo(() => goals.filter(g => g.currentAmount >= g.targetAmount).length, [goals]);
-    const upcomingBills = useMemo(() => {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const fiveDaysFromNow = new Date(today);
-        fiveDaysFromNow.setDate(today.getDate() + 5);
-        return transactions.filter(t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PENDING && new Date(t.date).getTime() <= fiveDaysFromNow.getTime()).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    }, [transactions]);
-
+    const upcomingBills = useMemo(() => transactions.filter(t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PENDING && new Date(t.date).getTime() <= new Date(new Date().setDate(new Date().getDate() + 5)).getTime()).sort((a,b)=>new Date(a.date).getTime()-new Date(b.date).getTime()), [transactions]);
     const expenseSubcategoryData = useMemo(() => {
         const expenses = filteredTransactions.filter(t => t.type === TransactionType.EXPENSE);
         const total = expenses.reduce((sum, t) => sum + t.amount, 0);
         if (total === 0) return [];
-        const data = expenses.reduce((acc, t) => {
-            if (t.nature === ExpenseNature.FIXED) acc[0].amount += t.amount; else acc[1].amount += t.amount;
-            return acc;
-        }, [{ name: 'Fixo', amount: 0 }, { name: 'Variável', amount: 0 }]);
+        const data = expenses.reduce((acc, t) => { acc[t.nature === ExpenseNature.FIXED ? 0 : 1].amount += t.amount; return acc; }, [{ name: 'Fixo', amount: 0 }, { name: 'Variável', amount: 0 }]);
         return data.map(d => ({ ...d, value: (d.amount / total) * 100, percent: (d.amount / total) * 100 })).filter(d => d.amount > 0);
     }, [filteredTransactions]);
-
     const cashFlowData = useMemo(() => { 
         const sorted = [...transactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
         let balance = 0;
-        const data = sorted.map(t => { balance += t.type === TransactionType.INCOME ? t.amount : -t.amount; return { date: formatDate(t.date), balance }; });
-        const groupedData = data.reduce((acc: Record<string, number>, item) => { acc[item.date] = item.balance; return acc; }, {} as Record<string, number>);
-        return Object.entries(groupedData).map(([date, balance]) => ({ date, balance }));
+        return sorted.map(t => { balance += t.type === TransactionType.INCOME ? t.amount : -t.amount; return { date: formatDate(t.date), balance }; }).reduce((acc: any[], item) => {
+            if (acc.length && acc[acc.length-1].date === item.date) acc[acc.length-1].balance = item.balance; else acc.push(item); return acc;
+        }, []);
     }, [transactions]);
-    
-    const COLORS = ['#D1822A', '#6366F1', '#10B981', '#EF4444', '#F59E0B'];
     const handlePayClick = (bill: Transaction) => { setEditingTransaction({ ...bill, status: ExpenseStatus.PAID }); setIsModalOpen(true); };
     const handleFormSubmit = (data: TransactionFormValues) => { if (editingTransaction) onEdit(editingTransaction.id, data); setIsModalOpen(false); setEditingTransaction(null); };
-    
      return (
         <div className="space-y-6 animate-fade-in">
-            <div className="flex flex-col sm:flex-row gap-4">
-                <div className="flex-1">
-                    <h2 className="text-2xl font-bold text-text-primary mb-2">Visão Geral</h2>
-                    <p className="text-text-secondary">Resumo do desempenho financeiro.</p>
-                </div>
+            <div className="flex flex-col sm:flex-row gap-4"><div className="flex-1"><h2 className="text-2xl font-bold text-text-primary mb-2">Visão Geral</h2><p className="text-text-secondary">Resumo do desempenho financeiro.</p></div>
                 <div className="flex items-center gap-2">
-                     <select value={selectedYear} onChange={e => setSelectedYear(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-surface border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2">
-                        <option value="all">Todo o Período</option>
-                        {availableYears.map(year => <option key={year} value={year}>{year}</option>)}
+                     <select value={selectedYear} onChange={e => setSelectedYear(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-surface border-border-color rounded-md p-2">
+                        <option value="all">Todo o Período</option>{availableYears.map(year => <option key={year} value={year}>{year}</option>)}
                     </select>
-                     <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-surface border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2">
-                        <option value="all">Todos os Meses</option>
-                        {months.map((month, index) => <option key={month} value={index}>{month}</option>)}
+                     <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-surface border-border-color rounded-md p-2">
+                        <option value="all">Todos os Meses</option>{['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'].map((m, i) => <option key={m} value={i}>{m}</option>)}
                     </select>
                 </div>
             </div>
-
-            {/* Top Row: Balance KPIs (Smaller, Discreet) */}
             <div className="flex flex-col md:flex-row gap-4">
-                <Card className={`flex-1 p-4 border-l-4 ${saldoHoje >= 0 ? 'border-primary' : 'border-danger'} flex items-center justify-between`}>
-                     <div>
-                        <h3 className="text-text-secondary font-semibold text-xs uppercase tracking-wider">Saldo Hoje</h3>
-                        <p className={`text-2xl font-bold mt-1 ${saldoHoje >= 0 ? 'text-primary' : 'text-danger'}`}>{formatCurrency(saldoHoje)}</p>
-                     </div>
-                </Card>
-
-                <Card className={`flex-1 p-4 border-l-4 ${saldoProvisaoHoje >= 0 ? 'border-primary' : 'border-danger'} flex items-center justify-between`}>
-                     <div>
-                        <h3 className="text-text-secondary font-semibold text-xs uppercase tracking-wider">Saldo Provisão de Impostos</h3>
-                        <p className={`text-2xl font-bold mt-1 ${saldoProvisaoHoje >= 0 ? 'text-primary' : 'text-danger'}`}>{formatCurrency(saldoProvisaoHoje)}</p>
-                     </div>
-                </Card>
+                <Card className={`flex-1 py-2.5 px-4 border-l-4 ${saldoHoje >= 0 ? 'border-primary' : 'border-danger'} flex items-center justify-between`}><div><h3 className="text-text-secondary font-semibold text-[10px] uppercase tracking-wider">Saldo Hoje</h3><p className={`text-xl font-bold mt-1 ${saldoHoje >= 0 ? 'text-primary' : 'text-danger'}`}>{formatCurrency(saldoHoje)}</p></div></Card>
+                <Card className={`flex-1 py-2.5 px-4 border-l-4 ${saldoProvisaoHoje >= 0 ? 'border-primary' : 'border-danger'} flex items-center justify-between`}><div><h3 className="text-text-secondary font-semibold text-[10px] uppercase tracking-wider">Saldo Provisão de Impostos</h3><p className={`text-xl font-bold mt-1 ${saldoProvisaoHoje >= 0 ? 'text-primary' : 'text-danger'}`}>{formatCurrency(saldoProvisaoHoje)}</p></div></Card>
             </div>
-
-            {/* Main KPIs Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-                <Card className="transform hover:scale-105 transition-transform duration-300 border-l-4 border-green-400">
-                    <h3 className="text-text-secondary font-semibold text-sm uppercase tracking-wider">Receita Líquida</h3>
-                    <p className="text-3xl font-bold text-green-400 mt-1">{formatCurrency(totalIncome)}</p>
-                </Card>
-                 <Card className="transform hover:scale-105 transition-transform duration-300 border-l-4 border-danger">
-                    <h3 className="text-text-secondary font-semibold text-sm uppercase tracking-wider">Despesa Total</h3>
-                    <p className="text-3xl font-bold text-danger mt-1">{formatCurrency(totalExpense)}</p>
-                </Card>
-                 <Card className="transform hover:scale-105 transition-transform duration-300 border-l-4 border-primary">
-                    <h3 className="text-text-secondary font-semibold text-sm uppercase tracking-wider">Lucro Líquido</h3>
-                    <p className={`text-3xl font-bold mt-1 ${netProfit >= 0 ? 'text-text-primary' : 'text-danger'}`}>{formatCurrency(netProfit)}</p>
-                </Card>
-                 <Card className="transform hover:scale-105 transition-transform duration-300 border-l-4 border-blue-400">
-                    <h3 className="text-text-secondary font-semibold text-sm uppercase tracking-wider">Metas Atingidas</h3>
-                    <p className="text-3xl font-bold text-blue-400 mt-1">{achievedGoals} <span className="text-lg text-text-secondary font-normal">/ {goals.length}</span></p>
-                </Card>
+                <Card className="border-l-4 border-green-400"><h3 className="text-text-secondary text-sm uppercase">Receita Líquida</h3><p className="text-3xl font-bold text-green-400">{formatCurrency(totalIncome)}</p></Card>
+                <Card className="border-l-4 border-danger"><h3 className="text-text-secondary text-sm uppercase">Despesa Total</h3><p className="text-3xl font-bold text-danger">{formatCurrency(totalExpense)}</p></Card>
+                <Card className="border-l-4 border-primary"><h3 className="text-text-secondary text-sm uppercase">Lucro Líquido</h3><p className={`text-3xl font-bold ${netProfit >= 0 ? 'text-text-primary' : 'text-danger'}`}>{formatCurrency(netProfit)}</p></Card>
+                <Card className="border-l-4 border-blue-400"><h3 className="text-text-secondary text-sm uppercase">Metas Atingidas</h3><p className="text-3xl font-bold text-blue-400">{achievedGoals} <span className="text-lg text-text-secondary font-normal">/ {goals.length}</span></p></Card>
             </div>
-
             {upcomingBills.length > 0 && (
-                <div className="bg-surface border border-danger/30 rounded-xl shadow-lg p-3 sm:p-6">
-                    <div className="flex items-center gap-3 mb-3">
-                        <div className="bg-danger/10 p-2 rounded-full"><AlertCircleIcon className="w-5 h-5 text-danger" /></div>
-                        <div><h3 className="text-base sm:text-lg font-bold text-text-primary">Contas a Pagar (Próximos 5 Dias)</h3><p className="text-xs sm:text-sm text-text-secondary">Atenção aos vencimentos próximos.</p></div>
-                    </div>
-                    <div className="overflow-hidden">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="text-text-secondary text-xs border-b border-border-color">
-                                    <th className="py-2 px-1 font-medium whitespace-nowrap">Vencimento</th>
-                                    <th className="py-2 px-1 font-medium">Descrição</th>
-                                    <th className="py-2 px-1 font-medium hidden sm:table-cell">Fornecedor</th>
-                                    <th className="py-2 px-1 font-medium">Valor</th>
-                                    <th className="py-2 px-1 font-medium text-right">Ação</th>
-                                </tr>
-                            </thead>
-                            <tbody className="text-xs sm:text-sm">
-                                {upcomingBills.map(bill => {
-                                    const isOverdue = new Date(bill.date).getTime() < new Date(new Date().setHours(0,0,0,0)).getTime();
-                                    const isToday = new Date(bill.date).toDateString() === new Date().toDateString();
-                                    return (
-                                        <tr key={bill.id} className="border-b border-border-color/50 last:border-0 hover:bg-background/50 transition-colors">
-                                            <td className="py-2 px-1 whitespace-nowrap"><span className={`px-1.5 py-0.5 rounded text-[10px] sm:text-xs font-bold ${isOverdue ? 'bg-danger text-white' : (isToday ? 'bg-yellow-500 text-black' : 'bg-background text-text-secondary')}`}>{isOverdue ? 'Atrasado' : (isToday ? 'Hoje' : formatDate(bill.date))}</span></td>
-                                            <td className="py-2 px-1 font-medium truncate max-w-[100px] sm:max-w-none" title={bill.description}>{bill.description}</td>
-                                            <td className="py-2 px-1 text-text-secondary hidden sm:table-cell truncate max-w-[150px]">{bill.clientSupplier || '-'}</td>
-                                            <td className="py-2 px-1 font-bold text-danger whitespace-nowrap">{formatCurrency(bill.amount)}</td>
-                                            <td className="py-2 px-1 text-right"><Button onClick={() => handlePayClick(bill)} variant="success" className="py-1 px-2 text-[10px] sm:text-xs ml-auto gap-1"><CheckCircleIcon className="w-3 h-3 sm:w-4 sm:h-4" /> <span className="hidden sm:inline">Pagar</span></Button></td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
+                <div className="bg-surface border border-danger/30 rounded-xl p-3 sm:p-6"><div className="flex items-center gap-3 mb-3"><div className="bg-danger/10 p-2 rounded-full"><AlertCircleIcon className="w-5 h-5 text-danger" /></div><div><h3 className="text-base font-bold">Contas a Pagar (Próximos 5 Dias)</h3></div></div>
+                    <table className="w-full text-left border-collapse text-xs sm:text-sm">
+                        <thead><tr className="text-text-secondary border-b border-border-color"><th className="py-2">Vencimento</th><th>Descrição</th><th>Valor</th><th className="text-right">Ação</th></tr></thead>
+                        <tbody>{upcomingBills.map(bill => (
+                            <tr key={bill.id} className="border-b border-border-color last:border-0 hover:bg-background/50"><td className="py-2">{formatDate(bill.date)}</td><td>{bill.description}</td><td className="font-bold text-danger">{formatCurrency(bill.amount)}</td><td className="text-right"><Button onClick={() => handlePayClick(bill)} variant="success" className="py-1 px-2 text-[10px]">Pagar</Button></td></tr>
+                        ))}</tbody>
+                    </table>
                 </div>
             )}
-            
              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <Card className="lg:col-span-2 h-[400px] flex flex-col">
-                    <h3 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2"><span className="w-2 h-6 bg-primary rounded-sm"></span>Fluxo de Caixa</h3>
-                    <div className="flex-grow">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={cashFlowData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                                <defs><linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#D1822A" stopOpacity={0.8}/><stop offset="95%" stopColor="#D1822A" stopOpacity={0}/></linearGradient></defs>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2D376A" opacity={0.5} />
-                                <XAxis dataKey="date" stroke="#A0AEC0" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={30} />
-                                <YAxis stroke="#A0AEC0" tickFormatter={(value) => `R$${value/1000}k`} tick={{ fontSize: 11 }} width={60} tickLine={false} axisLine={false} />
-                                <Tooltip contentStyle={{ backgroundColor: '#1A214A', border: 'none', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.5)', color: '#F0F2F5' }} itemStyle={{ color: '#D1822A' }} formatter={(value) => [formatCurrency(Number(value)), 'Saldo']} cursor={{ stroke: '#D1822A', strokeWidth: 1, strokeDasharray: '5 5' }} />
-                                <Area type="monotone" dataKey="balance" stroke="#D1822A" strokeWidth={3} fillOpacity={1} fill="url(#colorBalance)" />
-                            </AreaChart>
-                        </ResponsiveContainer>
-                    </div>
-                </Card>
-                <Card className="h-[400px] flex flex-col">
-                    <h3 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2"><span className="w-2 h-6 bg-secondary rounded-sm"></span>Natureza das Despesas</h3>
-                    <div className="flex-grow relative">
-                        {expenseSubcategoryData.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie data={expenseSubcategoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={100} fill="#8884d8" paddingAngle={5} stroke="none">
-                                        {expenseSubcategoryData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
-                                    </Pie>
-                                    <Tooltip content={<CustomPieTooltip />} />
-                                    <Legend verticalAlign="bottom" height={36} iconType="circle" formatter={(value) => <span className="text-text-secondary ml-1">{value}</span>} />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        ) : <div className="flex items-center justify-center h-full text-text-secondary"><p>Sem dados.</p></div>}
-                    </div>
-                </Card>
+                <Card className="lg:col-span-2 h-[400px] flex flex-col"><h3 className="text-lg font-bold mb-4">Fluxo de Caixa</h3><div className="flex-grow"><ResponsiveContainer><AreaChart data={cashFlowData}><defs><linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#D1822A" stopOpacity={0.8}/><stop offset="95%" stopColor="#D1822A" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2D376A" opacity={0.5} /><XAxis dataKey="date" stroke="#A0AEC0" tick={{fontSize:11}} tickLine={false} axisLine={false} /><YAxis stroke="#A0AEC0" tickFormatter={v => `R$${v/1000}k`} tick={{fontSize:11}} width={60} tickLine={false} axisLine={false} /><Tooltip contentStyle={{backgroundColor:'#1A214A',border:'none',borderRadius:'8px'}} itemStyle={{color:'#D1822A'}} formatter={v => [formatCurrency(Number(v)), 'Saldo']} /><Area type="monotone" dataKey="balance" stroke="#D1822A" strokeWidth={3} fillOpacity={1} fill="url(#colorBalance)" /></AreaChart></ResponsiveContainer></div></Card>
+                <Card className="h-[400px] flex flex-col"><h3 className="text-lg font-bold mb-4">Natureza das Despesas</h3><div className="flex-grow">{expenseSubcategoryData.length > 0 ? <ResponsiveContainer><PieChart><Pie data={expenseSubcategoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={100} fill="#8884d8" paddingAngle={5} stroke="none">{expenseSubcategoryData.map((e,i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip />} /><Legend verticalAlign="bottom" height={36} iconType="circle" formatter={v => <span className="text-text-secondary ml-1">{v}</span>} /></PieChart></ResponsiveContainer> : <div className="flex items-center justify-center h-full text-text-secondary"><p>Sem dados.</p></div>}</div></Card>
             </div>
-            
-             <Card>
-                <h3 className="text-lg font-bold text-text-primary mb-4">Informações Rápidas</h3>
-                 <div className="space-y-4">
-                    <div className="flex justify-between items-center p-3 bg-background rounded-lg border border-border-color/50"><span className="text-text-secondary">Mês mais lucrativo:</span><span className="font-bold text-primary">{mostProfitableMonth}</span></div>
-                    <div className="flex justify-between items-center p-3 bg-background rounded-lg border border-border-color/50"><span className="text-text-secondary">Maior despesa única:</span>{largestExpense ? <span className="font-bold text-danger text-right">{largestExpense.description}<br/><span className="text-sm">{formatCurrency(largestExpense.amount)}</span></span> : <span className="font-bold text-text-secondary">N/A</span>}</div>
-                 </div>
-            </Card>
-
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Confirmar Pagamento / Ajustar Valor">
                 <TransactionForm onSubmit={handleFormSubmit} onClose={() => setIsModalOpen(false)} initialData={editingTransaction} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} globalTaxRate={globalTaxRate} transactions={transactions} importedRevenues={importedRevenues} />
             </Modal>
@@ -2089,7 +1635,6 @@ const App: FC = () => {
     const [loadingAuth, setLoadingAuth] = useState(true);
     const [activeView, setActiveView] = useState<View>('dashboard');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-
     const [incomeCategories, setIncomeCategories] = useLocalStorage<string[]>('incomeCategories', initialIncomeCategories);
     const [expenseCategories, setExpenseCategories] = useLocalStorage<ExpenseCategory[]>('expenseCategories', initialExpenseCategories);
     const [paymentMethods, setPaymentMethods] = useLocalStorage<string[]>('paymentMethods', initialPaymentMethods);
@@ -2097,165 +1642,76 @@ const App: FC = () => {
     const [advisors, setAdvisors] = useLocalStorage<Advisor[]>('advisors', initialAdvisors);
     const [globalTaxRate, setGlobalTaxRate] = useLocalStorage<number>('globalTaxRate', 6);
     const [goals, setGoals] = useLocalStorage<Goal[]>('goals', getInitialGoals());
-
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [importedRevenues, setImportedRevenues] = useState<ImportedRevenue[]>([]);
     const [loadingData, setLoadingData] = useState(false);
-
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-            setUser(currentUser);
-            setLoadingAuth(false);
-        });
+        const unsubscribe = onAuthStateChanged(auth, (currentUser) => { setUser(currentUser); setLoadingAuth(false); });
         return () => unsubscribe();
     }, []);
-
     useEffect(() => {
         if (user) {
             setLoadingData(true);
-            Promise.all([
-                getTransactions(user.uid),
-                getImportedRevenues(user.uid)
-            ]).then(([transSnap, revSnap]) => {
-                const transDocs = transSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
-                const revDocs = revSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ImportedRevenue));
-                setTransactions(transDocs);
-                setImportedRevenues(revDocs);
-            }).catch(console.error)
-            .finally(() => setLoadingData(false));
-        } else {
-            setTransactions([]);
-            setImportedRevenues([]);
+            Promise.all([getTransactions(user.uid), getImportedRevenues(user.uid)]).then(([transSnap, revSnap]) => {
+                setTransactions(transSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction)));
+                setImportedRevenues(revSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ImportedRevenue)));
+            }).finally(() => setLoadingData(false));
         }
     }, [user]);
-
     const handleAddTransaction = async (data: TransactionFormValues) => {
         if (!user) return;
-        try {
-            const docRef = await saveTransaction(data as any, user.uid);
-            const newTrans = { id: docRef.id, ...data } as unknown as Transaction;
-            setTransactions(prev => [newTrans, ...prev]);
-        } catch (error) {
-            console.error("Error adding transaction", error);
-            alert("Erro ao salvar transação.");
-        }
+        const docRef = await saveTransaction(data as any, user.uid);
+        setTransactions(prev => [{ id: docRef.id, ...data } as unknown as Transaction, ...prev]);
     };
-
     const handleEditTransaction = async (id: string, data: TransactionFormValues) => {
         if (!user) return;
-        try {
-             await updateTransaction(id, data);
-             setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...data } as unknown as Transaction : t));
-        } catch (error) {
-            console.error("Error updating transaction", error);
-             alert("Erro ao atualizar transação.");
-        }
+        await updateTransaction(id, data);
+        setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...data } as unknown as Transaction : t));
     };
-
     const handleDeleteTransaction = async (id: string) => {
-         if (!user) return;
-         if (!window.confirm("Tem certeza que deseja excluir?")) return;
-         try {
-             await deleteTransactionFromDb(id);
-             setTransactions(prev => prev.filter(t => t.id !== id));
-         } catch (error) {
-             console.error("Error deleting transaction", error);
-             alert("Erro ao excluir transação.");
-         }
+         if (!user || !window.confirm("Excluir?")) return;
+         await deleteTransactionFromDb(id);
+         setTransactions(prev => prev.filter(t => t.id !== id));
     };
-
     const handleSetPaid = async (id: string) => {
         if (!user) return;
-        try {
-            await updateTransaction(id, { status: ExpenseStatus.PAID });
-            setTransactions(prev => prev.map(t => t.id === id ? { ...t, status: ExpenseStatus.PAID } : t));
-        } catch (error) {
-            console.error("Error updating transaction status", error);
-        }
+        await updateTransaction(id, { status: ExpenseStatus.PAID });
+        setTransactions(prev => prev.map(t => t.id === id ? { ...t, status: ExpenseStatus.PAID } : t));
     };
-
     const handleImportTransactions = (data: any[]) => {
         if (!user) return;
-        const promises = data.map(item => {
+        Promise.all(data.map(item => {
              const { tempId, selected, ...rest } = item;
              return saveTransaction(rest, user.uid).then(docRef => ({ id: docRef.id, ...rest } as Transaction));
-        });
-
-        Promise.all(promises).then(newItems => {
-             setTransactions(prev => [...newItems, ...prev]);
-             alert(`${newItems.length} transações importadas com sucesso!`);
-        }).catch(err => {
-             console.error("Error importing transactions", err);
-             alert("Erro ao importar transações.");
-        });
+        })).then(newItems => setTransactions(prev => [...newItems, ...prev]));
     };
-
     const handleImportRevenues = (data: any[]) => {
          if (!user) return;
-         let successCount = 0;
-         let duplicateCount = 0;
-         const promises = data.map(item => 
-             saveImportedRevenue(item, user.uid)
-                .then(docRef => {
-                    successCount++;
-                    return { id: docRef.id, ...item } as ImportedRevenue;
-                })
-                .catch(err => {
-                    if (err.message === "Duplicata detectada") duplicateCount++;
-                    else console.error(err);
-                    return null;
-                })
-         );
-
-         Promise.all(promises).then(results => {
+         Promise.all(data.map(item => saveImportedRevenue(item, user.uid).then(docRef => ({ id: docRef.id, ...item } as ImportedRevenue)).catch(() => null))).then(results => {
              const newRevenues = results.filter(r => r !== null) as ImportedRevenue[];
              setImportedRevenues(prev => [...newRevenues, ...prev]);
-             alert(`Importação concluída.\nSucesso: ${successCount}\nDuplicatas ignoradas: ${duplicateCount}`);
          });
     };
-
     const handleDeleteRevenue = async (id: string) => {
-        if (!user) return;
-        if (!window.confirm("Excluir esta receita importada?")) return;
-        try {
-            await deleteImportedRevenue(id);
-            setImportedRevenues(prev => prev.filter(r => r.id !== id));
-        } catch (error) {
-             console.error("Error deleting revenue", error);
-             alert("Erro ao excluir receita.");
-        }
+        if (!user || !window.confirm("Excluir?")) return;
+        await deleteImportedRevenue(id);
+        setImportedRevenues(prev => prev.filter(r => r.id !== id));
     };
-
-    const handleAddGoal = (goalData: any) => {
-        setGoals(prev => [...prev, { ...goalData, id: crypto.randomUUID(), currentAmount: 0 }]);
-    };
-    
-    const handleUpdateGoalProgress = (id: string, amount: number) => {
-        setGoals(prev => prev.map(g => g.id === id ? { ...g, currentAmount: g.currentAmount + amount } : g));
-    };
-
-    const handleDeleteGoal = (id: string) => {
-        setGoals(prev => prev.filter(g => g.id !== id));
-    };
-
     if (loadingAuth) return <div className="min-h-screen flex items-center justify-center bg-background text-text-primary">Carregando...</div>;
     if (!user) return <Login />;
-
     return (
         <div className="flex h-screen bg-background text-text-primary overflow-hidden font-sans">
              <Sidebar activeView={activeView} setActiveView={(v) => { setActiveView(v); setIsSidebarOpen(false); }} isSidebarOpen={isSidebarOpen} user={user} />
              <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
                 <Header pageTitle={activeView === 'dashboard' ? 'Dashboard' : activeView === 'transactions' ? 'Transações' : activeView === 'imported-revenues' ? 'Receitas Importadas' : activeView === 'reports' ? 'Relatórios' : activeView === 'goals' ? 'Metas' : 'Configurações'} onMenuClick={() => setIsSidebarOpen(true)} />
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-background p-4 md:p-6 relative">
-                    {loadingData ? (
-                        <div className="flex items-center justify-center h-full">Carregando dados...</div>
-                    ) : (
+                    {loadingData ? <div className="flex items-center justify-center h-full">Carregando dados...</div> : (
                         <>
                             {activeView === 'dashboard' && <DashboardView transactions={transactions} goals={goals} onSetPaid={handleSetPaid} onEdit={handleEditTransaction} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} globalTaxRate={globalTaxRate} importedRevenues={importedRevenues} />}
                             {activeView === 'transactions' && <TransactionsView transactions={transactions} onAdd={handleAddTransaction} onEdit={handleEditTransaction} onDelete={handleDeleteTransaction} onSetPaid={handleSetPaid} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} onImportTransactions={handleImportTransactions} globalTaxRate={globalTaxRate} importedRevenues={importedRevenues} userId={user.uid} />}
                             {activeView === 'imported-revenues' && <ImportedRevenuesView importedRevenues={importedRevenues} advisors={advisors} onImport={handleImportRevenues} onDelete={handleDeleteRevenue} userId={user.uid} />}
                             {activeView === 'reports' && <ReportsView transactions={transactions} importedRevenues={importedRevenues} />}
-                            {activeView === 'goals' && <GoalsView goals={goals} onAdd={handleAddGoal} onUpdateProgress={handleUpdateGoalProgress} onDelete={handleDeleteGoal} />}
+                            {activeView === 'goals' && <GoalsView goals={goals} onAdd={v => setGoals([...goals, { ...v, id: crypto.randomUUID(), currentAmount: 0 }])} onUpdateProgress={(id, v) => setGoals(goals.map(g => g.id === id ? { ...g, currentAmount: g.currentAmount + v } : g))} onDelete={id => setGoals(goals.filter(g => g.id !== id))} />}
                             {activeView === 'settings' && <SettingsView incomeCategories={incomeCategories} setIncomeCategories={setIncomeCategories} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} paymentMethods={paymentMethods} setPaymentMethods={setPaymentMethods} costCenters={costCenters} setCostCenters={setCostCenters} advisors={advisors} setAdvisors={setAdvisors} globalTaxRate={globalTaxRate} setGlobalTaxRate={setGlobalTaxRate} />}
                         </>
                     )}
@@ -2264,5 +1720,4 @@ const App: FC = () => {
         </div>
     );
 };
-
 export default App;
