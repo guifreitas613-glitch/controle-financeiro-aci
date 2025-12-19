@@ -13,14 +13,14 @@ const DashboardIcon: FC<{ className?: string }> = ({ className }) => (<svg class
 const TransactionsIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>);
 const GoalsIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>);
 const ReportsIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>);
-const SettingsIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 0 2.73l-.15.08a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1 0 2.73l.15-.08a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>);
+const SettingsIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 0 2.73l-.15.08a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1 0 2.73l.15-.08a2 2 0 0 0 .73-2.73l.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>);
 const PlusIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>);
 const EditIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>);
 const TrashIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>);
 const CloseIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>);
 const MenuIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>);
 const ExportIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>);
-const PaidIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2z"/><path d="M8 12.5h2.5a2 2 0 1 0 0-4H8v4z"/><path d="M8 12.5v4"/><path d="M13.5 12.5H16"/><path d="M14 16.5h2"/></svg>);
+const PaidIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2z"/><path d="M8 12.5H2.5a2 2 0 1 0 0-4H8v4z"/><path d="M8 12.5v4"/><path d="M13.5 12.5H16"/><path d="M14 16.5h2"/></svg>);
 const UploadIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>);
 const SearchIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>);
 const LogoutIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>);
@@ -913,7 +913,7 @@ const GoalsView: FC<{ goals: Goal[], onAdd: (g: any) => void, onUpdateProgress: 
     return (
         <div className="space-y-6 animate-fade-in">
              <div className="flex justify-between items-center">
-                <div><h2 className="text-2xl font-bold text-text-primary">Metas Financeiras</h2><p className="text-text-secondary">Defina e acompanhe seus objetivos.</p></div>
+                <div><h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Metas Financeiras</h2><p className="text-text-secondary">Defina e acompanhe seus objetivos.</p></div>
                 <Button onClick={() => setIsAddModalOpen(true)} className="flex items-center gap-2"><PlusIcon className="w-5 h-5"/> Nova Meta</Button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -1033,7 +1033,7 @@ const SettingsView: FC<{
 
     return (
         <div className="space-y-6 animate-fade-in">
-             <div><h2 className="text-2xl font-bold text-text-primary">Configurações</h2><p className="text-text-secondary">Personalize as categorias e opções do sistema.</p></div>
+             <div><h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Configurações</h2><p className="text-text-secondary">Personalize as categorias e opções do sistema.</p></div>
             <div className="flex border-b border-border-color overflow-x-auto">
                 <button onClick={() => setActiveTab('categories')} className={`px-4 py-2 text-sm font-medium whitespace-nowrap ${activeTab === 'categories' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}>Categorias</button>
                 <button onClick={() => setActiveTab('payment')} className={`px-4 py-2 text-sm font-medium whitespace-nowrap ${activeTab === 'payment' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}>Pagamentos</button>
@@ -1118,9 +1118,9 @@ const Sidebar: FC<{ activeView: View; setActiveView: (view: View) => void; isSid
             </nav>
             <div className="border-t border-border-color pt-4 mt-4">
                  <div className="px-2 mb-4">
-                    <p className="text-sm font-semibold text-text-primary truncate" title={getUserDisplayName(user)}>{getUserDisplayName(user)}</p>
+                    <p className="text-sm font-bold text-text-primary truncate" title={getUserDisplayName(user)}>{getUserDisplayName(user)}</p>
                  </div>
-                 <button onClick={logoutUser} className="w-full px-4 py-3 text-sm font-semibold rounded-lg flex items-center justify-center gap-3 transition-colors duration-200 text-text-secondary hover:bg-danger hover:text-white">
+                 <button onClick={logoutUser} className="w-full px-4 py-3 text-sm font-semibold rounded-lg flex items-center justify-start gap-3 transition-colors duration-200 text-text-secondary hover:bg-danger hover:text-white">
                     <LogoutIcon className="w-5 h-5"/> Sair
                 </button>
             </div>
@@ -1130,7 +1130,7 @@ const Sidebar: FC<{ activeView: View; setActiveView: (view: View) => void; isSid
 const Header: FC<{ pageTitle: string, onMenuClick: () => void }> = ({ pageTitle, onMenuClick }) => (
     <header className="bg-surface p-4 flex items-center shadow-md md:hidden sticky top-0 z-10">
         <button onClick={onMenuClick} className="mr-4 text-text-primary"><MenuIcon className="w-6 h-6"/></button>
-        <h2 className="text-xl font-bold">{pageTitle}</h2>
+        <h2 className="text-xl font-bold uppercase">{pageTitle}</h2>
     </header>
 );
 
@@ -1237,7 +1237,7 @@ const TransactionsView: FC<{
     return (
         <div className="space-y-6 animate-fade-in">
              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div><h2 className="text-2xl font-bold text-text-primary">Transações</h2><p className="text-text-secondary">Gerencie suas receitas e despesas.</p></div>
+                <div><h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Transações</h2><p className="text-text-secondary">Gerencie suas receitas e despesas.</p></div>
                 <div className="flex flex-wrap gap-2">
                     <label className="bg-surface hover:bg-surface/80 text-text-primary px-4 py-2 rounded-lg cursor-pointer border border-border-color flex items-center gap-2 text-sm font-semibold transition-all">
                         <UploadIcon className="w-4 h-4"/> Importar OFX
@@ -1386,7 +1386,7 @@ const ImportedRevenuesView: FC<{
     return (
          <div className="space-y-6 animate-fade-in">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div><h2 className="text-2xl font-bold text-text-primary">Receitas Importadas</h2><p className="text-text-secondary">Importe planilhas para calcular comissões.</p></div>
+                <div><h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Receitas Importadas</h2><p className="text-text-secondary">Importe planilhas para calcular comissões.</p></div>
                 <div className="flex gap-2">
                     <Button onClick={handleDeduplicate} variant="secondary" className="text-xs" disabled={isDeduplicating}>{isDeduplicating ? 'Processando...' : 'Limpar Duplicatas'}</Button>
                     <label className="bg-primary hover:bg-opacity-90 text-white shadow-md px-4 py-2 rounded-lg cursor-pointer flex items-center gap-2 font-semibold transition-all">
@@ -1504,12 +1504,12 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
     }, [transactions, importedRevenues, period]);
     return (
         <div className="space-y-6 animate-fade-in">
-             <div className="flex justify-between items-center"><h2 className="text-2xl font-bold text-text-primary">Relatórios</h2>
+             <div className="flex justify-between items-center"><h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Relatórios</h2>
                 <div className="flex gap-2">
                     {['month','year','all'].map(p => <button key={p} onClick={() => setPeriod(p as any)} className={`px-3 py-1 rounded text-sm transition-colors ${period === p ? 'bg-primary text-white' : 'bg-surface text-text-secondary hover:text-text-primary'}`}>{p === 'month' ? 'Mês' : p === 'year' ? 'Ano' : 'Tudo'}</button>)}
                 </div>
             </div>
-            <Card className="max-w-4xl mx-auto"><div className="border-b border-border-color pb-4 mb-4"><h3 className="text-xl font-bold text-text-primary text-center">Demonstrativo do Resultado (DRE)</h3><p className="text-center text-text-secondary text-sm">{period === 'month' ? 'Mês Atual' : period === 'year' ? 'Ano Atual' : 'Período Completo'}</p></div>
+            <Card className="max-w-4xl mx-auto"><div className="border-b border-border-color pb-4 mb-4"><h3 className="text-xl font-bold text-text-primary text-center uppercase tracking-tight">Demonstrativo do Resultado (DRE)</h3><p className="text-center text-text-secondary text-sm">{period === 'month' ? 'Mês Atual' : period === 'year' ? 'Ano Atual' : 'Período Completo'}</p></div>
                 <div className="space-y-3 font-mono text-sm sm:text-base">
                     <div className="flex justify-between items-center py-2"><span className="font-bold text-text-primary">RECEITA OPERACIONAL BRUTA</span><span className="font-bold text-green-400">{formatCurrency(dreData.totalRevenue)}</span></div>
                     <div className="flex justify-between items-center py-2 border-t border-border-color/30 mt-2"><span className="font-bold text-text-primary">(-) DESPESAS OPERACIONAIS</span><span className="font-bold text-danger">{formatCurrency(dreData.totalExpense)}</span></div>
@@ -1525,7 +1525,6 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
     );
 };
 
-// --- Missing props and constants for DashboardView ---
 const COLORS = ['#D1822A', '#10B981', '#EF4444', '#3B82F6', '#F59E0B', '#6366F1'];
 
 interface DashboardViewProps {
@@ -1552,21 +1551,12 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
             const date = new Date(t.date);
             return (selectedYear === 'all' || date.getFullYear() === selectedYear) && (selectedMonth === 'all' || date.getMonth() === selectedMonth);
         }), [transactions, selectedYear, selectedMonth]);
-    const { totalIncome, totalExpense, netProfit, mostProfitableMonth, largestExpense } = useMemo(() => {
+    const { totalIncome, totalExpense, netProfit } = useMemo(() => {
         const income = filteredTransactions.filter(t => t.type === TransactionType.INCOME).reduce<number>((acc, t) => acc + t.amount, 0);
         const expense = filteredTransactions.filter(t => t.type === TransactionType.EXPENSE).reduce<number>((acc, t) => acc + t.amount, 0);
-        const expOnly = filteredTransactions.filter(t => t.type === TransactionType.EXPENSE);
-        const largestExpense = expOnly.length > 0 ? expOnly.reduce((max, t) => t.amount > max.amount ? t : max) : null;
-        const monthProfits = filteredTransactions.reduce((acc, t) => {
-            const month = getMonthYear(t.date);
-            acc[month] = (acc[month] || 0) + (t.type === TransactionType.INCOME ? t.amount : -t.amount);
-            return acc;
-        }, {} as Record<string, number>);
-        const mostProfitableMonth = Object.keys(monthProfits).length > 0 ? (Object.entries(monthProfits) as [string, number][]).reduce<[string, number]>((max, entry) => entry[1] > max[1] ? entry : max, ["N/A", -Infinity])[0] : "N/A";
-        return { totalIncome: income, totalExpense: expense, netProfit: income - expense, mostProfitableMonth, largestExpense };
+        return { totalIncome: income, totalExpense: expense, netProfit: income - expense };
     }, [filteredTransactions]);
 
-    // Fix: Use .getTime() for date comparison to avoid arithmetic operation errors on Date objects in strict TypeScript.
     const saldoHoje = useMemo(() => transactions.reduce((acc, t) => new Date(t.date).getTime() <= new Date().getTime() ? acc + (t.type === TransactionType.INCOME ? (t.grossAmount ?? (t.amount + (t.taxAmount || 0))) : -t.amount) : acc, 0), [transactions]);
     const saldoProvisaoHoje = useMemo(() => transactions.reduce((acc, t) => new Date(t.date).getTime() <= new Date().getTime() ? acc + (t.type === TransactionType.INCOME ? (t.taxAmount || 0) : (t.costCenter === 'provisao-impostos' ? -t.amount : 0)) : acc, 0), [transactions]);
     const achievedGoals = useMemo(() => goals.filter(g => g.currentAmount >= g.targetAmount).length, [goals]);
@@ -1589,39 +1579,62 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
     const handleFormSubmit = (data: TransactionFormValues) => { if (editingTransaction) onEdit(editingTransaction.id, data); setIsModalOpen(false); setEditingTransaction(null); };
      return (
         <div className="space-y-6 animate-fade-in">
-            <div className="flex flex-col sm:flex-row gap-4"><div className="flex-1"><h2 className="text-2xl font-bold text-text-primary mb-2">Visão Geral</h2><p className="text-text-secondary">Resumo do desempenho financeiro.</p></div>
+            <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex-1">
+                    <div className="flex gap-6 mb-3">
+                        <div className="flex flex-col">
+                            <span className="text-text-secondary font-semibold text-[10px] uppercase tracking-wider">Saldo Hoje</span>
+                            <span className={`text-sm font-bold ${saldoHoje >= 0 ? 'text-primary' : 'text-danger'}`}>{formatCurrency(saldoHoje)}</span>
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-text-secondary font-semibold text-[10px] uppercase tracking-wider">Saldo Provisão</span>
+                            <span className={`text-sm font-bold ${saldoProvisaoHoje >= 0 ? 'text-primary' : 'text-danger'}`}>{formatCurrency(saldoProvisaoHoje)}</span>
+                        </div>
+                    </div>
+                    <h2 className="text-2xl font-bold text-text-primary mb-2 uppercase tracking-tight">Visão Geral</h2>
+                    <p className="text-text-secondary text-sm">Resumo do desempenho financeiro.</p>
+                </div>
                 <div className="flex items-center gap-2">
-                     <select value={selectedYear} onChange={e => setSelectedYear(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-surface border-border-color rounded-md p-2">
+                     <select value={selectedYear} onChange={e => setSelectedYear(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-surface border-border-color rounded-md p-2 text-xs">
                         <option value="all">Todo o Período</option>{availableYears.map(year => <option key={year} value={year}>{year}</option>)}
                     </select>
-                     <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-surface border-border-color rounded-md p-2">
+                     <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-surface border-border-color rounded-md p-2 text-xs">
                         <option value="all">Todos os Meses</option>{['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'].map((m, i) => <option key={m} value={i}>{m}</option>)}
                     </select>
                 </div>
             </div>
-            <div className="flex flex-col md:flex-row gap-4">
-                <Card className={`flex-1 py-2.5 px-4 border-l-4 ${saldoHoje >= 0 ? 'border-primary' : 'border-danger'} flex items-center justify-between`}><div><h3 className="text-text-secondary font-semibold text-[10px] uppercase tracking-wider">Saldo Hoje</h3><p className={`text-xl font-bold mt-1 ${saldoHoje >= 0 ? 'text-primary' : 'text-danger'}`}>{formatCurrency(saldoHoje)}</p></div></Card>
-                <Card className={`flex-1 py-2.5 px-4 border-l-4 ${saldoProvisaoHoje >= 0 ? 'border-primary' : 'border-danger'} flex items-center justify-between`}><div><h3 className="text-text-secondary font-semibold text-[10px] uppercase tracking-wider">Saldo Provisão de Impostos</h3><p className={`text-xl font-bold mt-1 ${saldoProvisaoHoje >= 0 ? 'text-primary' : 'text-danger'}`}>{formatCurrency(saldoProvisaoHoje)}</p></div></Card>
-            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-                <Card className="border-l-4 border-green-400"><h3 className="text-text-secondary text-sm uppercase">Receita Líquida</h3><p className="text-3xl font-bold text-green-400">{formatCurrency(totalIncome)}</p></Card>
-                <Card className="border-l-4 border-danger"><h3 className="text-text-secondary text-sm uppercase">Despesa Total</h3><p className="text-3xl font-bold text-danger">{formatCurrency(totalExpense)}</p></Card>
-                <Card className="border-l-4 border-primary"><h3 className="text-text-secondary text-sm uppercase">Lucro Líquido</h3><p className={`text-3xl font-bold ${netProfit >= 0 ? 'text-text-primary' : 'text-danger'}`}>{formatCurrency(netProfit)}</p></Card>
-                <Card className="border-l-4 border-blue-400"><h3 className="text-text-secondary text-sm uppercase">Metas Atingidas</h3><p className="text-3xl font-bold text-blue-400">{achievedGoals} <span className="text-lg text-text-secondary font-normal">/ {goals.length}</span></p></Card>
+                <Card className="border-l-4 border-green-400"><h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Receita Líquida</h3><p className="text-2xl font-bold text-green-400">{formatCurrency(totalIncome)}</p></Card>
+                <Card className="border-l-4 border-danger"><h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Despesa Total</h3><p className="text-2xl font-bold text-danger">{formatCurrency(totalExpense)}</p></Card>
+                <Card className="border-l-4 border-primary"><h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Lucro Líquido</h3><p className={`text-2xl font-bold ${netProfit >= 0 ? 'text-text-primary' : 'text-danger'}`}>{formatCurrency(netProfit)}</p></Card>
+                <Card className="border-l-4 border-blue-400"><h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Metas Atingidas</h3><p className="text-2xl font-bold text-blue-400">{achievedGoals} <span className="text-lg text-text-secondary font-normal">/ {goals.length}</span></p></Card>
             </div>
             {upcomingBills.length > 0 && (
-                <div className="bg-surface border border-danger/30 rounded-xl p-3 sm:p-6"><div className="flex items-center gap-3 mb-3"><div className="bg-danger/10 p-2 rounded-full"><AlertCircleIcon className="w-5 h-5 text-danger" /></div><div><h3 className="text-base font-bold">Contas a Pagar (Próximos 5 Dias)</h3></div></div>
+                <div className="bg-surface border border-border-color rounded-xl p-3 sm:p-6">
+                    <div className="flex items-center gap-3 mb-3">
+                        <div className="bg-danger/10 p-2 rounded-full"><AlertCircleIcon className="w-5 h-5 text-danger" /></div>
+                        <div><h3 className="text-base font-bold uppercase tracking-tight">Contas a Pagar (Próximos 5 Dias)</h3></div>
+                    </div>
                     <table className="w-full text-left border-collapse text-xs sm:text-sm">
-                        <thead><tr className="text-text-secondary border-b border-border-color"><th className="py-2">Vencimento</th><th>Descrição</th><th>Valor</th><th className="text-right">Ação</th></tr></thead>
+                        <thead><tr className="text-text-secondary border-b border-border-color/30"><th className="py-2">Vencimento</th><th>Descrição</th><th>Valor</th><th className="text-right">Ação</th></tr></thead>
                         <tbody>{upcomingBills.map(bill => (
-                            <tr key={bill.id} className="border-b border-border-color last:border-0 hover:bg-background/50"><td className="py-2">{formatDate(bill.date)}</td><td>{bill.description}</td><td className="font-bold text-danger">{formatCurrency(bill.amount)}</td><td className="text-right"><Button onClick={() => handlePayClick(bill)} variant="success" className="py-1 px-2 text-[10px]">Pagar</Button></td></tr>
+                            <tr key={bill.id} className="border-b border-border-color/10 last:border-0 hover:bg-background/50">
+                                <td className="py-2 text-text-secondary">{formatDate(bill.date)}</td>
+                                <td className="font-medium">{bill.description}</td>
+                                <td className="font-bold text-danger">{formatCurrency(bill.amount)}</td>
+                                <td className="text-right">
+                                    <div className="flex justify-end">
+                                        <Button onClick={() => handlePayClick(bill)} variant="success" className="py-1 px-3 text-[10px] w-fit">Pagar</Button>
+                                    </div>
+                                </td>
+                            </tr>
                         ))}</tbody>
                     </table>
                 </div>
             )}
              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <Card className="lg:col-span-2 h-[400px] flex flex-col"><h3 className="text-lg font-bold mb-4">Fluxo de Caixa</h3><div className="flex-grow"><ResponsiveContainer><AreaChart data={cashFlowData}><defs><linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#D1822A" stopOpacity={0.8}/><stop offset="95%" stopColor="#D1822A" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2D376A" opacity={0.5} /><XAxis dataKey="date" stroke="#A0AEC0" tick={{fontSize:11}} tickLine={false} axisLine={false} /><YAxis stroke="#A0AEC0" tickFormatter={v => `R$${v/1000}k`} tick={{fontSize:11}} width={60} tickLine={false} axisLine={false} /><Tooltip contentStyle={{backgroundColor:'#1A214A',border:'none',borderRadius:'8px'}} itemStyle={{color:'#D1822A'}} formatter={v => [formatCurrency(Number(v)), 'Saldo']} /><Area type="monotone" dataKey="balance" stroke="#D1822A" strokeWidth={3} fillOpacity={1} fill="url(#colorBalance)" /></AreaChart></ResponsiveContainer></div></Card>
-                <Card className="h-[400px] flex flex-col"><h3 className="text-lg font-bold mb-4">Natureza das Despesas</h3><div className="flex-grow">{expenseSubcategoryData.length > 0 ? <ResponsiveContainer><PieChart><Pie data={expenseSubcategoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={100} fill="#8884d8" paddingAngle={5} stroke="none">{expenseSubcategoryData.map((e,i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip />} /><Legend verticalAlign="bottom" height={36} iconType="circle" formatter={v => <span className="text-text-secondary ml-1">{v}</span>} /></PieChart></ResponsiveContainer> : <div className="flex items-center justify-center h-full text-text-secondary"><p>Sem dados.</p></div>}</div></Card>
+                <Card className="lg:col-span-2 h-[400px] flex flex-col"><h3 className="text-lg font-bold mb-4 uppercase tracking-tight">Fluxo de Caixa</h3><div className="flex-grow"><ResponsiveContainer><AreaChart data={cashFlowData}><defs><linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#D1822A" stopOpacity={0.8}/><stop offset="95%" stopColor="#D1822A" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2D376A" opacity={0.5} /><XAxis dataKey="date" stroke="#A0AEC0" tick={{fontSize:11}} tickLine={false} axisLine={false} />{/* Fix arithmetic operation error by casting v to number explicitly */}<YAxis stroke="#A0AEC0" tickFormatter={v => `R$${(Number(v) as number)/1000}k`} tick={{fontSize:11}} width={60} tickLine={false} axisLine={false} /><Tooltip contentStyle={{backgroundColor:'#1A214A',border:'none',borderRadius:'8px'}} itemStyle={{color:'#D1822A'}} formatter={v => [formatCurrency(Number(v)), 'Saldo']} /><Area type="monotone" dataKey="balance" stroke="#D1822A" strokeWidth={3} fillOpacity={1} fill="url(#colorBalance)" /></AreaChart></ResponsiveContainer></div></Card>
+                <Card className="h-[400px] flex flex-col"><h3 className="text-lg font-bold mb-4 uppercase tracking-tight">Natureza das Despesas</h3><div className="flex-grow">{expenseSubcategoryData.length > 0 ? <ResponsiveContainer><PieChart><Pie data={expenseSubcategoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={100} fill="#8884d8" paddingAngle={5} stroke="none">{expenseSubcategoryData.map((e,i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip />} /><Legend verticalAlign="bottom" height={36} iconType="circle" formatter={v => <span className="text-text-secondary ml-1">{v}</span>} /></PieChart></ResponsiveContainer> : <div className="flex items-center justify-center h-full text-text-secondary"><p>Sem dados.</p></div>}</div></Card>
             </div>
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Confirmar Pagamento / Ajustar Valor">
                 <TransactionForm onSubmit={handleFormSubmit} onClose={() => setIsModalOpen(false)} initialData={editingTransaction} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} globalTaxRate={globalTaxRate} transactions={transactions} importedRevenues={importedRevenues} />
