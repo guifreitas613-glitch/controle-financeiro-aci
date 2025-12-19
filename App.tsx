@@ -404,10 +404,6 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     };
 
     const confirmSearchPeriod = async () => {
-        if (!userId) {
-            alert("Erro de autenticação.");
-            return;
-        }
         if (!searchPeriod.start || !searchPeriod.end) {
             alert("Selecione a data inicial e final.");
             return;
@@ -427,7 +423,8 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         }
 
         try {
-            const snapshot = await getRevenuesByPeriod(startDateIso, endDateIso, userId);
+            // Busca receitas de forma global (sem filtro de UID)
+            const snapshot = await getRevenuesByPeriod(startDateIso, endDateIso);
             const periodRevenues = snapshot.docs.map(doc => doc.data() as ImportedRevenue);
 
             if (periodRevenues.length === 0) {
@@ -1369,10 +1366,10 @@ const ImportedRevenuesView: FC<{
     }, [importedRevenues, startDate, endDate, selectedAdvisor, selectedCategory, clientSearch]);
 
     const handleDeduplicate = async () => {
-        if (!userId) return;
         setIsDeduplicating(true);
         try {
-            const result = await deduplicateImportedRevenues(userId);
+            // Deduplicação agora é global
+            const result = await deduplicateImportedRevenues();
             alert(`Limpeza concluída!\nRegistros atualizados: ${result.updatedCount}\nDuplicatas removidas: ${result.deletedCount}`);
             window.location.reload(); 
         } catch (error) {
@@ -1492,15 +1489,17 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
             return false;
         };
         const fTrans = transactions.filter(t => filterDate(t.date));
-        const manualRevenue = fTrans.filter(t => t.type === TransactionType.INCOME).reduce((sum, t) => sum + t.amount, 0);
-        const importedRevenue = importedRevenues.filter(r => filterDate(r.date)).reduce((sum, r) => sum + (r.receitaLiquidaEQI || 0), 0);
-        const totalRevenue = manualRevenue + importedRevenue;
+        // Fix: Explicitly type reduce as number to prevent arithmetic errors
+        const manualRevenue = fTrans.filter(t => t.type === TransactionType.INCOME).reduce<number>((sum, t) => sum + t.amount, 0);
+        const importedRevenue = importedRevenues.filter(r => filterDate(r.date)).reduce<number>((sum, r) => sum + (r.receitaLiquidaEQI || 0), 0);
+        const totalRevenue = Number(manualRevenue) + Number(importedRevenue);
         const expenseTrans = fTrans.filter(t => t.type === TransactionType.EXPENSE);
-        const totalExpense = expenseTrans.reduce((sum, t) => sum + t.amount, 0);
+        const totalExpense = expenseTrans.reduce<number>((sum, t) => sum + t.amount, 0);
         const expensesByCategory: Record<string, number> = {};
         expenseTrans.forEach(t => { expensesByCategory[t.category] = (expensesByCategory[t.category] || 0) + t.amount; });
         const sortedExpenses = Object.entries(expensesByCategory).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-        return { totalRevenue, totalExpense, sortedExpenses, result: totalRevenue - totalExpense };
+        // Fix: Explicit Number cast for subtraction to avoid TS errors
+        return { totalRevenue, totalExpense, sortedExpenses, result: Number(totalRevenue) - Number(totalExpense) };
     }, [transactions, importedRevenues, period]);
     return (
         <div className="space-y-6 animate-fade-in">
@@ -1554,13 +1553,15 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
     const { totalIncome, totalExpense, netProfit } = useMemo(() => {
         const income = filteredTransactions.filter(t => t.type === TransactionType.INCOME).reduce<number>((acc, t) => acc + t.amount, 0);
         const expense = filteredTransactions.filter(t => t.type === TransactionType.EXPENSE).reduce<number>((acc, t) => acc + t.amount, 0);
-        return { totalIncome: income, totalExpense: expense, netProfit: income - expense };
+        // Fix: Explicit Number cast for subtraction to avoid TS errors
+        return { totalIncome: income, totalExpense: expense, netProfit: Number(income) - Number(expense) };
     }, [filteredTransactions]);
 
     const saldoHoje = useMemo(() => transactions.reduce((acc, t) => new Date(t.date).getTime() <= new Date().getTime() ? acc + (t.type === TransactionType.INCOME ? (t.grossAmount ?? (t.amount + (t.taxAmount || 0))) : -t.amount) : acc, 0), [transactions]);
     const saldoProvisaoHoje = useMemo(() => transactions.reduce((acc, t) => new Date(t.date).getTime() <= new Date().getTime() ? acc + (t.type === TransactionType.INCOME ? (t.taxAmount || 0) : (t.costCenter === 'provisao-impostos' ? -t.amount : 0)) : acc, 0), [transactions]);
     const achievedGoals = useMemo(() => goals.filter(g => g.currentAmount >= g.targetAmount).length, [goals]);
-    const upcomingBills = useMemo(() => transactions.filter(t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PENDING && new Date(t.date).getTime() <= new Date(new Date().setDate(new Date().getDate() + 5)).getTime()).sort((a,b)=>new Date(a.date).getTime()-new Date(b.date).getTime()), [transactions]);
+    // Fix: Explicit Number cast in sort function
+    const upcomingBills = useMemo(() => transactions.filter(t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PENDING && new Date(t.date).getTime() <= new Date(new Date().setDate(new Date().getDate() + 5)).getTime()).sort((a,b)=>Number(new Date(a.date).getTime())-Number(new Date(b.date).getTime())), [transactions]);
     const expenseSubcategoryData = useMemo(() => {
         const expenses = filteredTransactions.filter(t => t.type === TransactionType.EXPENSE);
         const total = expenses.reduce((sum, t) => sum + t.amount, 0);
@@ -1568,8 +1569,9 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         const data = expenses.reduce((acc, t) => { acc[t.nature === ExpenseNature.FIXED ? 0 : 1].amount += t.amount; return acc; }, [{ name: 'Fixo', amount: 0 }, { name: 'Variável', amount: 0 }]);
         return data.map(d => ({ ...d, value: (d.amount / total) * 100, percent: (d.amount / total) * 100 })).filter(d => d.amount > 0);
     }, [filteredTransactions]);
+    // Fix: Explicit Number cast in sort function
     const cashFlowData = useMemo(() => { 
-        const sorted = [...transactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        const sorted = [...transactions].sort((a, b) => Number(new Date(a.date).getTime()) - Number(new Date(b.date).getTime()));
         let balance = 0;
         return sorted.map(t => { balance += t.type === TransactionType.INCOME ? t.amount : -t.amount; return { date: formatDate(t.date), balance }; }).reduce((acc: any[], item) => {
             if (acc.length && acc[acc.length-1].date === item.date) acc[acc.length-1].balance = item.balance; else acc.push(item); return acc;
@@ -1633,7 +1635,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                 </div>
             )}
              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <Card className="lg:col-span-2 h-[400px] flex flex-col"><h3 className="text-lg font-bold mb-4 uppercase tracking-tight">Fluxo de Caixa</h3><div className="flex-grow"><ResponsiveContainer><AreaChart data={cashFlowData}><defs><linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#D1822A" stopOpacity={0.8}/><stop offset="95%" stopColor="#D1822A" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2D376A" opacity={0.5} /><XAxis dataKey="date" stroke="#A0AEC0" tick={{fontSize:11}} tickLine={false} axisLine={false} />{/* Fix arithmetic operation error by casting v to number explicitly */}<YAxis stroke="#A0AEC0" tickFormatter={v => `R$${(Number(v) as number)/1000}k`} tick={{fontSize:11}} width={60} tickLine={false} axisLine={false} /><Tooltip contentStyle={{backgroundColor:'#1A214A',border:'none',borderRadius:'8px'}} itemStyle={{color:'#D1822A'}} formatter={v => [formatCurrency(Number(v)), 'Saldo']} /><Area type="monotone" dataKey="balance" stroke="#D1822A" strokeWidth={3} fillOpacity={1} fill="url(#colorBalance)" /></AreaChart></ResponsiveContainer></div></Card>
+                <Card className="lg:col-span-2 h-[400px] flex flex-col"><h3 className="text-lg font-bold mb-4 uppercase tracking-tight">Fluxo de Caixa</h3><div className="flex-grow"><ResponsiveContainer><AreaChart data={cashFlowData}><defs><linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#D1822A" stopOpacity={0.8}/><stop offset="95%" stopColor="#D1822A" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2D376A" opacity={0.5} /><XAxis dataKey="date" stroke="#A0AEC0" tick={{fontSize:11}} tickLine={false} axisLine={false} /><YAxis stroke="#A0AEC0" tickFormatter={v => `R$${(Number(v) as number)/1000}k`} tick={{fontSize:11}} width={60} tickLine={false} axisLine={false} /><Tooltip contentStyle={{backgroundColor:'#1A214A',border:'none',borderRadius:'8px'}} itemStyle={{color:'#D1822A'}} formatter={v => [formatCurrency(Number(v)), 'Saldo']} /><Area type="monotone" dataKey="balance" stroke="#D1822A" strokeWidth={3} fillOpacity={1} fill="url(#colorBalance)" /></AreaChart></ResponsiveContainer></div></Card>
                 <Card className="h-[400px] flex flex-col"><h3 className="text-lg font-bold mb-4 uppercase tracking-tight">Natureza das Despesas</h3><div className="flex-grow">{expenseSubcategoryData.length > 0 ? <ResponsiveContainer><PieChart><Pie data={expenseSubcategoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={100} fill="#8884d8" paddingAngle={5} stroke="none">{expenseSubcategoryData.map((e,i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip />} /><Legend verticalAlign="bottom" height={36} iconType="circle" formatter={v => <span className="text-text-secondary ml-1">{v}</span>} /></PieChart></ResponsiveContainer> : <div className="flex items-center justify-center h-full text-text-secondary"><p>Sem dados.</p></div>}</div></Card>
             </div>
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Confirmar Pagamento / Ajustar Valor">
@@ -1665,7 +1667,8 @@ const App: FC = () => {
     useEffect(() => {
         if (user) {
             setLoadingData(true);
-            Promise.all([getTransactions(user.uid), getImportedRevenues(user.uid)]).then(([transSnap, revSnap]) => {
+            // Agora as chamadas de carregamento não enviam mais o UID para filtrar
+            Promise.all([getTransactions(), getImportedRevenues()]).then(([transSnap, revSnap]) => {
                 setTransactions(transSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction)));
                 setImportedRevenues(revSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ImportedRevenue)));
             }).finally(() => setLoadingData(false));

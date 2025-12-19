@@ -28,17 +28,16 @@ export function saveTransaction(data: TransactionData, userId: string) {
   return addDoc(transactionsCol, {
     ...data,
     tipoInterno: 'transacao',
-    criadoPor: userId,
+    criadoPor: userId, // Mantido apenas para fins de auditoria
     criadoEm: serverTimestamp()
   });
 }
 
-// Ler transações manuais (filtra por tipoInterno='transacao')
-export function getTransactions(userId: string) {
+// Ler transações manuais (carregamento global para todos os usuários)
+export function getTransactions() {
   const transactionsCol = collection(db, "transacoes");
   const q = query(
     transactionsCol,
-    where("criadoPor", "==", userId),
     where("tipoInterno", "==", "transacao"),
     orderBy("date", "desc")
   );
@@ -82,15 +81,14 @@ function generateRevenueId(data: ImportedRevenueData): string {
     return `rev_${Math.abs(hash).toString(16)}_${raw.length}`;
 }
 
-// Salvar receita importada em 'transacoes' com tipoInterno='receita_importada'
+// Salvar receita importada em 'transacoes' (verificação de duplicidade global)
 export async function saveImportedRevenue(data: ImportedRevenueData, userId: string) {
     const transactionsCol = collection(db, "transacoes");
     const idUnico = generateRevenueId(data);
 
-    // Verificar duplicidade dentro de transacoes para este usuário e tipo específico
+    // Verificar duplicidade global dentro de transacoes
     const q = query(
         transactionsCol, 
-        where("criadoPor", "==", userId),
         where("tipoInterno", "==", "receita_importada"),
         where('idUnico', '==', idUnico)
     );
@@ -109,12 +107,11 @@ export async function saveImportedRevenue(data: ImportedRevenueData, userId: str
     });
 }
 
-// Ler apenas receitas importadas de 'transacoes'
-export function getImportedRevenues(userId: string) {
+// Ler apenas receitas importadas de 'transacoes' (global)
+export function getImportedRevenues() {
     const transactionsCol = collection(db, "transacoes");
     const q = query(
         transactionsCol, 
-        where("criadoPor", "==", userId),
         where("tipoInterno", "==", "receita_importada"),
         orderBy("date", "desc")
     );
@@ -127,12 +124,11 @@ export function deleteImportedRevenue(id: string) {
     return deleteDoc(docRef);
 }
 
-// Buscar receitas por período em 'transacoes' (usado para cálculo de comissões)
-export function getRevenuesByPeriod(startDateIso: string, endDateIso: string, userId: string) {
+// Buscar receitas por período em 'transacoes' (global)
+export function getRevenuesByPeriod(startDateIso: string, endDateIso: string) {
     const transactionsCol = collection(db, "transacoes");
     const q = query(
         transactionsCol,
-        where("criadoPor", "==", userId),
         where("tipoInterno", "==", "receita_importada"),
         where("date", ">=", startDateIso),
         where("date", "<=", endDateIso)
@@ -140,14 +136,13 @@ export function getRevenuesByPeriod(startDateIso: string, endDateIso: string, us
     return getDocs(q);
 }
 
-// Rotina de Deduplicação e Limpeza na coleção 'transacoes'
-export async function deduplicateImportedRevenues(userId: string) {
+// Rotina de Deduplicação e Limpeza na coleção 'transacoes' (global)
+export async function deduplicateImportedRevenues() {
     const transactionsCol = collection(db, "transacoes");
     
     // Busca apenas receitas importadas
     const q = query(
         transactionsCol, 
-        where("criadoPor", "==", userId),
         where("tipoInterno", "==", "receita_importada")
     );
     const snapshot = await getDocs(q);
@@ -156,7 +151,6 @@ export async function deduplicateImportedRevenues(userId: string) {
     let deletedCount = 0;
     let updatedCount = 0;
 
-    // Helper para obter tempo em ms
     const getTime = (docData: DocumentData) => {
         if (docData.criadoEm && typeof (docData.criadoEm as any).toMillis === 'function') {
             return (docData.criadoEm as Timestamp).toMillis();
@@ -164,7 +158,6 @@ export async function deduplicateImportedRevenues(userId: string) {
         return new Date(docData.date).getTime();
     };
 
-    // Ordenar: mais antigo primeiro (será mantido)
     const docs = snapshot.docs.sort((a, b) => {
         const timeA = getTime(a.data());
         const timeB = getTime(b.data());
@@ -175,14 +168,12 @@ export async function deduplicateImportedRevenues(userId: string) {
         const data = docSnapshot.data() as ImportedRevenueData & { idUnico?: string };
         let idUnico = data.idUnico;
 
-        // Gera idUnico se faltar e atualiza
         if (!idUnico) {
             idUnico = generateRevenueId(data);
             await updateDoc(docSnapshot.ref, { idUnico });
             updatedCount++;
         }
 
-        // Se já processamos esse idUnico, é duplicado -> deleta
         if (processedIds.has(idUnico)) {
             await deleteDoc(docSnapshot.ref);
             deletedCount++;
