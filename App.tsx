@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, FC, ReactNode, useEffect, useRef } from 'react';
 import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType, AdvisorSplit, ImportedRevenue, AdvisorCost } from './types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area } from 'recharts';
@@ -13,7 +14,7 @@ const DashboardIcon: FC<{ className?: string }> = ({ className }) => (<svg class
 const TransactionsIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>);
 const GoalsIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>);
 const ReportsIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>);
-const SettingsIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 0 2.73l-.15.08a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1 0 2.73l.15-.08a2 2 0 0 0 .73-2.73l.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>);
+const SettingsIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 0 2.73l-.15.08a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1 0-2.73l.15-.08a2 2 0 0 0 .73-2.73l.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>);
 const PlusIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>);
 const EditIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>);
 const TrashIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>);
@@ -261,7 +262,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     const [taxRateInput, setTaxRateInput] = useState<string>(globalTaxRate.toString());
     const [taxValueCents, setTaxValueCents] = useState<number>(0);
 
-    const gross = parseFloat(formData.grossAmount) || 0;
+    const gross: number = parseFloat(formData.grossAmount) || 0;
 
     // PRIMARY INITIALIZATION: Set states once based on initialData
     useEffect(() => {
@@ -334,8 +335,8 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     };
 
     // Derived values for the UI
-    const effectiveTaxAmount = applyTax ? (taxValueCents / 100) : 0;
-    const basePostTax = gross - effectiveTaxAmount;
+    const effectiveTaxAmount: number = applyTax ? (taxValueCents / 100) : 0;
+    const basePostTax: number = Number(gross) - Number(effectiveTaxAmount);
     const formattedTaxValue = (taxValueCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
     useEffect(() => {
@@ -477,15 +478,16 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
 
     const splitsDetails = useMemo(() => {
         return splits.map(split => {
-             const calculatedPayout = (split.revenueAmount * (split.percentage / 100)) - (split.additionalCost || 0);
+             const calculatedPayout = (Number(split.revenueAmount) * (Number(split.percentage) / 100)) - (Number(split.additionalCost) || 0);
              return { ...split, netPayout: calculatedPayout }
         });
     }, [splits]);
 
-    const totalSplitRevenue = splits.reduce((acc, s) => acc + s.revenueAmount, 0);
-    const totalNetPayouts = splitsDetails.reduce((acc, s) => acc + (s.netPayout || 0), 0);
-    const splitRevenueDifference = gross - totalSplitRevenue;
-    const officeShare = basePostTax - totalNetPayouts;
+    // Explicitly casting types for arithmetic operations to avoid TS errors
+    const totalSplitRevenue: number = splits.reduce((acc: number, s: any) => acc + (Number(s.revenueAmount) || 0), 0);
+    const totalNetPayouts: number = splitsDetails.reduce((acc: number, s: any) => acc + (Number(s.netPayout) || 0), 0);
+    const splitRevenueDifference: number = Number(gross) - Number(totalSplitRevenue);
+    const officeShare: number = Number(basePostTax) - Number(totalNetPayouts);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -1002,11 +1004,11 @@ const SettingsView: FC<{
     globalTaxRate: number; setGlobalTaxRate: (v: number) => void;
 }> = (props) => {
     const [activeTab, setActiveTab] = useState('categories');
-    const [newItem, setNewItem] = useState('');
+    const [newItem, setnewItem] = useState('');
     const [newAdvisorName, setNewAdvisorName] = useState('');
     const [newAdvisorRate, setNewAdvisorRate] = useState('30');
 
-    const addItem = (list: string[], setList: (v: string[]) => void) => { if(newItem && !list.includes(newItem)) { setList([...list, newItem]); setNewItem(''); } };
+    const addItem = (list: string[], setList: (v: string[]) => void) => { if(newItem && !list.includes(newItem)) { setList([...list, newItem]); setnewItem(''); } };
     const removeItem = (list: string[], setList: (v: string[]) => void, item: string) => setList(list.filter(i => i !== item));
     
     const [newExpCatName, setNewExpCatName] = useState('');
@@ -1039,7 +1041,7 @@ const SettingsView: FC<{
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {activeTab === 'categories' && (
                     <>
-                        <Card><h3 className="font-bold mb-4 text-green-400">Categorias de Receita</h3><div className="flex gap-2 mb-4"><input type="text" value={newItem} onChange={(e) => setNewItem(e.target.value)} placeholder="Nova categoria..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" /><Button onClick={() => addItem(props.incomeCategories, props.setIncomeCategories)} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button></div><ul className="space-y-2 max-h-60 overflow-y-auto">{props.incomeCategories.map((cat: string, i: number) => (<li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm"><span>{cat}</span><button onClick={() => removeItem(props.incomeCategories, props.setIncomeCategories, cat)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button></li>))}</ul></Card>
+                        <Card><h3 className="font-bold mb-4 text-green-400">Categorias de Receita</h3><div className="flex gap-2 mb-4"><input type="text" value={newItem} onChange={(e) => setnewItem(e.target.value)} placeholder="Nova categoria..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" /><Button onClick={() => addItem(props.incomeCategories, props.setIncomeCategories)} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button></div><ul className="space-y-2 max-h-60 overflow-y-auto">{props.incomeCategories.map((cat: string, i: number) => (<li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm"><span>{cat}</span><button onClick={() => removeItem(props.incomeCategories, props.setIncomeCategories, cat)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button></li>))}</ul></Card>
                          <Card>
                             <h3 className="font-bold mb-4 text-danger">Categorias de Despesa</h3>
                             <div className="flex flex-col gap-2 mb-4">
@@ -1058,7 +1060,7 @@ const SettingsView: FC<{
                 )}
                 {activeTab === 'payment' && (
                     <>
-                        <Card><h3 className="font-bold mb-4">Formas de Pagamento</h3><div className="flex gap-2 mb-4"><input type="text" value={newItem} onChange={(e) => setNewItem(e.target.value)} placeholder="Novo método..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" /><Button onClick={() => addItem(props.paymentMethods, props.setPaymentMethods)} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button></div><ul className="space-y-2 max-h-60 overflow-y-auto">{props.paymentMethods.map((pm: string, i: number) => (<li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm"><span>{pm}</span><button onClick={() => removeItem(props.paymentMethods, props.setPaymentMethods, pm)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button></li>))}</ul></Card>
+                        <Card><h3 className="font-bold mb-4">Formas de Pagamento</h3><div className="flex gap-2 mb-4"><input type="text" value={newItem} onChange={(e) => setnewItem(e.target.value)} placeholder="Nova método..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" /><Button onClick={() => addItem(props.paymentMethods, props.setPaymentMethods)} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button></div><ul className="space-y-2 max-h-60 overflow-y-auto">{props.paymentMethods.map((pm: string, i: number) => (<li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm"><span>{pm}</span><button onClick={() => removeItem(props.paymentMethods, props.setPaymentMethods, pm)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button></li>))}</ul></Card>
                         <Card><h3 className="font-bold mb-4">Centros de Custo</h3><div className="flex gap-2 mb-4"><input type="text" value={newCCName} onChange={(e) => setNewCCName(e.target.value)} placeholder="Novo centro..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" /><Button onClick={addCC} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button></div><ul className="space-y-2 max-h-60 overflow-y-auto">{props.costCenters.map((cc: CostCenter, i: number) => (<li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm"><span>{cc.name}</span>{!cc.isDefault && <button onClick={() => props.setCostCenters(props.costCenters.filter(c => c.id !== cc.id))} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>}</li>))}</ul></Card>
                     </>
                 )}
@@ -1231,10 +1233,53 @@ const TransactionsView: FC<{
     const handleClose = () => { setIsModalOpen(false); setEditingId(null); };
     const handleSubmit = (data: TransactionFormValues) => { if (editingId) onEdit(editingId, data); else onAdd(data); handleClose(); };
 
+    const handleExportExcel = () => {
+        if (!XLSX) { alert('Biblioteca Excel não carregada.'); return; }
+        const dataToExport = filtered.map(t => ({
+            Data: formatDate(t.date),
+            Descrição: t.description,
+            Categoria: t.category,
+            Valor: t.amount,
+            Status: t.status || '-',
+            'Meio de Pagamento': t.paymentMethod,
+            'Cliente/Fornecedor': t.clientSupplier
+        }));
+        const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Transações");
+        XLSX.writeFile(workbook, `transacoes_${new Date().toISOString().split('T')[0]}.xlsx`);
+    };
+
+    const handleExportPDF = () => {
+        if (!jspdf) { alert('Biblioteca PDF não carregada.'); return; }
+        const doc = new jspdf.jsPDF();
+        doc.text("Relatório de Transações - ACI Capital", 14, 15);
+        const tableData = filtered.map(t => [
+            formatDate(t.date),
+            t.description,
+            t.category,
+            formatCurrency(t.amount),
+            t.status || '-'
+        ]);
+        (doc as any).autoTable({
+            head: [['Data', 'Descrição', 'Categoria', 'Valor', 'Status']],
+            body: tableData,
+            startY: 20,
+            theme: 'striped',
+            headStyles: { fillStyle: '#1A214A', textColor: [255, 255, 255] }
+        });
+        doc.save(`transacoes_${new Date().toISOString().split('T')[0]}.pdf`);
+    };
+
     return (
         <div className="space-y-6 animate-fade-in">
              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div><h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Transações</h2><p className="text-text-secondary">Gerencie suas receitas e despesas.</p></div>
+                <div className="flex items-center gap-4">
+                    <div>
+                        <h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Transações</h2>
+                        <p className="text-text-secondary text-sm">Gerencie suas receitas e despesas.</p>
+                    </div>
+                </div>
                 <div className="flex flex-wrap gap-2">
                     <label className="bg-surface hover:bg-surface/80 text-text-primary px-4 py-2 rounded-lg cursor-pointer border border-border-color flex items-center gap-2 text-sm font-semibold transition-all">
                         <UploadIcon className="w-4 h-4"/> Importar OFX
@@ -1252,7 +1297,15 @@ const TransactionsView: FC<{
                             }
                         }} />
                     </label>
-                    <Button onClick={() => setIsModalOpen(true)}><PlusIcon className="w-4 h-4"/> Nova Transação</Button>
+                    <div className="flex gap-1">
+                        <Button onClick={handleExportExcel} variant="secondary" className="text-sm" title="Exportar para Excel">
+                            <ExportIcon className="w-4 h-4"/> Excel
+                        </Button>
+                        <Button onClick={handleExportPDF} variant="secondary" className="text-sm" title="Exportar para PDF">
+                            <FileTextIcon className="w-4 h-4"/> PDF
+                        </Button>
+                    </div>
+                    <Button onClick={() => setIsModalOpen(true)} className="bg-primary hover:bg-opacity-90"><PlusIcon className="w-4 h-4"/> Nova Transação</Button>
                 </div>
             </div>
 
@@ -1262,13 +1315,15 @@ const TransactionsView: FC<{
                         <button onClick={() => setActiveTab(TransactionType.EXPENSE)} className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === TransactionType.EXPENSE ? 'bg-surface text-danger shadow-sm' : 'text-text-secondary hover:text-text-primary'}`}>Despesas</button>
                         <button onClick={() => setActiveTab(TransactionType.INCOME)} className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === TransactionType.INCOME ? 'bg-surface text-green-400 shadow-sm' : 'text-text-secondary hover:text-text-primary'}`}>Receitas</button>
                     </div>
-                     <div className="relative w-full md:w-64">
-                        <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-text-secondary w-4 h-4" />
-                        <input type="text" placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-background border border-border-color rounded-md text-sm focus:ring-primary focus:border-primary" />
-                    </div>
-                    <div className="text-right">
-                        <span className="text-text-secondary text-sm mr-2">Saldo Listado:</span>
-                        <span className={`font-bold ${activeTab === TransactionType.INCOME ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(totalFilteredAmount)}</span>
+                     <div className="flex-1 flex flex-col md:flex-row gap-4 items-center w-full">
+                        <div className="relative w-full">
+                            <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-text-secondary w-4 h-4" />
+                            <input type="text" placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-background border border-border-color rounded-md text-sm focus:ring-primary focus:border-primary" />
+                        </div>
+                        <div className="text-right whitespace-nowrap bg-background px-3 py-2 rounded-lg border border-border-color">
+                            <span className="text-text-secondary text-sm mr-2 font-medium">Saldo Listado:</span>
+                            <span className={`font-bold ${activeTab === TransactionType.INCOME ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(totalFilteredAmount)}</span>
+                        </div>
                     </div>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1291,35 +1346,37 @@ const TransactionsView: FC<{
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead>
-                            <tr className="bg-background/50 text-text-secondary text-xs uppercase tracking-wider border-b border-border-color cursor-pointer">
-                                <th className="p-4 hover:text-primary" onClick={() => requestSort('date')}>Data {getSortIndicator('date')}</th>
-                                <th className="p-4 hover:text-primary" onClick={() => requestSort('description')}>Descrição {getSortIndicator('description')}</th>
-                                <th className="p-4 hover:text-primary" onClick={() => requestSort('category')}>Categoria {getSortIndicator('category')}</th>
-                                <th className="p-4 text-right hover:text-primary" onClick={() => requestSort('amount')}>Valor {getSortIndicator('amount')}</th>
+                            <tr className="bg-background/50 text-text-secondary text-xs uppercase tracking-wider border-b border-border-color">
+                                <th className="p-4 cursor-pointer hover:text-primary" onClick={() => requestSort('date')}>Data {getSortIndicator('date')}</th>
+                                <th className="p-4 cursor-pointer hover:text-primary" onClick={() => requestSort('description')}>Descrição {getSortIndicator('description')}</th>
+                                <th className="p-4 cursor-pointer hover:text-primary" onClick={() => requestSort('category')}>Categoria {getSortIndicator('category')}</th>
+                                <th className="p-4 text-right cursor-pointer hover:text-primary" onClick={() => requestSort('amount')}>Valor {getSortIndicator('amount')}</th>
                                 {activeTab === TransactionType.EXPENSE && <th className="p-4 text-center">Status</th>}
                                 <th className="p-4 text-right">Ações</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-border-color/30 text-sm">
+                        <tbody className="divide-y divide-border-color/30 text-sm font-medium">
                             {filtered.map(t => (
                                 <tr key={t.id} className="hover:bg-background/50 transition-colors">
-                                    <td className="p-4 whitespace-nowrap">{formatDate(t.date)}</td>
-                                    <td className="p-4 font-medium">{t.description}<div className="text-xs text-text-secondary">{t.clientSupplier}</div></td>
-                                    <td className="p-4"><span className="px-2 py-1 rounded-full bg-background border border-border-color text-xs">{t.category}</span></td>
+                                    <td className="p-4 whitespace-nowrap text-text-secondary">{formatDate(t.date)}</td>
+                                    <td className="p-4 font-bold">{t.description}<div className="text-xs text-text-secondary font-normal">{t.clientSupplier}</div></td>
+                                    <td className="p-4"><span className="px-3 py-1 rounded-full bg-border-color/50 border border-border-color text-[10px] uppercase font-bold">{t.category}</span></td>
                                     <td className={`p-4 text-right font-bold ${t.type === TransactionType.INCOME ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(t.amount)}</td>
                                     {activeTab === TransactionType.EXPENSE && (
                                         <td className="p-4 text-center">
-                                            <span className={`px-2 py-1 rounded text-xs font-bold ${t.status === ExpenseStatus.PAID ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-500'}`}>
+                                            <span className={`px-3 py-1 rounded text-[10px] font-black uppercase ${t.status === ExpenseStatus.PAID ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-500'}`}>
                                                 {t.status === ExpenseStatus.PAID ? 'PAGO' : 'PENDENTE'}
                                             </span>
                                         </td>
                                     )}
-                                    <td className="p-4 text-right flex justify-end gap-2">
-                                        {t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PENDING && (
-                                            <Button variant="success" className="py-1 px-2 text-xs" onClick={() => onSetPaid(t.id)} title="Marcar como Pago"><CheckCircleIcon className="w-4 h-4"/></Button>
-                                        )}
-                                        <Button variant="ghost" className="py-1 px-2" onClick={() => handleEdit(t)}><EditIcon className="w-4 h-4"/></Button>
-                                        <Button variant="ghostDanger" className="py-1 px-2" onClick={() => onDelete(t.id)}><TrashIcon className="w-4 h-4"/></Button>
+                                    <td className="p-4 text-right">
+                                        <div className="flex justify-end gap-2">
+                                            {t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PENDING && (
+                                                <Button variant="success" className="py-1 px-2 rounded-lg" onClick={() => onSetPaid(t.id)} title="Marcar como Pago"><CheckCircleIcon className="w-4 h-4"/></Button>
+                                            )}
+                                            <Button variant="ghost" className="py-1 px-2 rounded-lg hover:bg-surface" onClick={() => handleEdit(t)}><EditIcon className="w-4 h-4 opacity-70"/></Button>
+                                            <Button variant="ghostDanger" className="py-1 px-2 rounded-lg" onClick={() => onDelete(t.id)}><TrashIcon className="w-4 h-4"/></Button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
@@ -1489,7 +1546,6 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
             return false;
         };
         const fTrans = transactions.filter(t => filterDate(t.date));
-        // Fix: Explicitly type reduce as number to prevent arithmetic errors
         const manualRevenue = fTrans.filter(t => t.type === TransactionType.INCOME).reduce<number>((sum, t) => sum + t.amount, 0);
         const importedRevenue = importedRevenues.filter(r => filterDate(r.date)).reduce<number>((sum, r) => sum + (r.receitaLiquidaEQI || 0), 0);
         const totalRevenue = Number(manualRevenue) + Number(importedRevenue);
@@ -1498,7 +1554,6 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
         const expensesByCategory: Record<string, number> = {};
         expenseTrans.forEach(t => { expensesByCategory[t.category] = (expensesByCategory[t.category] || 0) + t.amount; });
         const sortedExpenses = Object.entries(expensesByCategory).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-        // Fix: Explicit Number cast for subtraction to avoid TS errors
         return { totalRevenue, totalExpense, sortedExpenses, result: Number(totalRevenue) - Number(totalExpense) };
     }, [transactions, importedRevenues, period]);
     return (
@@ -1553,15 +1608,13 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
     const { totalIncome, totalExpense, netProfit } = useMemo(() => {
         const income = filteredTransactions.filter(t => t.type === TransactionType.INCOME).reduce<number>((acc, t) => acc + t.amount, 0);
         const expense = filteredTransactions.filter(t => t.type === TransactionType.EXPENSE).reduce<number>((acc, t) => acc + t.amount, 0);
-        // Fix: Explicit Number cast for subtraction to avoid TS errors
         return { totalIncome: income, totalExpense: expense, netProfit: Number(income) - Number(expense) };
     }, [filteredTransactions]);
 
     const saldoHoje = useMemo(() => transactions.reduce((acc, t) => new Date(t.date).getTime() <= new Date().getTime() ? acc + (t.type === TransactionType.INCOME ? (t.grossAmount ?? (t.amount + (t.taxAmount || 0))) : -t.amount) : acc, 0), [transactions]);
     const saldoProvisaoHoje = useMemo(() => transactions.reduce((acc, t) => new Date(t.date).getTime() <= new Date().getTime() ? acc + (t.type === TransactionType.INCOME ? (t.taxAmount || 0) : (t.costCenter === 'provisao-impostos' ? -t.amount : 0)) : acc, 0), [transactions]);
     const achievedGoals = useMemo(() => goals.filter(g => g.currentAmount >= g.targetAmount).length, [goals]);
-    // Fix: Explicit Number cast in sort function
-    const upcomingBills = useMemo(() => transactions.filter(t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PENDING && new Date(t.date).getTime() <= new Date(new Date().setDate(new Date().getDate() + 5)).getTime()).sort((a,b)=>Number(new Date(a.date).getTime())-Number(new Date(b.date).getTime())), [transactions]);
+    const upcomingBills = useMemo(() => transactions.filter(t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PENDING && new Date(t.date).getTime() <= new Date(new Date().setDate(new Date().getDate() + 5)).getTime()).sort((a,b)=>(new Date(a.date).getTime()) - (new Date(b.date).getTime())), [transactions]);
     const expenseSubcategoryData = useMemo(() => {
         const expenses = filteredTransactions.filter(t => t.type === TransactionType.EXPENSE);
         const total = expenses.reduce((sum, t) => sum + t.amount, 0);
@@ -1569,9 +1622,8 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         const data = expenses.reduce((acc, t) => { acc[t.nature === ExpenseNature.FIXED ? 0 : 1].amount += t.amount; return acc; }, [{ name: 'Fixo', amount: 0 }, { name: 'Variável', amount: 0 }]);
         return data.map(d => ({ ...d, value: (d.amount / total) * 100, percent: (d.amount / total) * 100 })).filter(d => d.amount > 0);
     }, [filteredTransactions]);
-    // Fix: Explicit Number cast in sort function
     const cashFlowData = useMemo(() => { 
-        const sorted = [...transactions].sort((a, b) => Number(new Date(a.date).getTime()) - Number(new Date(b.date).getTime()));
+        const sorted = [...transactions].sort((a, b) => (new Date(a.date).getTime()) - (new Date(b.date).getTime()));
         let balance = 0;
         return sorted.map(t => { balance += t.type === TransactionType.INCOME ? t.amount : -t.amount; return { date: formatDate(t.date), balance }; }).reduce((acc: any[], item) => {
             if (acc.length && acc[acc.length-1].date === item.date) acc[acc.length-1].balance = item.balance; else acc.push(item); return acc;
@@ -1650,13 +1702,14 @@ const App: FC = () => {
     const [loadingAuth, setLoadingAuth] = useState(true);
     const [activeView, setActiveView] = useState<View>('dashboard');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-    const [incomeCategories, setIncomeCategories] = useLocalStorage<string[]>('incomeCategories', initialIncomeCategories);
-    const [expenseCategories, setExpenseCategories] = useLocalStorage<ExpenseCategory[]>('expenseCategories', initialExpenseCategories);
-    const [paymentMethods, setPaymentMethods] = useLocalStorage<string[]>('paymentMethods', initialPaymentMethods);
-    const [costCenters, setCostCenters] = useLocalStorage<CostCenter[]>('costCenters', initialCostCenters);
-    const [advisors, setAdvisors] = useLocalStorage<Advisor[]>('advisors', initialAdvisors);
-    const [globalTaxRate, setGlobalTaxRate] = useLocalStorage<number>('globalTaxRate', 6);
-    const [goals, setGoals] = useLocalStorage<Goal[]>('goals', getInitialGoals());
+    // Fixed "Untyped function calls" errors by removing explicit type arguments which will be correctly inferred from initial values
+    const [incomeCategories, setIncomeCategories] = useLocalStorage('incomeCategories', initialIncomeCategories);
+    const [expenseCategories, setExpenseCategories] = useLocalStorage('expenseCategories', initialExpenseCategories);
+    const [paymentMethods, setPaymentMethods] = useLocalStorage('paymentMethods', initialPaymentMethods);
+    const [costCenters, setCostCenters] = useLocalStorage('costCenters', initialCostCenters);
+    const [advisors, setAdvisors] = useLocalStorage('advisors', initialAdvisors);
+    const [globalTaxRate, setGlobalTaxRate] = useLocalStorage('globalTaxRate', 6);
+    const [goals, setGoals] = useLocalStorage('goals', getInitialGoals());
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [importedRevenues, setImportedRevenues] = useState<ImportedRevenue[]>([]);
     const [loadingData, setLoadingData] = useState(false);
@@ -1667,11 +1720,15 @@ const App: FC = () => {
     useEffect(() => {
         if (user) {
             setLoadingData(true);
-            // Agora as chamadas de carregamento não enviam mais o UID para filtrar
-            Promise.all([getTransactions(), getImportedRevenues()]).then(([transSnap, revSnap]) => {
+            // Fix: Explicitly handling the Promise results to avoid potential "untyped" issues with implicit destructuring
+            Promise.all([getTransactions(), getImportedRevenues()]).then((results) => {
+                const transSnap = results[0];
+                const revSnap = results[1];
                 setTransactions(transSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction)));
                 setImportedRevenues(revSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ImportedRevenue)));
-            }).finally(() => setLoadingData(false));
+            }).finally(() => {
+                setLoadingData(false);
+            });
         }
     }, [user]);
     const handleAddTransaction = async (data: TransactionFormValues) => {
@@ -1703,8 +1760,10 @@ const App: FC = () => {
     };
     const handleImportRevenues = (data: any[]) => {
          if (!user) return;
-         Promise.all(data.map(item => saveImportedRevenue(item, user.uid).then(docRef => ({ id: docRef.id, ...item } as ImportedRevenue)).catch(() => null))).then(results => {
-             const newRevenues = results.filter(r => r !== null) as ImportedRevenue[];
+         // Fix: Ensured Promise.all content and results are correctly typed and mapped
+         const importPromises = data.map(item => saveImportedRevenue(item, user.uid).then(docRef => ({ id: docRef.id, ...item } as ImportedRevenue)).catch(() => null));
+         Promise.all(importPromises).then((results) => {
+             const newRevenues = results.filter((r): r is ImportedRevenue => r !== null);
              setImportedRevenues(prev => [...newRevenues, ...prev]);
          });
     };
