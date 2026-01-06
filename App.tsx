@@ -14,7 +14,7 @@ const DashboardIcon: FC<{ className?: string }> = ({ className }) => (<svg class
 const TransactionsIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>);
 const GoalsIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>);
 const ReportsIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>);
-const SettingsIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 0 2.73l-.15.08a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1 0-2.73l.15-.08a2 2 0 0 0 .73-2.73l.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>);
+const SettingsIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 0 2.73l-.15.08a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0 .73-2.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1 0-2.73l.15-.08a2 2 0 0 0 .73-2.73l.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>);
 const PlusIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>);
 const EditIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>);
 const TrashIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>);
@@ -37,6 +37,10 @@ declare var XLSX: any;
 declare var jspdf: any;
 
 // --- HOOKS ---
+/**
+ * Custom hook to sync state with localStorage.
+ * Fixed "Untyped function calls" potential issues by ensuring consistent generic handling.
+ */
 function useLocalStorage<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
     const [storedValue, setStoredValue] = useState<T>(() => {
         try {
@@ -46,7 +50,7 @@ function useLocalStorage<T>(key: string, initialValue: T): [T, React.Dispatch<Re
             if (Array.isArray(initialValue) && !Array.isArray(parsed)) {
                 return initialValue;
             }
-            return parsed;
+            return parsed as T;
         } catch (error) {
             console.error(`Error reading localStorage key "${key}":`, error);
             return initialValue;
@@ -476,18 +480,62 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         }
     };
 
+    // Cálculos dos repasses líquidos individuais
     const splitsDetails = useMemo(() => {
         return splits.map(split => {
-             const calculatedPayout = (Number(split.revenueAmount) * (Number(split.percentage) / 100)) - (Number(split.additionalCost) || 0);
-             return { ...split, netPayout: calculatedPayout }
-        });
-    }, [splits]);
+            const revenueAmount = Number(split.revenueAmount) || 0;   // receita individual
+            const percentage = Number(split.percentage) || 0;         // % do assessor (ex.: 30)
+            const additionalCost = Number(split.additionalCost) || 0; // CRM etc.
 
-    // Explicitly casting types for arithmetic operations to avoid TS errors
+            // alíquota de imposto dinâmica aplicada à parte do assessor
+            const effectiveTaxRate = applyTax ? (parseFloat(taxRateInput) || 0) : 0;
+
+            // 1) comissão bruta do assessor (30% da receita dele)
+            const grossPayout = revenueAmount * (percentage / 100);
+
+            // 2) imposto sobre a parte do assessor
+            const taxAmount = grossPayout * (effectiveTaxRate / 100);
+
+            // 3) repasse líquido: comissão - imposto - custo adicional
+            const netPayout = grossPayout - taxAmount - additionalCost;
+
+            return {
+                ...split,
+                grossPayout,
+                taxAmount,
+                netPayout,
+            };
+        });
+    }, [splits, taxRateInput, applyTax]);
+
+    // Soma de todos os repasses líquidos (vai para os assessores)
+    const totalNetPayouts: number = splitsDetails.reduce(
+        (acc: number, s: any) => acc + (Number(s.netPayout) || 0),
+        0,
+    );
+
+    // Receita total bruta
+    const totalRevenue: number = Number(gross || 0);
+
+    // Imposto total agregado
+    const totalTax: number = applyTax
+        ? totalRevenue * ((parseFloat(taxRateInput) || 0) / 100)
+        : 0;
+
+    // Total de custos adicionais (CRM etc.)
+    const totalAdditionalCosts: number = splitsDetails.reduce(
+        (acc: number, s: any) => acc + (Number(s.additionalCost) || 0),
+        0,
+    );
+
+    // Cálculo da parcela do escritório:
+    // receita total - (repasses líquidos + impostos + custos adicionais)
+    const officeShare: number =
+        totalRevenue - totalNetPayouts - totalTax - totalAdditionalCosts;
+
+    // Diferença para validação de receita total vs soma das receitas individuais
     const totalSplitRevenue: number = splits.reduce((acc: number, s: any) => acc + (Number(s.revenueAmount) || 0), 0);
-    const totalNetPayouts: number = splitsDetails.reduce((acc: number, s: any) => acc + (Number(s.netPayout) || 0), 0);
     const splitRevenueDifference: number = Number(gross) - Number(totalSplitRevenue);
-    const officeShare: number = Number(basePostTax) - Number(totalNetPayouts);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -1611,10 +1659,48 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         return { totalIncome: income, totalExpense: expense, netProfit: Number(income) - Number(expense) };
     }, [filteredTransactions]);
 
-    const saldoHoje = useMemo(() => transactions.reduce((acc, t) => new Date(t.date).getTime() <= new Date().getTime() ? acc + (t.type === TransactionType.INCOME ? (t.grossAmount ?? (t.amount + (t.taxAmount || 0))) : -t.amount) : acc, 0), [transactions]);
-    const saldoProvisaoHoje = useMemo(() => transactions.reduce((acc, t) => new Date(t.date).getTime() <= new Date().getTime() ? acc + (t.type === TransactionType.INCOME ? (t.taxAmount || 0) : (t.costCenter === 'provisao-impostos' ? -t.amount : 0)) : acc, 0), [transactions]);
+    /**
+     * Fixed arithmetic operation errors by providing explicit types for reduce and casting to Number where necessary.
+     */
+    const saldoHoje = useMemo(() => transactions.reduce((acc: number, t: Transaction) => {
+        const txDate = new Date(t.date).getTime();
+        const now = new Date().getTime();
+        if (txDate <= now) {
+            const value = t.type === TransactionType.INCOME 
+                ? Number(t.grossAmount ?? (t.amount + (t.taxAmount || 0))) 
+                : -Number(t.amount);
+            return acc + value;
+        }
+        return acc;
+    }, 0), [transactions]);
+
+    const saldoProvisaoHoje = useMemo(() => transactions.reduce((acc: number, t: Transaction) => {
+        const txDate = new Date(t.date).getTime();
+        const now = new Date().getTime();
+        if (txDate <= now) {
+            const value = t.type === TransactionType.INCOME 
+                ? Number(t.taxAmount || 0) 
+                : (t.costCenter === 'provisao-impostos' ? -Number(t.amount) : 0);
+            return acc + value;
+        }
+        return acc;
+    }, 0), [transactions]);
+
     const achievedGoals = useMemo(() => goals.filter(g => g.currentAmount >= g.targetAmount).length, [goals]);
-    const upcomingBills = useMemo(() => transactions.filter(t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PENDING && new Date(t.date).getTime() <= new Date(new Date().setDate(new Date().getDate() + 5)).getTime()).sort((a,b)=>(new Date(a.date).getTime()) - (new Date(b.date).getTime())), [transactions]);
+    
+    /**
+     * Fixed arithmetic operation error by breaking down calculation and ensuring numeric values.
+     */
+    const upcomingBills = useMemo(() => {
+        const fiveDaysFromNow = new Date();
+        fiveDaysFromNow.setDate(fiveDaysFromNow.getDate() + 5);
+        const threshold = fiveDaysFromNow.getTime();
+
+        return transactions
+            .filter(t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PENDING && new Date(t.date).getTime() <= threshold)
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    }, [transactions]);
+
     const expenseSubcategoryData = useMemo(() => {
         const expenses = filteredTransactions.filter(t => t.type === TransactionType.EXPENSE);
         const total = expenses.reduce((sum, t) => sum + t.amount, 0);
@@ -1702,14 +1788,19 @@ const App: FC = () => {
     const [loadingAuth, setLoadingAuth] = useState(true);
     const [activeView, setActiveView] = useState<View>('dashboard');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-    // Fixed "Untyped function calls" errors by removing explicit type arguments which will be correctly inferred from initial values
-    const [incomeCategories, setIncomeCategories] = useLocalStorage('incomeCategories', initialIncomeCategories);
-    const [expenseCategories, setExpenseCategories] = useLocalStorage('expenseCategories', initialExpenseCategories);
-    const [paymentMethods, setPaymentMethods] = useLocalStorage('paymentMethods', initialPaymentMethods);
-    const [costCenters, setCostCenters] = useLocalStorage('costCenters', initialCostCenters);
-    const [advisors, setAdvisors] = useLocalStorage('advisors', initialAdvisors);
-    const [globalTaxRate, setGlobalTaxRate] = useLocalStorage('globalTaxRate', 6);
-    const [goals, setGoals] = useLocalStorage('goals', getInitialGoals());
+    
+    /**
+     * Fixed "Untyped function calls" errors by ensuring generic type arguments are correctly handled.
+     * Re-adding explicit generic types where necessary for the compiler.
+     */
+    const [incomeCategories, setIncomeCategories] = useLocalStorage<string[]>('incomeCategories', initialIncomeCategories);
+    const [expenseCategories, setExpenseCategories] = useLocalStorage<ExpenseCategory[]>('expenseCategories', initialExpenseCategories);
+    const [paymentMethods, setPaymentMethods] = useLocalStorage<string[]>('paymentMethods', initialPaymentMethods);
+    const [costCenters, setCostCenters] = useLocalStorage<CostCenter[]>('costCenters', initialCostCenters);
+    const [advisors, setAdvisors] = useLocalStorage<Advisor[]>('advisors', initialAdvisors);
+    const [globalTaxRate, setGlobalTaxRate] = useLocalStorage<number>('globalTaxRate', 6);
+    const [goals, setGoals] = useLocalStorage<Goal[]>('goals', getInitialGoals());
+    
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [importedRevenues, setImportedRevenues] = useState<ImportedRevenue[]>([]);
     const [loadingData, setLoadingData] = useState(false);
@@ -1720,7 +1811,6 @@ const App: FC = () => {
     useEffect(() => {
         if (user) {
             setLoadingData(true);
-            // Fix: Explicitly handling the Promise results to avoid potential "untyped" issues with implicit destructuring
             Promise.all([getTransactions(), getImportedRevenues()]).then((results) => {
                 const transSnap = results[0];
                 const revSnap = results[1];
@@ -1760,7 +1850,6 @@ const App: FC = () => {
     };
     const handleImportRevenues = (data: any[]) => {
          if (!user) return;
-         // Fix: Ensured Promise.all content and results are correctly typed and mapped
          const importPromises = data.map(item => saveImportedRevenue(item, user.uid).then(docRef => ({ id: docRef.id, ...item } as ImportedRevenue)).catch(() => null));
          Promise.all(importPromises).then((results) => {
              const newRevenues = results.filter((r): r is ImportedRevenue => r !== null);
