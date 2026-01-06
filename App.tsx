@@ -1,12 +1,12 @@
+
 import React, { useState, useMemo, FC, ReactNode, useEffect, useRef } from 'react';
 import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType, AdvisorSplit, ImportedRevenue, AdvisorCost } from './types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area } from 'recharts';
 import Login from './Login';
-import { auth, db } from './firebase';
+import { auth } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { logoutUser } from './auth';
 import { getTransactions, saveTransaction, updateTransaction, deleteTransaction as deleteTransactionFromDb, getImportedRevenues, saveImportedRevenue, deleteImportedRevenue, getRevenuesByPeriod, deduplicateImportedRevenues } from './firestore';
-import { collection, addDoc, doc, getDoc, setDoc, arrayUnion, serverTimestamp } from "firebase/firestore";
 
 
 // --- ÍCONES ---
@@ -32,9 +32,14 @@ const CheckCircleIcon: FC<{ className?: string }> = ({ className }) => (<svg cla
 const FileTextIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>);
 
 
+// --- DECLARAÇÕES DE BIBLIOTECAS GLOBAIS ---
+declare var XLSX: any;
+declare var jspdf: any;
+
 // --- HOOKS ---
 /**
  * Custom hook to sync state with localStorage.
+ * Fixed "Untyped function calls" potential issues by ensuring consistent generic handling.
  */
 function useLocalStorage<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
     const [storedValue, setStoredValue] = useState<T>(() => {
@@ -204,7 +209,7 @@ interface TransactionFormValues {
     advisorId?: string;
     recurringCount?: number;
     splits?: AdvisorSplit[];
-    taxRate?: number; 
+    taxRate?: number; // Added for persistence
 }
 interface TransactionFormProps { 
     onSubmit: (data: TransactionFormValues) => void;
@@ -228,14 +233,10 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     const [advisorId, setAdvisorId] = useState(initialData?.advisorId || '');
     const [recurringCount, setRecurringCount] = useState('1');
     const [splits, setSplits] = useState<AdvisorSplit[]>([]);
-    const [loading, setLoading] = useState(false);
-    
-    // New state to hold advisor current account balances for calculation
-    const [advisorBalances, setAdvisorBalances] = useState<Record<string, number>>({});
 
     const isAddingFromTab = !!defaultType;
     const isEditing = !!initialData;
-    const isInitializing = useRef(true); 
+    const isInitializing = useRef(true); // Ref to block automatic sync on initial load
     const currentCategories = useMemo(() => 
         type === TransactionType.INCOME 
             ? incomeCategories 
@@ -266,33 +267,6 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     const [taxValueCents, setTaxValueCents] = useState<number>(0);
 
     const gross: number = parseFloat(formData.grossAmount) || 0;
-
-    // Fetch balances when splits change or on load
-    useEffect(() => {
-        const fetchBalances = async () => {
-            const balances: Record<string, number> = { ...advisorBalances };
-            let changed = false;
-            for (const split of splits) {
-                if (split.advisorId && balances[split.advisorId] === undefined) {
-                    try {
-                        const balanceDoc = await getDoc(doc(db, "assessores", split.advisorId, "conta_corrente", "main"));
-                        if (balanceDoc.exists()) {
-                            balances[split.advisorId] = balanceDoc.data()?.saldoAtual || 0;
-                        } else {
-                            balances[split.advisorId] = 0;
-                        }
-                        changed = true;
-                    } catch (e) {
-                        console.error("Erro ao buscar saldo:", e);
-                        balances[split.advisorId] = 0;
-                        changed = true;
-                    }
-                }
-            }
-            if (changed) setAdvisorBalances(balances);
-        };
-        if (splits.length > 0) fetchBalances();
-    }, [splits]);
 
     // PRIMARY INITIALIZATION: Set states once based on initialData
     useEffect(() => {
@@ -506,35 +480,35 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         }
     };
 
-    // Cálculos dos repasses líquidos individuais incorporando conta corrente
+    // Cálculos dos repasses líquidos individuais
     const splitsDetails = useMemo(() => {
         return splits.map(split => {
-            const revenueAmount = Number(split.revenueAmount) || 0;
-            const percentage = Number(split.percentage) || 0;
-            const additionalCost = Number(split.additionalCost) || 0;
-            const saldoAnterior = advisorBalances[split.advisorId] || 0;
+            const revenueAmount = Number(split.revenueAmount) || 0;   // receita individual
+            const percentage = Number(split.percentage) || 0;         // % do assessor (ex.: 30)
+            const additionalCost = Number(split.additionalCost) || 0; // CRM etc.
 
+            // alíquota de imposto dinâmica aplicada à parte do assessor
             const effectiveTaxRate = applyTax ? (parseFloat(taxRateInput) || 0) : 0;
+
+            // 1) comissão bruta do assessor (30% da receita dele)
             const grossPayout = revenueAmount * (percentage / 100);
+
+            // 2) imposto sobre a parte do assessor
             const taxAmount = grossPayout * (effectiveTaxRate / 100);
-            
-            // Regra: totalCusto = split.additionalCost + saldoAnterior
-            const totalCusto = additionalCost + saldoAnterior;
-            // Recalcular netPayout com totalCusto
-            const netPayout = grossPayout - taxAmount - totalCusto;
+
+            // 3) repasse líquido: comissão - imposto - custo adicional
+            const netPayout = grossPayout - taxAmount - additionalCost;
 
             return {
                 ...split,
                 grossPayout,
                 taxAmount,
-                totalCusto,
-                saldoAnterior,
                 netPayout,
             };
         });
-    }, [splits, taxRateInput, applyTax, advisorBalances]);
+    }, [splits, taxRateInput, applyTax]);
 
-    // Soma de todos os repasses líquidos
+    // Soma de todos os repasses líquidos (vai para os assessores)
     const totalNetPayouts: number = splitsDetails.reduce(
         (acc: number, s: any) => acc + (Number(s.netPayout) || 0),
         0,
@@ -548,20 +522,22 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         ? totalRevenue * ((parseFloat(taxRateInput) || 0) / 100)
         : 0;
 
-    // Total de custos adicionais
+    // Total de custos adicionais (CRM etc.)
     const totalAdditionalCosts: number = splitsDetails.reduce(
         (acc: number, s: any) => acc + (Number(s.additionalCost) || 0),
         0,
     );
 
     // Cálculo da parcela do escritório:
+    // receita total - (repasses líquidos + impostos + custos adicionais)
     const officeShare: number =
         totalRevenue - totalNetPayouts - totalTax - totalAdditionalCosts;
 
+    // Diferença para validação de receita total vs soma das receitas individuais
     const totalSplitRevenue: number = splits.reduce((acc: number, s: any) => acc + (Number(s.revenueAmount) || 0), 0);
     const splitRevenueDifference: number = Number(gross) - Number(totalSplitRevenue);
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const { description, grossAmount, date, category, paymentMethod, status, costCenter, clientSupplier } = formData;
         
@@ -573,130 +549,60 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             alert("O campo 'Cliente' é obrigatório para receitas.");
             return;
         }
+        if (type === TransactionType.EXPENSE && !paymentMethod) {
+            alert("O campo 'Forma de Pagamento' é obrigatório para despesas.");
+            return;
+        }
 
-        const parsedGrossValue = parseFloat(grossAmount);
-        if(isNaN(parsedGrossValue)) {
+        const parsedGrossAmount = parseFloat(grossAmount);
+        if(isNaN(parsedGrossAmount)) {
              alert("O valor inserido é inválido.");
             return;
         }
 
-        try {
-            setLoading(true);
-            const mesAnoAtual = getMonthYear(date);
-            const isoDate = new Date(date).toISOString();
-
-            if (type === TransactionType.INCOME && splits.length > 0) {
-                if (Math.abs(splitRevenueDifference) > 0.05) {
-                    alert("A soma das receitas individuais deve ser igual ao valor total.");
-                    setLoading(false);
-                    return;
-                }
-
-                // 1. Receita líquida corretora (totalRevenue - totalAdditionalCosts)
-                // Esta é a entrada real no caixa PJ (o que cai no banco vindo da corretora já descontando CRM)
-                const caixaLiquidoCorretoraValue = totalRevenue - totalAdditionalCosts;
-                await addDoc(collection(db, "transacoes"), {
-                    amount: caixaLiquidoCorretoraValue,
-                    type: TransactionType.INCOME,
-                    category: "Comissões",
-                    clientSupplier: "EQI",
-                    tipoInterno: "transacao",
-                    description: `Receita Líquida Broker - ${mesAnoAtual}`,
-                    costCenter: "conta-pj",
-                    date: isoDate,
-                    status: ExpenseStatus.PAID,
-                    criadoPor: userId,
-                    criadoEm: serverTimestamp()
-                });
-
-                // 2. Provisão Imposto (lançamento de despesa na lista)
-                if (applyTax && totalTax > 0) {
-                    await addDoc(collection(db, "transacoes"), {
-                        amount: totalTax,
-                        type: TransactionType.EXPENSE,
-                        category: "Impostos",
-                        tipoInterno: "transacao",
-                        description: `Provisão Imposto - ${mesAnoAtual}`,
-                        costCenter: "provisao-impostos",
-                        date: isoDate,
-                        status: ExpenseStatus.PENDING,
-                        clientSupplier: "Governo",
-                        criadoPor: userId,
-                        criadoEm: serverTimestamp()
-                    });
-                }
-
-                // 3. Repasses Assessores (como despesas individuais na lista)
-                for (const split of splitsDetails) {
-                    if (split.netPayout > 0) {
-                        await addDoc(collection(db, "transacoes"), {
-                            amount: split.netPayout,
-                            type: TransactionType.EXPENSE,
-                            category: "Repasses Assessores",
-                            description: `Repasse ${split.advisorName} - ${mesAnoAtual}`,
-                            advisorId: split.advisorId,
-                            tipoInterno: "transacao",
-                            clientSupplier: split.advisorName,
-                            costCenter: "conta-pj",
-                            date: isoDate,
-                            status: ExpenseStatus.PAID,
-                            criadoPor: userId,
-                            criadoEm: serverTimestamp()
-                        });
-                    }
-
-                    // 4. Atualizar conta corrente (subcoleção) dos assessores
-                    const advisorCCRef = doc(db, "assessores", split.advisorId, "conta_corrente", "main");
-                    const currentBalance = advisorBalances[split.advisorId] || 0;
-                    // Saldo novo = Saldo Anterior + Payout Líquido do mês
-                    const newBalance = currentBalance + split.netPayout;
-                    
-                    await setDoc(advisorCCRef, {
-                        saldoAtual: newBalance,
-                        ultimaAtualizacao: serverTimestamp(),
-                        historico: arrayUnion({
-                            data: new Date().toISOString(),
-                            mesAno: mesAnoAtual,
-                            receitaIndividual: split.revenueAmount,
-                            netPayout: split.netPayout,
-                            saldoApos: newBalance
-                        })
-                    }, { merge: true });
-                }
-                
-                setLoading(false);
-                alert("Processamento financeiro concluído com sucesso!");
-                onClose();
-                window.location.reload(); // Forçar atualização do dashboard global
+        if (splits.length > 0) {
+            if (Math.abs(splitRevenueDifference) > 0.05) {
+                alert(`A soma das receitas individuais deve ser igual ao valor total.`);
                 return;
             }
-
-            // Caso seja EXPENSE ou INCOME simples (sem splits)
-            const submissionData: TransactionFormValues = {
-                description,
-                amount: parsedGrossValue, 
-                date: isoDate,
-                type,
-                category,
-                clientSupplier,
-                paymentMethod,
-                costCenter,
-                status: type === TransactionType.EXPENSE ? status : undefined,
-                nature: type === TransactionType.EXPENSE ? nature : undefined,
-                grossAmount: type === TransactionType.INCOME ? parsedGrossValue : undefined,
-                taxAmount: type === TransactionType.INCOME ? effectiveTaxAmount : undefined,
-                taxRate: type === TransactionType.INCOME ? (parseFloat(taxRateInput) || 0) : undefined,
-                advisorId: (type === TransactionType.INCOME && advisorId) ? advisorId : undefined,
-                commissionAmount: (type === TransactionType.INCOME && advisorId) ? commissionAmount : undefined
-            };
-
-            onSubmit(submissionData);
-            setLoading(false);
-        } catch (err) {
-            setLoading(false);
-            console.error("Erro no salvamento granular:", err);
-            alert("Erro ao realizar lançamentos. Verifique o console.");
         }
+        
+        const submissionData: TransactionFormValues = {
+            description,
+            amount: type === TransactionType.INCOME ? basePostTax : parsedGrossAmount, 
+            date: new Date(date).toISOString(),
+            type,
+            category,
+            clientSupplier,
+            paymentMethod,
+            costCenter,
+        };
+        
+        if (type === TransactionType.INCOME) {
+            submissionData.taxAmount = effectiveTaxAmount;
+            submissionData.grossAmount = parsedGrossAmount;
+            submissionData.taxRate = parseFloat(taxRateInput) || 0;
+
+            if (splits.length > 0) {
+                submissionData.splits = splitsDetails.map(s => {
+                    const { additionalCost, ...rest } = s;
+                    return rest;
+                });
+            } else {
+                submissionData.commissionAmount = commissionAmount;
+                submissionData.advisorId = advisorId;
+            }
+        }
+
+        if (type === TransactionType.EXPENSE) {
+            submissionData.status = status;
+            submissionData.nature = nature;
+            if (nature === ExpenseNature.FIXED && !isEditing) {
+                submissionData.recurringCount = parseInt(recurringCount, 10) || 1;
+            }
+        }
+        
+        onSubmit(submissionData);
     };
 
     return (
@@ -780,9 +686,6 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                                             <select value={split.advisorId} onChange={(e) => updateSplit(index, 'advisorId', e.target.value)} className="w-full bg-background border-border-color rounded-md text-sm py-1">
                                                 {advisors.map(adv => <option key={adv.id} value={adv.id}>{adv.name}</option>)}
                                             </select>
-                                            <div className="text-[10px] text-text-secondary mt-0.5 ml-1">
-                                                Saldo CC: {formatCurrency(advisorBalances[split.advisorId] || 0)}
-                                            </div>
                                         </div>
                                         <div className="col-span-3">
                                             <input type="text" value={Number(split.revenueAmount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} onChange={(e) => {
@@ -883,15 +786,11 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                         <div className="border-t border-border-color pt-2 mt-2">
                             <div className="flex justify-between items-center text-sm">
                                 <span className="text-text-secondary">Total Repasses (Liq):</span>
-                                <span className="font-bold text-danger">
-                                    {formatCurrency(totalNetPayouts)}
-                                </span>
+                                <span className="font-bold text-danger">{formatCurrency(totalNetPayouts)}</span>
                             </div>
                             <div className="flex justify-between items-center text-sm mt-1">
                                 <span className="text-text-secondary">Parcela Escritório:</span>
-                                <span className={`font-bold ${officeShare >= 0 ? 'text-primary' : 'text-danger'}`}>
-                                    {formatCurrency(officeShare)}
-                                </span>
+                                <span className={`font-bold ${(officeShare) >= 0 ? 'text-primary' : 'text-danger'}`}>{formatCurrency(officeShare)}</span>
                             </div>
                         </div>
                     )}
@@ -968,7 +867,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             )}
             <div className="flex justify-end gap-4 pt-4">
                 <Button onClick={onClose} variant="secondary">Cancelar</Button>
-                <Button type="submit" disabled={loading}>{loading ? 'Salvando...' : 'Salvar'}</Button>
+                <Button type="submit">Salvar</Button>
             </div>
         </form>
     );
@@ -1355,8 +1254,8 @@ const TransactionsView: FC<{
         });
         if (sortConfig !== null) {
             items.sort((a, b) => {
-                const valA = a[sortConfig.key as keyof Transaction] as any;
-                const valB = b[sortConfig.key as keyof Transaction] as any;
+                const valA = a[sortConfig.key as keyof Transaction] as (string | number);
+                const valB = b[sortConfig.key as keyof Transaction] as (string | number);
                 if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
                 if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
                 return 0;
@@ -1874,7 +1773,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                 </div>
             )}
              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <Card className="lg:col-span-2 h-[400px] flex flex-col"><h3 className="text-lg font-bold mb-4 uppercase tracking-tight">Fluxo de Caixa</h3><div className="flex-grow"><ResponsiveContainer><AreaChart data={cashFlowData}><defs><linearGradient id="colorBalance" x1="0" x2="0" y2="1"><stop offset="5%" stopColor="#D1822A" stopOpacity={0.8}/><stop offset="95%" stopColor="#D1822A" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2D376A" opacity={0.5} /><XAxis dataKey="date" stroke="#A0AEC0" tick={{fontSize:11}} tickLine={false} axisLine={false} /><YAxis stroke="#A0AEC0" tickFormatter={v => `R$${(Number(v) as number)/1000}k`} tick={{fontSize:11}} width={60} tickLine={false} axisLine={false} /><Tooltip contentStyle={{backgroundColor:'#1A214A',border:'none',borderRadius:'8px'}} itemStyle={{color:'#D1822A'}} formatter={v => [formatCurrency(Number(v)), 'Saldo']} /><Area type="monotone" dataKey="balance" stroke="#D1822A" strokeWidth={3} fillOpacity={1} fill="url(#colorBalance)" /></AreaChart></ResponsiveContainer></div></Card>
+                <Card className="lg:col-span-2 h-[400px] flex flex-col"><h3 className="text-lg font-bold mb-4 uppercase tracking-tight">Fluxo de Caixa</h3><div className="flex-grow"><ResponsiveContainer><AreaChart data={cashFlowData}><defs><linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#D1822A" stopOpacity={0.8}/><stop offset="95%" stopColor="#D1822A" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2D376A" opacity={0.5} /><XAxis dataKey="date" stroke="#A0AEC0" tick={{fontSize:11}} tickLine={false} axisLine={false} /><YAxis stroke="#A0AEC0" tickFormatter={v => `R$${(Number(v) as number)/1000}k`} tick={{fontSize:11}} width={60} tickLine={false} axisLine={false} /><Tooltip contentStyle={{backgroundColor:'#1A214A',border:'none',borderRadius:'8px'}} itemStyle={{color:'#D1822A'}} formatter={v => [formatCurrency(Number(v)), 'Saldo']} /><Area type="monotone" dataKey="balance" stroke="#D1822A" strokeWidth={3} fillOpacity={1} fill="url(#colorBalance)" /></AreaChart></ResponsiveContainer></div></Card>
                 <Card className="h-[400px] flex flex-col"><h3 className="text-lg font-bold mb-4 uppercase tracking-tight">Natureza das Despesas</h3><div className="flex-grow">{expenseSubcategoryData.length > 0 ? <ResponsiveContainer><PieChart><Pie data={expenseSubcategoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={100} fill="#8884d8" paddingAngle={5} stroke="none">{expenseSubcategoryData.map((e,i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip />} /><Legend verticalAlign="bottom" height={36} iconType="circle" formatter={v => <span className="text-text-secondary ml-1">{v}</span>} /></PieChart></ResponsiveContainer> : <div className="flex items-center justify-center h-full text-text-secondary"><p>Sem dados.</p></div>}</div></Card>
             </div>
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Confirmar Pagamento / Ajustar Valor">
@@ -1890,14 +1789,17 @@ const App: FC = () => {
     const [activeView, setActiveView] = useState<View>('dashboard');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     
-    // Fixed "Untyped function calls" by removing explicit generic type arguments which are redundant here
-    const [incomeCategories, setIncomeCategories] = useLocalStorage('incomeCategories', initialIncomeCategories);
-    const [expenseCategories, setExpenseCategories] = useLocalStorage('expenseCategories', initialExpenseCategories);
-    const [paymentMethods, setPaymentMethods] = useLocalStorage('paymentMethods', initialPaymentMethods);
-    const [costCenters, setCostCenters] = useLocalStorage('costCenters', initialCostCenters);
-    const [advisors, setAdvisors] = useLocalStorage('advisors', initialAdvisors);
-    const [globalTaxRate, setGlobalTaxRate] = useLocalStorage('globalTaxRate', 6);
-    const [goals, setGoals] = useLocalStorage('goals', getInitialGoals());
+    /**
+     * Fixed "Untyped function calls" errors by ensuring generic type arguments are correctly handled.
+     * Re-adding explicit generic types where necessary for the compiler.
+     */
+    const [incomeCategories, setIncomeCategories] = useLocalStorage<string[]>('incomeCategories', initialIncomeCategories);
+    const [expenseCategories, setExpenseCategories] = useLocalStorage<ExpenseCategory[]>('expenseCategories', initialExpenseCategories);
+    const [paymentMethods, setPaymentMethods] = useLocalStorage<string[]>('paymentMethods', initialPaymentMethods);
+    const [costCenters, setCostCenters] = useLocalStorage<CostCenter[]>('costCenters', initialCostCenters);
+    const [advisors, setAdvisors] = useLocalStorage<Advisor[]>('advisors', initialAdvisors);
+    const [globalTaxRate, setGlobalTaxRate] = useLocalStorage<number>('globalTaxRate', 6);
+    const [goals, setGoals] = useLocalStorage<Goal[]>('goals', getInitialGoals());
     
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [importedRevenues, setImportedRevenues] = useState<ImportedRevenue[]>([]);
@@ -1973,8 +1875,7 @@ const App: FC = () => {
                             {activeView === 'transactions' && <TransactionsView transactions={transactions} onAdd={handleAddTransaction} onEdit={handleEditTransaction} onDelete={handleDeleteTransaction} onSetPaid={handleSetPaid} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} onImportTransactions={handleImportTransactions} globalTaxRate={globalTaxRate} importedRevenues={importedRevenues} userId={user.uid} />}
                             {activeView === 'imported-revenues' && <ImportedRevenuesView importedRevenues={importedRevenues} advisors={advisors} onImport={handleImportRevenues} onDelete={handleDeleteRevenue} userId={user.uid} />}
                             {activeView === 'reports' && <ReportsView transactions={transactions} importedRevenues={importedRevenues} />}
-                            {/* Corrected arithmetic types by ensuring operands are treated as numbers and removing ambiguous Number wrapper on already typed numbers */}
-                            {activeView === 'goals' && <GoalsView goals={goals} onAdd={goalObj => setGoals([...goals, { ...goalObj, id: crypto.randomUUID(), currentAmount: 0 }])} onUpdateProgress={(targetId: string, amountToAdd: number) => setGoals(goals.map((g: Goal) => g.id === targetId ? { ...g, currentAmount: (g.currentAmount || 0) + amountToAdd } : g))} onDelete={id => setGoals(goals.filter(g => g.id !== id))} />}
+                            {activeView === 'goals' && <GoalsView goals={goals} onAdd={v => setGoals([...goals, { ...v, id: crypto.randomUUID(), currentAmount: 0 }])} onUpdateProgress={(id, v) => setGoals(goals.map(g => g.id === id ? { ...g, currentAmount: g.currentAmount + v } : g))} onDelete={id => setGoals(goals.filter(g => g.id !== id))} />}
                             {activeView === 'settings' && <SettingsView incomeCategories={incomeCategories} setIncomeCategories={setIncomeCategories} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} paymentMethods={paymentMethods} setPaymentMethods={setPaymentMethods} costCenters={costCenters} setCostCenters={setCostCenters} advisors={advisors} setAdvisors={setAdvisors} globalTaxRate={globalTaxRate} setGlobalTaxRate={setGlobalTaxRate} />}
                         </>
                     )}
