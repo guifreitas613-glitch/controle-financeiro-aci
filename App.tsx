@@ -32,16 +32,11 @@ const CheckCircleIcon: FC<{ className?: string }> = ({ className }) => (<svg cla
 const FileTextIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>);
 
 
-// --- DECLARAÇÕES DE BIBLIOTECAS GLOBAIS ---
-declare var XLSX: any;
-declare var jspdf: any;
-
 // --- HOOKS ---
 /**
  * Custom hook to sync state with localStorage.
- * Fixed "Untyped function calls" by ensuring generic type is correctly recognized using standard arrow function syntax.
  */
-const useLocalStorage = <T,>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] => {
+function useLocalStorage<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
     const [storedValue, setStoredValue] = useState<T>(() => {
         try {
             const item = window.localStorage.getItem(key);
@@ -66,7 +61,7 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, React.Dispatch<R
     }, [key, storedValue]);
 
     return [storedValue, setStoredValue];
-};
+}
 
 
 // --- UTILITÁRIOS ---
@@ -209,7 +204,7 @@ interface TransactionFormValues {
     advisorId?: string;
     recurringCount?: number;
     splits?: AdvisorSplit[];
-    taxRate?: number; // Added for persistence
+    taxRate?: number; 
 }
 interface TransactionFormProps { 
     onSubmit: (data: TransactionFormValues) => void;
@@ -233,13 +228,14 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     const [advisorId, setAdvisorId] = useState(initialData?.advisorId || '');
     const [recurringCount, setRecurringCount] = useState('1');
     const [splits, setSplits] = useState<AdvisorSplit[]>([]);
+    const [loading, setLoading] = useState(false);
     
     // New state to hold advisor current account balances for calculation
     const [advisorBalances, setAdvisorBalances] = useState<Record<string, number>>({});
 
     const isAddingFromTab = !!defaultType;
     const isEditing = !!initialData;
-    const isInitializing = useRef(true); // Ref to block automatic sync on initial load
+    const isInitializing = useRef(true); 
     const currentCategories = useMemo(() => 
         type === TransactionType.INCOME 
             ? incomeCategories 
@@ -578,130 +574,129 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             return;
         }
 
-        const parsedGrossAmount = parseFloat(grossAmount);
-        if(isNaN(parsedGrossAmount)) {
+        const parsedGrossValue = parseFloat(grossAmount);
+        if(isNaN(parsedGrossValue)) {
              alert("O valor inserido é inválido.");
             return;
         }
 
-        if (splits.length > 0) {
-            if (Math.abs(splitRevenueDifference) > 0.05) {
-                alert(`A soma das receitas individuais deve ser igual ao valor total.`);
-                return;
-            }
-        }
-        
-        const submissionData: TransactionFormValues = {
-            description,
-            amount: type === TransactionType.INCOME ? basePostTax : parsedGrossAmount, 
-            date: new Date(date).toISOString(),
-            type,
-            category,
-            clientSupplier,
-            paymentMethod,
-            costCenter,
-        };
-        
-        if (type === TransactionType.INCOME) {
-            submissionData.taxAmount = effectiveTaxAmount;
-            submissionData.grossAmount = parsedGrossAmount;
-            submissionData.taxRate = parseFloat(taxRateInput) || 0;
+        try {
+            setLoading(true);
+            const mesAnoAtual = getMonthYear(date);
+            const isoDate = new Date(date).toISOString();
 
-            if (splits.length > 0) {
-                submissionData.splits = splitsDetails.map(s => {
-                    const { totalCusto, saldoAnterior, ...rest } = s as any;
-                    return rest;
+            if (type === TransactionType.INCOME && splits.length > 0) {
+                if (Math.abs(splitRevenueDifference) > 0.05) {
+                    alert("A soma das receitas individuais deve ser igual ao valor total.");
+                    setLoading(false);
+                    return;
+                }
+
+                // 1. Receita líquida corretora (totalRevenue - totalAdditionalCosts)
+                // Esta é a entrada real no caixa PJ (o que cai no banco vindo da corretora já descontando CRM)
+                const caixaLiquidoCorretoraValue = totalRevenue - totalAdditionalCosts;
+                await addDoc(collection(db, "transacoes"), {
+                    amount: caixaLiquidoCorretoraValue,
+                    type: TransactionType.INCOME,
+                    category: "Comissões",
+                    clientSupplier: "EQI",
+                    tipoInterno: "transacao",
+                    description: `Receita Líquida Broker - ${mesAnoAtual}`,
+                    costCenter: "conta-pj",
+                    date: isoDate,
+                    status: ExpenseStatus.PAID,
+                    criadoPor: userId,
+                    criadoEm: serverTimestamp()
                 });
 
-                // Lógica de Persistência Avançada para Rateios
-                try {
-                    const mesAnoAtual = getMonthYear(date);
-                    
-                    // 2) Lançamento ENTRADA: receita_liquida_corretora
-                    // Regra de negócio atualizada: receita bruta - custos adicionais (CRM) totais
-                    const caixaLiquidoCorretora = totalRevenue - totalAdditionalCosts;
+                // 2. Provisão Imposto (lançamento de despesa na lista)
+                if (applyTax && totalTax > 0) {
                     await addDoc(collection(db, "transacoes"), {
-                        amount: caixaLiquidoCorretora,
-                        category: "Comissões",
-                        clientSupplier: "EQI",
-                        tipoInterno: "receita_liquida_corretora",
-                        description: `Receita Líquida EQI - ${mesAnoAtual}`,
-                        costCenter: "conta-pj",
-                        date: new Date(date).toISOString(),
-                        status: "confirmado",
+                        amount: totalTax,
+                        type: TransactionType.EXPENSE,
+                        category: "Impostos",
+                        tipoInterno: "transacao",
+                        description: `Provisão Imposto - ${mesAnoAtual}`,
+                        costCenter: "provisao-impostos",
+                        date: isoDate,
+                        status: ExpenseStatus.PENDING,
+                        clientSupplier: "Governo",
                         criadoPor: userId,
                         criadoEm: serverTimestamp()
                     });
+                }
 
-                    // 3) Lançamento PROVISÃO imposto
-                    if (applyTax) {
+                // 3. Repasses Assessores (como despesas individuais na lista)
+                for (const split of splitsDetails) {
+                    if (split.netPayout > 0) {
                         await addDoc(collection(db, "transacoes"), {
-                            amount: -totalTax,
-                            category: "Impostos",
-                            tipoInterno: "provisao_imposto",
-                            description: `Provisão Imposto - ${mesAnoAtual}`,
-                            costCenter: "provisao-impostos",
-                            date: new Date(date).toISOString(),
-                            status: "pendente",
+                            amount: split.netPayout,
+                            type: TransactionType.EXPENSE,
+                            category: "Repasses Assessores",
+                            description: `Repasse ${split.advisorName} - ${mesAnoAtual}`,
+                            advisorId: split.advisorId,
+                            tipoInterno: "transacao",
+                            clientSupplier: split.advisorName,
+                            costCenter: "conta-pj",
+                            date: isoDate,
+                            status: ExpenseStatus.PAID,
                             criadoPor: userId,
                             criadoEm: serverTimestamp()
                         });
                     }
 
-                    // 4) Repasses e Atualização de Conta Corrente para cada split
-                    for (const split of splitsDetails) {
-                        // Salva transação de saída do repasse apenas se for maior que 0
-                        if (split.netPayout > 0) {
-                            await addDoc(collection(db, "transacoes"), {
-                                amount: -split.netPayout,
-                                category: "Repasses Assessores",
-                                description: `Repasse ${split.advisorName} - ${mesAnoAtual}`,
-                                advisorId: split.advisorId,
-                                tipoInterno: "repassse_assessor",
-                                costCenter: "conta-pj",
-                                date: new Date(date).toISOString(),
-                                status: "confirmado",
-                                criadoPor: userId,
-                                criadoEm: serverTimestamp()
-                            });
-                        }
-
-                        // 5) Atualizar conta corrente (subcoleção) de todos os envolvidos
-                        const advisorCCRef = doc(db, "assessores", split.advisorId, "conta_corrente", "main");
-                        const currentBalance = advisorBalances[split.advisorId] || 0;
-                        // Regra: o novo saldo é o saldo anterior + o payout líquido calculado
-                        const newBalance = currentBalance + split.netPayout;
-                        
-                        await setDoc(advisorCCRef, {
-                            saldoAtual: newBalance,
-                            ultimaAtualizacao: serverTimestamp(),
-                            historico: arrayUnion({
-                                data: new Date().toISOString(),
-                                mesAno: mesAnoAtual,
-                                receitaIndividual: split.revenueAmount,
-                                netPayout: split.netPayout,
-                                saldoApos: newBalance
-                            })
-                        }, { merge: true });
-                    }
-                } catch (err) {
-                    console.error("Erro ao realizar lançamentos automáticos:", err);
+                    // 4. Atualizar conta corrente (subcoleção) dos assessores
+                    const advisorCCRef = doc(db, "assessores", split.advisorId, "conta_corrente", "main");
+                    const currentBalance = advisorBalances[split.advisorId] || 0;
+                    // Saldo novo = Saldo Anterior + Payout Líquido do mês
+                    const newBalance = currentBalance + split.netPayout;
+                    
+                    await setDoc(advisorCCRef, {
+                        saldoAtual: newBalance,
+                        ultimaAtualizacao: serverTimestamp(),
+                        historico: arrayUnion({
+                            data: new Date().toISOString(),
+                            mesAno: mesAnoAtual,
+                            receitaIndividual: split.revenueAmount,
+                            netPayout: split.netPayout,
+                            saldoApos: newBalance
+                        })
+                    }, { merge: true });
                 }
-            } else {
-                submissionData.commissionAmount = commissionAmount;
-                submissionData.advisorId = advisorId;
+                
+                setLoading(false);
+                alert("Processamento financeiro concluído com sucesso!");
+                onClose();
+                window.location.reload(); // Forçar atualização do dashboard global
+                return;
             }
-        }
 
-        if (type === TransactionType.EXPENSE) {
-            submissionData.status = status;
-            submissionData.nature = nature;
-            if (nature === ExpenseNature.FIXED && !isEditing) {
-                submissionData.recurringCount = parseInt(recurringCount, 10) || 1;
-            }
+            // Caso seja EXPENSE ou INCOME simples (sem splits)
+            const submissionData: TransactionFormValues = {
+                description,
+                amount: parsedGrossValue, 
+                date: isoDate,
+                type,
+                category,
+                clientSupplier,
+                paymentMethod,
+                costCenter,
+                status: type === TransactionType.EXPENSE ? status : undefined,
+                nature: type === TransactionType.EXPENSE ? nature : undefined,
+                grossAmount: type === TransactionType.INCOME ? parsedGrossValue : undefined,
+                taxAmount: type === TransactionType.INCOME ? effectiveTaxAmount : undefined,
+                taxRate: type === TransactionType.INCOME ? (parseFloat(taxRateInput) || 0) : undefined,
+                advisorId: (type === TransactionType.INCOME && advisorId) ? advisorId : undefined,
+                commissionAmount: (type === TransactionType.INCOME && advisorId) ? commissionAmount : undefined
+            };
+
+            onSubmit(submissionData);
+            setLoading(false);
+        } catch (err) {
+            setLoading(false);
+            console.error("Erro no salvamento granular:", err);
+            alert("Erro ao realizar lançamentos. Verifique o console.");
         }
-        
-        onSubmit(submissionData);
     };
 
     return (
@@ -973,7 +968,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             )}
             <div className="flex justify-end gap-4 pt-4">
                 <Button onClick={onClose} variant="secondary">Cancelar</Button>
-                <Button type="submit">Salvar</Button>
+                <Button type="submit" disabled={loading}>{loading ? 'Salvando...' : 'Salvar'}</Button>
             </div>
         </form>
     );
@@ -1360,8 +1355,8 @@ const TransactionsView: FC<{
         });
         if (sortConfig !== null) {
             items.sort((a, b) => {
-                const valA = a[sortConfig.key as keyof Transaction] as (string | number);
-                const valB = b[sortConfig.key as keyof Transaction] as (string | number);
+                const valA = a[sortConfig.key as keyof Transaction] as any;
+                const valB = b[sortConfig.key as keyof Transaction] as any;
                 if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
                 if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
                 return 0;
@@ -1895,17 +1890,14 @@ const App: FC = () => {
     const [activeView, setActiveView] = useState<View>('dashboard');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     
-    /**
-     * Re-added explicit generic type arguments to ensure type safety and avoid "Untyped function calls" errors
-     * if the inference engine is having issues.
-     */
-    const [incomeCategories, setIncomeCategories] = useLocalStorage<string[]>('incomeCategories', initialIncomeCategories);
-    const [expenseCategories, setExpenseCategories] = useLocalStorage<ExpenseCategory[]>('expenseCategories', initialExpenseCategories);
-    const [paymentMethods, setPaymentMethods] = useLocalStorage<string[]>('paymentMethods', initialPaymentMethods);
-    const [costCenters, setCostCenters] = useLocalStorage<CostCenter[]>('costCenters', initialCostCenters);
-    const [advisors, setAdvisors] = useLocalStorage<Advisor[]>('advisors', initialAdvisors);
-    const [globalTaxRate, setGlobalTaxRate] = useLocalStorage<number>('globalTaxRate', 6);
-    const [goals, setGoals] = useLocalStorage<Goal[]>('goals', getInitialGoals());
+    // Fixed "Untyped function calls" by removing explicit generic type arguments which are redundant here
+    const [incomeCategories, setIncomeCategories] = useLocalStorage('incomeCategories', initialIncomeCategories);
+    const [expenseCategories, setExpenseCategories] = useLocalStorage('expenseCategories', initialExpenseCategories);
+    const [paymentMethods, setPaymentMethods] = useLocalStorage('paymentMethods', initialPaymentMethods);
+    const [costCenters, setCostCenters] = useLocalStorage('costCenters', initialCostCenters);
+    const [advisors, setAdvisors] = useLocalStorage('advisors', initialAdvisors);
+    const [globalTaxRate, setGlobalTaxRate] = useLocalStorage('globalTaxRate', 6);
+    const [goals, setGoals] = useLocalStorage('goals', getInitialGoals());
     
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [importedRevenues, setImportedRevenues] = useState<ImportedRevenue[]>([]);
@@ -1981,8 +1973,8 @@ const App: FC = () => {
                             {activeView === 'transactions' && <TransactionsView transactions={transactions} onAdd={handleAddTransaction} onEdit={handleEditTransaction} onDelete={handleDeleteTransaction} onSetPaid={handleSetPaid} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} onImportTransactions={handleImportTransactions} globalTaxRate={globalTaxRate} importedRevenues={importedRevenues} userId={user.uid} />}
                             {activeView === 'imported-revenues' && <ImportedRevenuesView importedRevenues={importedRevenues} advisors={advisors} onImport={handleImportRevenues} onDelete={handleDeleteRevenue} userId={user.uid} />}
                             {activeView === 'reports' && <ReportsView transactions={transactions} importedRevenues={importedRevenues} />}
-                            {/* Explicitly typed parameter v and fixed arithmetic operands to fix arithmetic type errors and potential shadowing */}
-                            {activeView === 'goals' && <GoalsView goals={goals} onAdd={goalObj => setGoals([...goals, { ...goalObj, id: crypto.randomUUID(), currentAmount: 0 }])} onUpdateProgress={(targetId: string, amountToAdd: number) => setGoals(goals.map((g: Goal) => g.id === targetId ? { ...g, currentAmount: Number(g.currentAmount || 0) + Number(amountToAdd || 0) } : g))} onDelete={id => setGoals(goals.filter(g => g.id !== id))} />}
+                            {/* Corrected arithmetic types by ensuring operands are treated as numbers and removing ambiguous Number wrapper on already typed numbers */}
+                            {activeView === 'goals' && <GoalsView goals={goals} onAdd={goalObj => setGoals([...goals, { ...goalObj, id: crypto.randomUUID(), currentAmount: 0 }])} onUpdateProgress={(targetId: string, amountToAdd: number) => setGoals(goals.map((g: Goal) => g.id === targetId ? { ...g, currentAmount: (g.currentAmount || 0) + amountToAdd } : g))} onDelete={id => setGoals(goals.filter(g => g.id !== id))} />}
                             {activeView === 'settings' && <SettingsView incomeCategories={incomeCategories} setIncomeCategories={setIncomeCategories} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} paymentMethods={paymentMethods} setPaymentMethods={setPaymentMethods} costCenters={costCenters} setCostCenters={setCostCenters} advisors={advisors} setAdvisors={setAdvisors} globalTaxRate={globalTaxRate} setGlobalTaxRate={setGlobalTaxRate} />}
                         </>
                     )}
