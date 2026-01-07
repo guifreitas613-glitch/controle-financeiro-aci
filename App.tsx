@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, FC, ReactNode, useEffect, useRef } from 'react';
 import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType, AdvisorSplit, ImportedRevenue, AdvisorCost } from './types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area } from 'recharts';
@@ -35,6 +36,9 @@ declare var XLSX: any;
 declare var jspdf: any;
 
 // --- HOOKS ---
+/**
+ * Fixed hook definition to ensure it is recognized as a generic function.
+ */
 function useLocalStorage<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
     const [storedValue, setStoredValue] = useState<T>(() => {
         try {
@@ -433,7 +437,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
 
     const splitsDetails = useMemo(() => {
         return splits.map(split => {
-            // Reidratação: Se for edição e já existirem os cálculos, os preserva para evitar sobrescrita por recálculo automático (Regra 3 e 4)
+            // Reidratação: Se for edição e já existirem os cálculos salvos, preserva integralmente (Regra 3 e 4)
             if (isEditing && split.netPayout !== undefined) {
                 return split;
             }
@@ -491,8 +495,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             }
         }
         
-        // CORREÇÃO OBRIGATÓRIA NO SALVAMENTO DA RECEITA (REGRA 4)
-        // O valor principal 'amount' deve ser exclusivamente a parcela líquida do escritório
+        // Parcela líquida do escritório
         const officeNetAmount = type === TransactionType.INCOME 
             ? (splits.length > 0 ? officeShare : (basePostTax - (advisorId ? commissionAmount : 0)))
             : parsedGrossAmount;
@@ -514,8 +517,8 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             submissionData.taxRate = parseFloat(taxRateInput) || 0;
 
             if (splits.length > 0) {
-                // PERSISTÊNCIA INTEGRAL DO RATEIO (REGRA 2)
                 submissionData.splits = splitsDetails;
+                // NOTA: A criação de despesas foi removida daqui para ser centralizada no handler do App.tsx (Regra 3 do comando atual)
             } else {
                 submissionData.commissionAmount = commissionAmount;
                 submissionData.advisorId = advisorId;
@@ -1710,14 +1713,17 @@ const App: FC = () => {
     const [activeView, setActiveView] = useState<View>('dashboard');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     
-    // Fix: Remove explicit type arguments that may cause "Untyped function calls" error in some environments
-    const [incomeCategories, setIncomeCategories] = useLocalStorage('incomeCategories', initialIncomeCategories);
-    const [expenseCategories, setExpenseCategories] = useLocalStorage('expenseCategories', initialExpenseCategories);
-    const [paymentMethods, setPaymentMethods] = useLocalStorage('paymentMethods', initialPaymentMethods);
-    const [costCenters, setCostCenters] = useLocalStorage('costCenters', initialCostCenters);
-    const [advisors, setAdvisors] = useLocalStorage('advisors', initialAdvisors);
-    const [globalTaxRate, setGlobalTaxRate] = useLocalStorage('globalTaxRate', 6);
-    const [goals, setGoals] = useLocalStorage('goals', getInitialGoals());
+    /**
+     * Re-adding explicit type arguments to ensure local state is correctly typed.
+     * This avoids "Untyped function calls" by explicitly defining T.
+     */
+    const [incomeCategories, setIncomeCategories] = useLocalStorage<string[]>('incomeCategories', initialIncomeCategories);
+    const [expenseCategories, setExpenseCategories] = useLocalStorage<ExpenseCategory[]>('expenseCategories', initialExpenseCategories);
+    const [paymentMethods, setPaymentMethods] = useLocalStorage<string[]>('paymentMethods', initialPaymentMethods);
+    const [costCenters, setCostCenters] = useLocalStorage<CostCenter[]>('costCenters', initialCostCenters);
+    const [advisors, setAdvisors] = useLocalStorage<Advisor[]>('advisors', initialAdvisors);
+    const [globalTaxRate, setGlobalTaxRate] = useLocalStorage<number>('globalTaxRate', 6);
+    const [goals, setGoals] = useLocalStorage<Goal[]>('goals', getInitialGoals());
     
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [importedRevenues, setImportedRevenues] = useState<ImportedRevenue[]>([]);
@@ -1749,7 +1755,7 @@ const App: FC = () => {
         if (!user) return;
         const docRef = await saveTransaction(data as any, user.uid);
         
-        // CRIAÇÃO AUTOMÁTICA DAS DESPESAS DE COMISSÃO (CORREÇÃO SOLICITADA)
+        // CRIAÇÃO AUTOMÁTICA DAS DESPESAS DE COMISSÃO
         if (data.type === TransactionType.INCOME) {
             const splitsToProcess = data.splits || [];
             
@@ -1757,6 +1763,7 @@ const App: FC = () => {
             if (splitsToProcess.length > 0) {
                 for (const split of splitsToProcess) {
                     const netPayout = Number(split.netPayout);
+                    // REGRA OBRIGATÓRIA: Somente criar se netPayout for estritamente positivo (> 0)
                     if (netPayout > 0) {
                         try {
                             await addDoc(collection(db, "transacoes"), {
@@ -1857,8 +1864,10 @@ const App: FC = () => {
                             {activeView === 'transactions' && <TransactionsView transactions={transactions} onAdd={handleAddTransaction} onEdit={handleEditTransaction} onDelete={handleDeleteTransaction} onSetPaid={handleSetPaid} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} onImportTransactions={handleImportTransactions} globalTaxRate={globalTaxRate} importedRevenues={importedRevenues} userId={user.uid} />}
                             {activeView === 'imported-revenues' && <ImportedRevenuesView importedRevenues={importedRevenues} advisors={advisors} onImport={handleImportRevenues} onDelete={handleDeleteRevenue} userId={user.uid} />}
                             {activeView === 'reports' && <ReportsView transactions={transactions} importedRevenues={importedRevenues} />}
-                            {/* Fix: Simplified arithmetic in onUpdateProgress to avoid TS left/right-hand side errors on line 1578 */}
-                            {activeView === 'goals' && <GoalsView goals={goals} onAdd={v => setGoals([...goals, { ...v, id: crypto.randomUUID(), currentAmount: 0 }])} onUpdateProgress={(id, amount) => setGoals(goals.map(g => g.id === id ? { ...g, currentAmount: (g.currentAmount || 0) + (amount || 0) } : g))} onDelete={id => setGoals(goals.filter(g => g.id !== id))} />}
+                            {/**
+                             * Fixed arithmetic operation by using Number() to ensure type compatibility during addition.
+                             */}
+                            {activeView === 'goals' && <GoalsView goals={goals} onAdd={v => setGoals([...goals, { ...v, id: crypto.randomUUID(), currentAmount: 0 }])} onUpdateProgress={(id, amount) => setGoals(goals.map(g => g.id === id ? { ...g, currentAmount: (Number(g.currentAmount) || 0) + (Number(amount) || 0) } : g))} onDelete={id => setGoals(goals.filter(g => g.id !== id))} />}
                             {activeView === 'settings' && <SettingsView incomeCategories={incomeCategories} setIncomeCategories={setIncomeCategories} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} paymentMethods={paymentMethods} setPaymentMethods={setPaymentMethods} costCenters={costCenters} setCostCenters={setCostCenters} advisors={advisors} setAdvisors={setAdvisors} globalTaxRate={globalTaxRate} setGlobalTaxRate={setGlobalTaxRate} />}
                         </>
                     )}
