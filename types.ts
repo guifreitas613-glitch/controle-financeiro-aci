@@ -36,6 +36,7 @@ export interface Transaction {
   
   // Fields for Income Logic (Gross/Net/Commission)
   taxAmount?: number;
+  taxRate?: number;
   grossAmount?: number;
   commissionAmount?: number;
   advisorId?: string;
@@ -106,6 +107,7 @@ export interface Partner {
   id: string;
   name: string;
   percentage: number;
+  quotas: number;
 }
 
 export type View = 'dashboard' | 'transactions' | 'imported-revenues' | 'goals' | 'reports' | 'settings' | 'partnership';

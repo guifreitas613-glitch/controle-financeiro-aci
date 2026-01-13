@@ -37,9 +37,6 @@ declare var XLSX: any;
 declare var jspdf: any;
 
 // --- HOOKS ---
-/**
- * Fixed hook definition to ensure it is recognized as a generic function.
- */
 function useLocalStorage<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
     const [storedValue, setStoredValue] = useState<T>(() => {
         try {
@@ -234,7 +231,6 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
 
     const isAddingFromTab = !!defaultType;
     const isEditing = !!initialData;
-    const hasInitialSplits = !!(initialData?.splits && initialData.splits.length > 0);
     const isInitializing = useRef(true); 
     const currentCategories = useMemo(() => 
         type === TransactionType.INCOME 
@@ -438,7 +434,6 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
 
     const splitsDetails = useMemo(() => {
         return splits.map(split => {
-            // Reidratação: Se for edição e já existirem os cálculos salvos, preserva integralmente (Regra 3 e 4)
             if (isEditing && split.netPayout !== undefined) {
                 return split;
             }
@@ -496,7 +491,6 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             }
         }
         
-        // Parcela líquida do escritório
         const officeNetAmount = type === TransactionType.INCOME 
             ? (splits.length > 0 ? officeShare : (basePostTax - (advisorId ? commissionAmount : 0)))
             : parsedGrossAmount;
@@ -519,7 +513,6 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
 
             if (splits.length > 0) {
                 submissionData.splits = splitsDetails;
-                // NOTA: A criação de despesas foi removida daqui para ser centralizada no handler do App.tsx (Regra 3 do comando atual)
             } else {
                 submissionData.commissionAmount = commissionAmount;
                 submissionData.advisorId = advisorId;
@@ -642,27 +635,6 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                                         </div>
                                      </div>
                                  ))}
-                            <div className="mt-3 p-3 bg-surface rounded-lg border border-border-color text-xs space-y-1">
-                                <div className="flex justify-between">
-                                    <span className="text-text-secondary">Total Receita Informada:</span>
-                                    <span className="font-mono">{Number(gross || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-text-secondary">Soma Receitas Individuais:</span>
-                                    <span className={`font-mono ${Math.abs(splitRevenueDifference) > 0.05 ? 'text-danger' : 'text-green-400'}`}>
-                                        {Number(totalSplitRevenue || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                                    </span>
-                                </div>
-                                {Math.abs(splitRevenueDifference) > 0.05 && (
-                                    <div className="flex justify-between items-center text-danger font-bold mt-1 pt-1 border-t border-border-color">
-                                        <span>Diferença:</span>
-                                        <div className="flex items-center gap-2">
-                                            <span>{formatCurrency(splitRevenueDifference)}</span>
-                                            <button type="button" onClick={autoAdjustSplits} className="text-[10px] bg-secondary/20 hover:bg-secondary/40 px-2 py-0.5 rounded text-text-primary font-normal">Ajustar Proporcionalmente</button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
                         </div>
                     )}
 
@@ -713,41 +685,6 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                             <p className="font-bold text-green-400">{formatCurrency(basePostTax)}</p>
                         </div>
                     </div>
-                    
-                    {splits.length > 0 && (
-                        <div className="border-t border-border-color pt-2 mt-2">
-                            <div className="flex justify-between items-center text-sm">
-                                <span className="text-text-secondary">Total Repasses (Liq):</span>
-                                <span className="font-bold text-danger">{formatCurrency(totalNetPayouts)}</span>
-                            </div>
-                            <div className="flex justify-between items-center text-sm mt-1">
-                                <span className="text-text-secondary">Parcela Escritório:</span>
-                                <span className={`font-bold ${(officeShare) >= 0 ? 'text-primary' : 'text-danger'}`}>{formatCurrency(officeShare)}</span>
-                            </div>
-                        </div>
-                    )}
-                    
-                    {splits.length === 0 && advisorId && (
-                        <div className="flex flex-col items-center gap-2 pt-2 border-t border-border-color mt-2">
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm text-text-secondary">Comissão Estimada (30% do Líquido):</span>
-                                <span className="font-bold text-danger">{formatCurrency(commissionAmount)}</span>
-                            </div>
-                             {isCommissionManual ? (
-                                <div className="flex items-center gap-2">
-                                    <input type="number" step="0.01" value={commissionAmount.toFixed(2)} onChange={(e) => {
-                                            const val = parseFloat(e.target.value);
-                                            if (!isNaN(val)) {
-                                                setCommissionAmount(val);
-                                            }
-                                        }} className="w-28 bg-surface p-1 rounded-md border border-border-color text-danger font-semibold text-center" />
-                                    <Button type="button" variant="secondary" className="py-1 px-2 text-xs" onClick={() => setIsCommissionManual(false)}>Recalcular (Auto)</Button>
-                                </div>
-                            ) : (
-                                <Button type="button" variant="ghost" className="py-1 px-2 text-xs text-text-secondary" onClick={() => setIsCommissionManual(true)}>Ajustar Manualmente</Button>
-                            )}
-                        </div>
-                    )}
                 </div>
                 </>
             )}
@@ -907,7 +844,6 @@ const GoalsView: FC<{ goals: Goal[], onAdd: (g: any) => void, onUpdateProgress: 
                         </Card>
                     )
                 })}
-                {goals.length === 0 && <div className="col-span-full text-center py-12 text-text-secondary border-2 border-dashed border-border-color rounded-xl"><GoalsIcon className="w-12 h-12 mx-auto mb-4 opacity-50" /><p>Nenhuma meta definida ainda.</p></div>}
             </div>
             <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Nova Meta"><GoalForm onSubmit={(data) => { onAdd(data); setIsAddModalOpen(false); }} onClose={() => setIsAddModalOpen(false)} /></Modal>
             <Modal isOpen={isProgressModalOpen} onClose={() => setIsProgressModalOpen(false)} title="Adicionar Progresso" size="sm"><AddProgressForm onSubmit={(amount) => { if(selectedGoalId) onUpdateProgress(selectedGoalId, amount); setIsProgressModalOpen(false); }} onClose={() => setIsProgressModalOpen(false)} /></Modal>
@@ -918,15 +854,18 @@ const GoalsView: FC<{ goals: Goal[], onAdd: (g: any) => void, onUpdateProgress: 
 const PartnershipView: FC<{ partners: Partner[], onSave: (partners: Partner[]) => void }> = ({ partners, onSave }) => {
     const [newName, setNewName] = useState('');
     const [newPercentage, setNewPercentage] = useState('');
+    const [newQuotas, setNewQuotas] = useState('');
 
     const handleAdd = () => {
-        if (!newName || !newPercentage) return;
+        if (!newName || !newPercentage || !newQuotas) return;
         const p = parseFloat(newPercentage);
-        if (isNaN(p)) return;
-        const updated = [...partners, { id: crypto.randomUUID(), name: newName, percentage: p }];
+        const q = parseFloat(newQuotas);
+        if (isNaN(p) || isNaN(q)) return;
+        const updated = [...partners, { id: crypto.randomUUID(), name: newName, percentage: p, quotas: q }];
         onSave(updated);
         setNewName('');
         setNewPercentage('');
+        setNewQuotas('');
     };
 
     const handleRemove = (id: string) => {
@@ -935,6 +874,7 @@ const PartnershipView: FC<{ partners: Partner[], onSave: (partners: Partner[]) =
     };
 
     const totalPercent = partners.reduce((acc, p) => acc + p.percentage, 0);
+    const totalQuotas = partners.reduce((acc, p) => acc + (p.quotas || 0), 0);
 
     return (
         <div className="space-y-6 animate-fade-in">
@@ -950,9 +890,15 @@ const PartnershipView: FC<{ partners: Partner[], onSave: (partners: Partner[]) =
                             <label className="block text-xs text-text-secondary mb-1">Nome Completo</label>
                             <input type="text" value={newName} onChange={e => setNewName(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm" placeholder="Nome do sócio" />
                         </div>
-                        <div>
-                            <label className="block text-xs text-text-secondary mb-1">Percentual (%)</label>
-                            <input type="number" step="0.01" value={newPercentage} onChange={e => setNewPercentage(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm" placeholder="Ex: 25" />
+                        <div className="grid grid-cols-2 gap-2">
+                            <div>
+                                <label className="block text-xs text-text-secondary mb-1">Percentual (%)</label>
+                                <input type="number" step="0.01" value={newPercentage} onChange={e => setNewPercentage(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm" placeholder="Ex: 25" />
+                            </div>
+                            <div>
+                                <label className="block text-xs text-text-secondary mb-1">N° de cotas</label>
+                                <input type="number" step="1" value={newQuotas} onChange={e => setNewQuotas(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm" placeholder="Ex: 1000" />
+                            </div>
                         </div>
                         <Button onClick={handleAdd} className="w-full"><PlusIcon className="w-4 h-4"/> Adicionar</Button>
                     </div>
@@ -961,20 +907,35 @@ const PartnershipView: FC<{ partners: Partner[], onSave: (partners: Partner[]) =
                 <Card className="lg:col-span-2">
                     <div className="flex justify-between items-center mb-6">
                         <h3 className="font-bold text-text-primary uppercase text-sm tracking-wider">Quadro de Sócios</h3>
-                        <div className={`px-3 py-1 rounded-full text-xs font-bold ${Math.abs(totalPercent - 100) < 0.01 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-danger'}`}>
-                            Total: {totalPercent.toFixed(2)}%
+                        <div className="flex gap-4 items-center bg-background px-4 py-2 rounded-lg border border-border-color">
+                            <div className="flex flex-col">
+                                <span className="text-[10px] text-text-secondary uppercase font-bold">Total Percentual</span>
+                                <span className={`text-sm font-bold ${Math.abs(totalPercent - 100) < 0.01 ? 'text-green-400' : 'text-danger'}`}>{totalPercent.toFixed(2)}%</span>
+                            </div>
+                            <div className="w-px h-8 bg-border-color"></div>
+                            <div className="flex flex-col">
+                                <span className="text-[10px] text-text-secondary uppercase font-bold">Total de Cotas</span>
+                                <span className="text-sm font-bold text-primary">{totalQuotas.toLocaleString('pt-BR')}</span>
+                            </div>
                         </div>
                     </div>
                     <ul className="space-y-3">
                         {partners.map(p => (
-                            <li key={p.id} className="flex justify-between items-center bg-background/50 p-4 rounded-lg border border-border-color/50 group">
+                            <li key={p.id} className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center bg-background/50 p-4 rounded-lg border border-border-color/50 group">
                                 <div className="flex flex-col">
-                                    <span className="font-bold text-text-primary">{p.name}</span>
-                                    <span className="text-xs text-text-secondary">Sócio da ACI Capital</span>
+                                    <span className="text-[10px] text-text-secondary uppercase font-bold tracking-tighter">Nome Completo</span>
+                                    <span className="font-bold text-text-primary truncate">{p.name}</span>
                                 </div>
-                                <div className="flex items-center gap-6">
-                                    <span className="font-mono text-xl font-bold text-primary">{p.percentage}%</span>
-                                    <button onClick={() => handleRemove(p.id)} className="text-text-secondary hover:text-danger opacity-0 group-hover:opacity-100 transition-opacity"><TrashIcon className="w-5 h-5"/></button>
+                                <div className="flex flex-col sm:items-center">
+                                    <span className="text-[10px] text-text-secondary uppercase font-bold tracking-tighter">Percentual (%)</span>
+                                    <span className="font-mono text-lg font-bold text-primary">{p.percentage}%</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <div className="flex flex-col">
+                                        <span className="text-[10px] text-text-secondary uppercase font-bold tracking-tighter">N° de cotas</span>
+                                        <span className="font-bold text-text-primary">{p.quotas?.toLocaleString('pt-BR') || 0}</span>
+                                    </div>
+                                    <button onClick={() => handleRemove(p.id)} className="text-text-secondary hover:text-danger opacity-0 group-hover:opacity-100 transition-opacity p-2"><TrashIcon className="w-5 h-5"/></button>
                                 </div>
                             </li>
                         ))}
@@ -1436,7 +1397,6 @@ const TransactionsView: FC<{
                                     </td>
                                 </tr>
                             ))}
-                            {filtered.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-text-secondary">Nenhuma transação encontrada.</td></tr>}
                         </tbody>
                     </table>
                 </div>
@@ -1580,7 +1540,6 @@ const ImportedRevenuesView: FC<{
                                     <td className="p-4">{formatDate(r.date)}</td><td className="p-4">{r.conta}</td><td className="p-4 font-medium">{r.cliente}</td><td className="p-4">{r.codAssessor}</td><td className="p-4">{r.assessorPrincipal}</td><td className="p-4">{r.classificacao}</td><td className="p-4">{r.produtoCategoria}</td><td className="p-4">{r.ativo}</td><td className="p-4">{r.tipoReceita}</td><td className="p-4 font-bold text-green-400">{formatCurrency(r.receitaLiquidaEQI)}</td><td className="p-4">{Math.round(r.percentualRepasse)}%</td><td className="p-4 font-bold text-primary">{formatCurrency(r.comissaoLiquida)}</td><td className="p-4">{r.tipo}</td><td className="p-4 text-right"><Button variant="ghostDanger" onClick={() => onDelete(r.id)}><TrashIcon className="w-4 h-4"/></Button></td>
                                 </tr>
                             ))}
-                            {filteredRevenues.length === 0 && <tr><td colSpan={14} className="p-8 text-center text-text-secondary">Nenhuma receita importada encontrada.</td></tr>}
                         </tbody>
                     </table>
                 </div>
@@ -1750,29 +1709,6 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                 <Card className="border-l-4 border-primary"><h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Lucro Líquido</h3><p className={`text-2xl font-bold ${netProfit >= 0 ? 'text-text-primary' : 'text-danger'}`}>{formatCurrency(netProfit)}</p></Card>
                 <Card className="border-l-4 border-blue-400"><h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Metas Atingidas</h3><p className="text-2xl font-bold text-blue-400">{achievedGoals} <span className="text-lg text-text-secondary font-normal">/ {goals.length}</span></p></Card>
             </div>
-            {upcomingBills.length > 0 && (
-                <div className="bg-surface border border-border-color rounded-xl p-3 sm:p-6">
-                    <div className="flex items-center gap-3 mb-3">
-                        <div className="bg-danger/10 p-2 rounded-full"><AlertCircleIcon className="w-5 h-5 text-danger" /></div>
-                        <div><h3 className="text-base font-bold uppercase tracking-tight">Contas a Pagar (Próximos 5 Dias)</h3></div>
-                    </div>
-                    <table className="w-full text-left border-collapse text-xs sm:text-sm">
-                        <thead><tr className="text-text-secondary border-b border-border-color/30"><th className="py-2">Vencimento</th><th>Descrição</th><th>Valor</th><th className="text-right">Ação</th></tr></thead>
-                        <tbody>{upcomingBills.map(bill => (
-                            <tr key={bill.id} className="border-b border-border-color/10 last:border-0 hover:bg-background/50">
-                                <td className="py-2 text-text-secondary">{formatDate(bill.date)}</td>
-                                <td className="font-medium">{bill.description}</td>
-                                <td className="font-bold text-danger">{formatCurrency(bill.amount)}</td>
-                                <td className="text-right">
-                                    <div className="flex justify-end">
-                                        <Button onClick={() => handlePayClick(bill)} variant="success" className="py-1 px-3 text-[10px] w-fit">Pagar</Button>
-                                    </div>
-                                </td>
-                            </tr>
-                        ))}</tbody>
-                    </table>
-                </div>
-            )}
              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <Card className="lg:col-span-2 h-[400px] flex flex-col"><h3 className="text-lg font-bold mb-4 uppercase tracking-tight">Fluxo de Caixa</h3><div className="flex-grow"><ResponsiveContainer><AreaChart data={cashFlowData}><defs><linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#D1822A" stopOpacity={0.8}/><stop offset="95%" stopColor="#D1822A" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2D376A" opacity={0.5} /><XAxis dataKey="date" stroke="#A0AEC0" tick={{fontSize:11}} tickLine={false} axisLine={false} /><YAxis stroke="#A0AEC0" tickFormatter={v => `R$${(Number(v) as number)/1000}k`} tick={{fontSize:11}} width={60} tickLine={false} axisLine={false} /><Tooltip contentStyle={{backgroundColor:'#1A214A',border:'none',borderRadius:'8px'}} itemStyle={{color:'#D1822A'}} formatter={v => [formatCurrency(Number(v)), 'Saldo']} /><Area type="monotone" dataKey="balance" stroke="#D1822A" strokeWidth={3} fillOpacity={1} fill="url(#colorBalance)" /></AreaChart></ResponsiveContainer></div></Card>
                 <Card className="h-[400px] flex flex-col"><h3 className="text-lg font-bold mb-4 uppercase tracking-tight">Natureza das Despesas</h3><div className="flex-grow">{expenseSubcategoryData.length > 0 ? <ResponsiveContainer><PieChart><Pie data={expenseSubcategoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={100} fill="#8884d8" paddingAngle={5} stroke="none">{expenseSubcategoryData.map((e,i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip />} /><Legend verticalAlign="bottom" height={36} iconType="circle" formatter={v => <span className="text-text-secondary ml-1">{v}</span>} /></PieChart></ResponsiveContainer> : <div className="flex items-center justify-center h-full text-text-secondary"><p>Sem dados.</p></div>}</div></Card>
@@ -1790,10 +1726,6 @@ const App: FC = () => {
     const [activeView, setActiveView] = useState<View>('dashboard');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     
-    /**
-     * Re-adding explicit type arguments to ensure local state is correctly typed.
-     * This avoids "Untyped function calls" by explicitly defining T.
-     */
     const [incomeCategories, setIncomeCategories] = useLocalStorage<string[]>('incomeCategories', initialIncomeCategories);
     const [expenseCategories, setExpenseCategories] = useLocalStorage<ExpenseCategory[]>('expenseCategories', initialExpenseCategories);
     const [paymentMethods, setPaymentMethods] = useLocalStorage<string[]>('paymentMethods', initialPaymentMethods);
@@ -1837,15 +1769,11 @@ const App: FC = () => {
         if (!user) return;
         const docRef = await saveTransaction(data as any, user.uid);
         
-        // CRIAÇÃO AUTOMÁTICA DAS DESPESAS DE COMISSÃO
         if (data.type === TransactionType.INCOME) {
             const splitsToProcess = data.splits || [];
-            
-            // Caso com múltiplos assessores (splits)
             if (splitsToProcess.length > 0) {
                 for (const split of splitsToProcess) {
                     const netPayout = Number(split.netPayout);
-                    // REGRA OBRIGATÓRIA: Somente criar se netPayout for estritamente positivo (> 0)
                     if (netPayout > 0) {
                         try {
                             await addDoc(collection(db, "transacoes"), {
@@ -1869,7 +1797,6 @@ const App: FC = () => {
                     }
                 }
             } 
-            // Caso simples (um único assessor selecionado fora do grid de splits)
             else if (data.advisorId && data.commissionAmount && data.commissionAmount > 0) {
                 const advisorObj = advisors.find(a => a.id === data.advisorId);
                 try {
@@ -1893,7 +1820,6 @@ const App: FC = () => {
                 }
             }
         }
-
         setTransactions(prev => [{ id: docRef.id, ...data } as unknown as Transaction, ...prev]);
     };
 
