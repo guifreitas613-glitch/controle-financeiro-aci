@@ -699,7 +699,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                             </select>
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-text-secondary">Centro de Custo</label>
+                            <label className="block text-sm font-medium text-text-secondary">Centro de Gasto</label>
                              <select name="costCenter" value={formData.costCenter} onChange={handleChange} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" required>
                                 {costCenters.map(cc => <option key={cc.id} value={cc.id}>{cc.name}</option>)}
                             </select>
@@ -855,23 +855,71 @@ const PartnershipView: FC<{ partners: Partner[], onSave: (partners: Partner[]) =
     const [newName, setNewName] = useState('');
     const [newPercentage, setNewPercentage] = useState('');
     const [newQuotas, setNewQuotas] = useState('');
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [sortConfig, setSortConfig] = useState<{ key: keyof Partner; direction: 'asc' | 'desc' } | null>(null);
 
-    const handleAdd = () => {
+    const handleSave = () => {
         if (!newName || !newPercentage || !newQuotas) return;
         const p = parseFloat(newPercentage);
         const q = parseFloat(newQuotas);
         if (isNaN(p) || isNaN(q)) return;
-        const updated = [...partners, { id: crypto.randomUUID(), name: newName, percentage: p, quotas: q }];
+        
+        let updated;
+        if (editingId) {
+            updated = partners.map(partner => 
+                partner.id === editingId ? { ...partner, name: newName, percentage: p, quotas: q } : partner
+            );
+        } else {
+            updated = [...partners, { id: crypto.randomUUID(), name: newName, percentage: p, quotas: q }];
+        }
+        
         onSave(updated);
+        cancelEdit();
+    };
+
+    const handleEdit = (partner: Partner) => {
+        setEditingId(partner.id);
+        setNewName(partner.name);
+        setNewPercentage(partner.percentage.toString());
+        setNewQuotas(partner.quotas.toString());
+    };
+
+    const cancelEdit = () => {
+        setEditingId(null);
         setNewName('');
         setNewPercentage('');
         setNewQuotas('');
     };
 
-    const handleRemove = (id: string) => {
-        if (!window.confirm("Remover sócio?")) return;
-        onSave(partners.filter(p => p.id !== id));
+    const handleSort = (key: keyof Partner) => {
+        let direction: 'asc' | 'desc' = 'asc';
+        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
+        setSortConfig({ key, direction });
     };
+
+    const filteredAndSortedPartners = useMemo(() => {
+        let result = [...partners];
+        if (searchTerm) {
+            const low = searchTerm.toLowerCase();
+            result = result.filter(p => 
+                p.name.toLowerCase().includes(low) || 
+                p.percentage.toString().includes(low) || 
+                p.quotas.toString().includes(low)
+            );
+        }
+        if (sortConfig) {
+            result.sort((a, b) => {
+                const aVal = a[sortConfig.key];
+                const bVal = b[sortConfig.key];
+                if (typeof aVal === 'string' && typeof bVal === 'string') {
+                    return sortConfig.direction === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+                }
+                return sortConfig.direction === 'asc' ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
+            });
+        }
+        return result;
+    }, [partners, searchTerm, sortConfig]);
 
     const totalPercent = partners.reduce((acc, p) => acc + p.percentage, 0);
     const totalQuotas = partners.reduce((acc, p) => acc + (p.quotas || 0), 0);
@@ -883,8 +931,10 @@ const PartnershipView: FC<{ partners: Partner[], onSave: (partners: Partner[]) =
             </div>
             
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <Card className="lg:col-span-1">
-                    <h3 className="font-bold mb-4 text-primary uppercase text-sm tracking-wider">Adicionar Sócio</h3>
+                <Card className="lg:col-span-1 h-fit">
+                    <h3 className="font-bold mb-4 text-primary uppercase text-sm tracking-wider">
+                        {editingId ? 'Editar Sócio' : 'Adicionar Sócio'}
+                    </h3>
                     <div className="space-y-4">
                         <div>
                             <label className="block text-xs text-text-secondary mb-1">Nome Completo</label>
@@ -900,51 +950,70 @@ const PartnershipView: FC<{ partners: Partner[], onSave: (partners: Partner[]) =
                                 <input type="number" step="1" value={newQuotas} onChange={e => setNewQuotas(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm" placeholder="Ex: 1000" />
                             </div>
                         </div>
-                        <Button onClick={handleAdd} className="w-full"><PlusIcon className="w-4 h-4"/> Adicionar</Button>
+                        <div className="flex gap-2">
+                            <Button onClick={handleSave} className="flex-1">{editingId ? 'Salvar Alterações' : 'Adicionar'}</Button>
+                            {editingId && <Button variant="secondary" onClick={cancelEdit}>Cancelar</Button>}
+                        </div>
                     </div>
                 </Card>
 
                 <Card className="lg:col-span-2">
-                    <div className="flex justify-between items-center mb-6">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                         <h3 className="font-bold text-text-primary uppercase text-sm tracking-wider">Quadro de Sócios</h3>
-                        <div className="flex gap-4 items-center bg-background px-4 py-2 rounded-lg border border-border-color">
-                            <div className="flex flex-col">
-                                <span className="text-[10px] text-text-secondary uppercase font-bold">Total Percentual</span>
-                                <span className={`text-sm font-bold ${Math.abs(totalPercent - 100) < 0.01 ? 'text-green-400' : 'text-danger'}`}>{totalPercent.toFixed(2)}%</span>
+                        <div className="flex flex-wrap gap-4 items-center">
+                            <div className="relative">
+                                <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary" />
+                                <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Filtrar..." className="bg-background border border-border-color rounded-md pl-8 pr-3 py-1.5 text-xs focus:ring-1 focus:ring-primary outline-none w-32 sm:w-40" />
                             </div>
-                            <div className="w-px h-8 bg-border-color"></div>
-                            <div className="flex flex-col">
-                                <span className="text-[10px] text-text-secondary uppercase font-bold">Total de Cotas</span>
-                                <span className="text-sm font-bold text-primary">{totalQuotas.toLocaleString('pt-BR')}</span>
+                            <div className="flex gap-2">
+                                <div className={`px-3 py-1.5 rounded-lg text-xs font-bold ${Math.abs(totalPercent - 100) < 0.01 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-danger'}`}>
+                                    Total: {totalPercent.toFixed(2)}%
+                                </div>
+                                <div className="px-3 py-1.5 rounded-lg text-xs font-bold bg-primary/20 text-primary">
+                                    Total Cotas: {totalQuotas.toLocaleString('pt-BR')}
+                                </div>
                             </div>
                         </div>
                     </div>
-                    <ul className="space-y-3">
-                        {partners.map(p => (
-                            <li key={p.id} className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center bg-background/50 p-4 rounded-lg border border-border-color/50 group">
-                                <div className="flex flex-col">
-                                    <span className="text-[10px] text-text-secondary uppercase font-bold tracking-tighter">Nome Completo</span>
-                                    <span className="font-bold text-text-primary truncate">{p.name}</span>
-                                </div>
-                                <div className="flex flex-col sm:items-center">
-                                    <span className="text-[10px] text-text-secondary uppercase font-bold tracking-tighter">Percentual (%)</span>
-                                    <span className="font-mono text-lg font-bold text-primary">{p.percentage}%</span>
-                                </div>
-                                <div className="flex justify-between items-center">
-                                    <div className="flex flex-col">
-                                        <span className="text-[10px] text-text-secondary uppercase font-bold tracking-tighter">N° de cotas</span>
-                                        <span className="font-bold text-text-primary">{p.quotas?.toLocaleString('pt-BR') || 0}</span>
-                                    </div>
-                                    <button onClick={() => handleRemove(p.id)} className="text-text-secondary hover:text-danger opacity-0 group-hover:opacity-100 transition-opacity p-2"><TrashIcon className="w-5 h-5"/></button>
-                                </div>
-                            </li>
-                        ))}
-                        {partners.length === 0 && (
-                            <div className="text-center py-12 text-text-secondary border-2 border-dashed border-border-color rounded-xl">
-                                <p>Nenhum sócio cadastrado.</p>
-                            </div>
-                        )}
-                    </ul>
+
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="border-b border-border-color text-[10px] text-text-secondary uppercase tracking-wider">
+                                    <th className="p-3 cursor-pointer hover:text-primary transition-colors" onClick={() => handleSort('name')}>
+                                        Nome Completo {sortConfig?.key === 'name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                                    </th>
+                                    <th className="p-3 cursor-pointer hover:text-primary transition-colors text-center" onClick={() => handleSort('percentage')}>
+                                        Percentual (%) {sortConfig?.key === 'percentage' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                                    </th>
+                                    <th className="p-3 cursor-pointer hover:text-primary transition-colors text-center" onClick={() => handleSort('quotas')}>
+                                        N° de cotas {sortConfig?.key === 'quotas' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                                    </th>
+                                    <th className="p-3 text-right">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border-color/30">
+                                {filteredAndSortedPartners.map(p => (
+                                    <tr key={p.id} className={`hover:bg-background/50 transition-colors ${editingId === p.id ? 'bg-primary/10' : ''}`}>
+                                        <td className="p-3 font-bold text-text-primary text-sm">{p.name}</td>
+                                        <td className="p-3 font-mono text-primary font-bold text-center text-sm">{p.percentage}%</td>
+                                        <td className="p-3 text-text-secondary text-center text-sm">{p.quotas?.toLocaleString('pt-BR') || 0}</td>
+                                        <td className="p-3 text-right">
+                                            <div className="flex justify-end gap-1">
+                                                <button onClick={() => handleEdit(p)} className="p-2 text-text-secondary hover:text-primary hover:bg-surface rounded-lg transition-all" title="Editar Sócio"><EditIcon className="w-4 h-4"/></button>
+                                                <button onClick={() => { if(window.confirm("Remover sócio?")) onSave(partners.filter(item => item.id !== p.id)) }} className="p-2 text-text-secondary hover:text-danger hover:bg-surface rounded-lg transition-all" title="Remover Sócio"><TrashIcon className="w-4 h-4"/></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {filteredAndSortedPartners.length === 0 && (
+                                    <tr>
+                                        <td colSpan={4} className="p-8 text-center text-text-secondary text-sm">Nenhum sócio encontrado.</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </Card>
             </div>
         </div>
@@ -1241,6 +1310,7 @@ const TransactionsView: FC<{
         setSortConfig({ key, direction });
     };
 
+    // Fixed typo: keykeyof to keyof
     const getSortIndicator = (key: keyof Transaction) => {
         if (!sortConfig || sortConfig.key !== key) return null;
         return sortConfig.direction === 'asc' ? <ArrowUpIcon className="w-4 h-4 ml-1 inline" /> : <ArrowDownIcon className="w-4 h-4 ml-1 inline" />;
@@ -1653,6 +1723,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
     
     const upcomingBills = useMemo(() => {
         const fiveDaysFromNow = new Date();
+        fiveDaysFromNow.setHours(23, 59, 59, 999);
         fiveDaysFromNow.setDate(fiveDaysFromNow.getDate() + 5);
         const threshold = fiveDaysFromNow.getTime();
 
@@ -1675,8 +1746,10 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
             if (acc.length && acc[acc.length-1].date === item.date) acc[acc.length-1].balance = item.balance; else acc.push(item); return acc;
         }, []);
     }, [transactions]);
+
     const handlePayClick = (bill: Transaction) => { setEditingTransaction({ ...bill, status: ExpenseStatus.PAID }); setIsModalOpen(true); };
     const handleFormSubmit = (data: TransactionFormValues) => { if (editingTransaction) onEdit(editingTransaction.id, data); setIsModalOpen(false); setEditingTransaction(null); };
+
      return (
         <div className="space-y-6 animate-fade-in">
             <div className="flex flex-col sm:flex-row gap-4">
@@ -1709,8 +1782,51 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                 <Card className="border-l-4 border-primary"><h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Lucro Líquido</h3><p className={`text-2xl font-bold ${netProfit >= 0 ? 'text-text-primary' : 'text-danger'}`}>{formatCurrency(netProfit)}</p></Card>
                 <Card className="border-l-4 border-blue-400"><h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Metas Atingidas</h3><p className="text-2xl font-bold text-blue-400">{achievedGoals} <span className="text-lg text-text-secondary font-normal">/ {goals.length}</span></p></Card>
             </div>
+
+            {upcomingBills.length > 0 && (
+                <div className="bg-surface border border-border-color rounded-xl p-3 sm:p-6">
+                    <div className="flex items-center gap-3 mb-3">
+                        <div className="bg-danger/10 p-2 rounded-full"><AlertCircleIcon className="w-5 h-5 text-danger" /></div>
+                        <div><h3 className="text-base font-bold uppercase tracking-tight">Contas a Pagar</h3></div>
+                    </div>
+                    <table className="w-full text-left border-collapse text-xs sm:text-sm">
+                        <thead>
+                            <tr className="text-text-secondary border-b border-border-color/30 uppercase text-[10px]">
+                                <th className="py-2">Vencimento</th>
+                                <th>Descrição</th>
+                                <th>Valor</th>
+                                <th className="text-center">Status</th>
+                                <th className="text-right">Ação</th>
+                            </tr>
+                        </thead>
+                        <tbody>{upcomingBills.map(bill => {
+                            const todayStart = new Date();
+                            todayStart.setHours(0,0,0,0);
+                            const isOverdue = new Date(bill.date) < todayStart;
+                            return (
+                                <tr key={bill.id} className="border-b border-border-color/10 last:border-0 hover:bg-background/50">
+                                    <td className="py-2 text-text-secondary">{formatDate(bill.date)}</td>
+                                    <td className="font-medium">{bill.description}</td>
+                                    <td className="font-bold text-danger">{formatCurrency(bill.amount)}</td>
+                                    <td className="text-center">
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${isOverdue ? 'bg-danger/20 text-danger' : 'bg-yellow-500/20 text-yellow-500'}`}>
+                                            {isOverdue ? 'VENCIDA' : 'PENDENTE'}
+                                        </span>
+                                    </td>
+                                    <td className="text-right">
+                                        <div className="flex justify-end">
+                                            <Button onClick={() => handlePayClick(bill)} variant="success" className="py-1 px-3 text-[10px] w-fit shadow-none">Pagar</Button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            );
+                        })}</tbody>
+                    </table>
+                </div>
+            )}
+
              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <Card className="lg:col-span-2 h-[400px] flex flex-col"><h3 className="text-lg font-bold mb-4 uppercase tracking-tight">Fluxo de Caixa</h3><div className="flex-grow"><ResponsiveContainer><AreaChart data={cashFlowData}><defs><linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#D1822A" stopOpacity={0.8}/><stop offset="95%" stopColor="#D1822A" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2D376A" opacity={0.5} /><XAxis dataKey="date" stroke="#A0AEC0" tick={{fontSize:11}} tickLine={false} axisLine={false} /><YAxis stroke="#A0AEC0" tickFormatter={v => `R$${(Number(v) as number)/1000}k`} tick={{fontSize:11}} width={60} tickLine={false} axisLine={false} /><Tooltip contentStyle={{backgroundColor:'#1A214A',border:'none',borderRadius:'8px'}} itemStyle={{color:'#D1822A'}} formatter={v => [formatCurrency(Number(v)), 'Saldo']} /><Area type="monotone" dataKey="balance" stroke="#D1822A" strokeWidth={3} fillOpacity={1} fill="url(#colorBalance)" /></AreaChart></ResponsiveContainer></div></Card>
+                <Card className="lg:col-span-2 h-[400px] flex flex-col"><h3 className="text-lg font-bold mb-4 uppercase tracking-tight">Fluxo de Caixa</h3><div className="flex-grow"><ResponsiveContainer><AreaChart data={cashFlowData}><defs><linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#D1822A" stopOpacity={0.8}/><stop offset="95%" stopColor="#D1822A" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2D376A" opacity={0.5} /><XAxis dataKey="date" stroke="#A0AEC0" tick={{fontSize:11}} tickLine={false} axisLine={false} /><YAxis stroke="#A0AEC0" tickFormatter={v => `R$${(Number(v) as number)/1000}k`} tick={{fontSize:11}} width={60} tickLine={false} axisLine={false} /><Tooltip contentStyle={{backgroundColor:'#1A214A',border:'none',borderRadius:'8px'}} itemStyle={{color:'#D1822A'}} formatter={v => [formatCurrency(Number(v)), 'Saldo']}/><Area type="monotone" dataKey="balance" stroke="#D1822A" strokeWidth={3} fillOpacity={1} fill="url(#colorBalance)" /></AreaChart></ResponsiveContainer></div></Card>
                 <Card className="h-[400px] flex flex-col"><h3 className="text-lg font-bold mb-4 uppercase tracking-tight">Natureza das Despesas</h3><div className="flex-grow">{expenseSubcategoryData.length > 0 ? <ResponsiveContainer><PieChart><Pie data={expenseSubcategoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={100} fill="#8884d8" paddingAngle={5} stroke="none">{expenseSubcategoryData.map((e,i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip />} /><Legend verticalAlign="bottom" height={36} iconType="circle" formatter={v => <span className="text-text-secondary ml-1">{v}</span>} /></PieChart></ResponsiveContainer> : <div className="flex items-center justify-center h-full text-text-secondary"><p>Sem dados.</p></div>}</div></Card>
             </div>
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Confirmar Pagamento / Ajustar Valor">
@@ -1726,17 +1842,20 @@ const App: FC = () => {
     const [activeView, setActiveView] = useState<View>('dashboard');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     
-    const [incomeCategories, setIncomeCategories] = useLocalStorage<string[]>('incomeCategories', initialIncomeCategories);
-    const [expenseCategories, setExpenseCategories] = useLocalStorage<ExpenseCategory[]>('expenseCategories', initialExpenseCategories);
-    const [paymentMethods, setPaymentMethods] = useLocalStorage<string[]>('paymentMethods', initialPaymentMethods);
-    const [costCenters, setCostCenters] = useLocalStorage<CostCenter[]>('costCenters', initialCostCenters);
-    const [advisors, setAdvisors] = useLocalStorage<Advisor[]>('advisors', initialAdvisors);
-    const [globalTaxRate, setGlobalTaxRate] = useLocalStorage<number>('globalTaxRate', 6);
-    const [goals, setGoals] = useLocalStorage<Goal[]>('goals', getInitialGoals());
-    const [partners, setPartners] = useState<Partner[]>([]);
-    
-    const [transactions, setTransactions] = useState<Transaction[]>([]);
-    const [importedRevenues, setImportedRevenues] = useState<ImportedRevenue[]>([]);
+    // Removing explicit generic types and ensuring two arguments for hook calls to fix "Expected 2 arguments" errors
+    const [incomeCategories, setIncomeCategories] = useLocalStorage('incomeCategories', initialIncomeCategories);
+    const [expenseCategories, setExpenseCategories] = useLocalStorage('expenseCategories', initialExpenseCategories);
+    const [paymentMethods, setPaymentMethods] = useLocalStorage('paymentMethods', initialPaymentMethods);
+    const [costCenters, setCostCenters] = useLocalStorage('costCenters', initialCostCenters);
+    const [advisors, setAdvisors] = useLocalStorage('advisors', initialAdvisors);
+    const [globalTaxRate, setGlobalTaxRate] = useLocalStorage('globalTaxRate', 6);
+    const [goals, setGoals] = useLocalStorage('goals', getInitialGoals());
+
+    // Using useLocalStorage for data persistence where expected by reported errors
+    const [partners, setPartners] = useLocalStorage<Partner[]>('partners', []);
+    const [transactions, setTransactions] = useLocalStorage<Transaction[]>('transactions', []);
+    const [importedRevenues, setImportedRevenues] = useLocalStorage<ImportedRevenue[]>('importedRevenues', []);
+
     const [loadingData, setLoadingData] = useState(false);
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (currentUser) => { setUser(currentUser); setLoadingAuth(false); });
@@ -1763,7 +1882,7 @@ const App: FC = () => {
                 setLoadingData(false);
             });
         }
-    }, [user]);
+    }, [user, setTransactions, setImportedRevenues, setPartners]);
 
     const handleAddTransaction = async (data: TransactionFormValues) => {
         if (!user) return;
@@ -1820,43 +1939,43 @@ const App: FC = () => {
                 }
             }
         }
-        setTransactions(prev => [{ id: docRef.id, ...data } as unknown as Transaction, ...prev]);
+        setTransactions([{ id: docRef.id, ...data } as unknown as Transaction, ...transactions]);
     };
 
     const handleEditTransaction = async (id: string, data: TransactionFormValues) => {
         if (!user) return;
         await updateTransaction(id, data);
-        setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...data } as unknown as Transaction : t));
+        setTransactions(transactions.map(t => t.id === id ? { ...t, ...data } as unknown as Transaction : t));
     };
     const handleDeleteTransaction = async (id: string) => {
          if (!user || !window.confirm("Excluir?")) return;
          await deleteTransactionFromDb(id);
-         setTransactions(prev => prev.filter(t => t.id !== id));
+         setTransactions(transactions.filter(t => t.id !== id));
     };
     const handleSetPaid = async (id: string) => {
         if (!user) return;
         await updateTransaction(id, { status: ExpenseStatus.PAID });
-        setTransactions(prev => prev.map(t => t.id === id ? { ...t, status: ExpenseStatus.PAID } : t));
+        setTransactions(transactions.map(t => t.id === id ? { ...t, status: ExpenseStatus.PAID } : t));
     };
     const handleImportTransactions = (data: any[]) => {
         if (!user) return;
         Promise.all(data.map(item => {
              const { tempId, selected, ...rest } = item;
              return saveTransaction(rest, user.uid).then(docRef => ({ id: docRef.id, ...rest } as Transaction));
-        })).then(newItems => setTransactions(prev => [...newItems, ...prev]));
+        })).then(newItems => setTransactions([...newItems, ...transactions]));
     };
     const handleImportRevenues = (data: any[]) => {
          if (!user) return;
          const importPromises = data.map(item => saveImportedRevenue(item, user.uid).then(docRef => ({ id: docRef.id, ...item } as ImportedRevenue)).catch(() => null));
          Promise.all(importPromises).then((results) => {
              const newRevenues = results.filter((r): r is ImportedRevenue => r !== null);
-             setImportedRevenues(prev => [...newRevenues, ...prev]);
+             setImportedRevenues([...newRevenues, ...importedRevenues]);
          });
     };
     const handleDeleteRevenue = async (id: string) => {
         if (!user || !window.confirm("Excluir?")) return;
         await deleteImportedRevenue(id);
-        setImportedRevenues(prev => prev.filter(r => r.id !== id));
+        setImportedRevenues(importedRevenues.filter(r => r.id !== id));
     };
 
     const handleSavePartnership = async (updatedPartners: Partner[]) => {
