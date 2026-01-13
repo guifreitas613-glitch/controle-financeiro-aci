@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, FC, ReactNode, useEffect, useRef } from 'react';
 import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType, AdvisorSplit, ImportedRevenue, AdvisorCost, Partner } from './types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area } from 'recharts';
@@ -1310,7 +1309,6 @@ const TransactionsView: FC<{
         setSortConfig({ key, direction });
     };
 
-    // Fixed typo: keykeyof to keyof
     const getSortIndicator = (key: keyof Transaction) => {
         if (!sortConfig || sortConfig.key !== key) return null;
         return sortConfig.direction === 'asc' ? <ArrowUpIcon className="w-4 h-4 ml-1 inline" /> : <ArrowDownIcon className="w-4 h-4 ml-1 inline" />;
@@ -1619,19 +1617,30 @@ const ImportedRevenuesView: FC<{
 };
 
 const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: ImportedRevenue[] }> = ({ transactions, importedRevenues = [] }) => {
-    const [period, setPeriod] = useState<'month' | 'year' | 'all'>('year');
+    const availableYears = useMemo(() => {
+        const years = [...new Set([
+            ...transactions.map(t => new Date(t.date).getFullYear()),
+            ...importedRevenues.map(r => new Date(r.date).getFullYear())
+        ])];
+        const currentYear = new Date().getFullYear();
+        if (!years.includes(currentYear)) years.push(currentYear);
+        return years.sort((a, b) => b - a);
+    }, [transactions, importedRevenues]);
+
+    const [selectedYear, setSelectedYear] = useState<number | 'all'>(new Date().getFullYear());
+    const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all');
+
+    const filterFn = (dateStr: string) => {
+        const d = new Date(dateStr);
+        const yearMatch = selectedYear === 'all' || d.getFullYear() === selectedYear;
+        const monthMatch = selectedMonth === 'all' || d.getMonth() === selectedMonth;
+        return yearMatch && monthMatch;
+    };
+    
     const dreData = useMemo(() => {
-        const now = new Date();
-        const filterDate = (dateStr: string) => {
-            const d = new Date(dateStr);
-            if (period === 'all') return true;
-            if (period === 'year') return d.getFullYear() === now.getFullYear();
-            if (period === 'month') return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-            return false;
-        };
-        const fTrans = transactions.filter(t => filterDate(t.date));
+        const fTrans = transactions.filter(t => filterFn(t.date));
         const manualRevenue = fTrans.filter(t => t.type === TransactionType.INCOME).reduce<number>((sum, t) => sum + t.amount, 0);
-        const importedRevenue = importedRevenues.filter(r => filterDate(r.date)).reduce<number>((sum, r) => sum + (r.receitaLiquidaEQI || 0), 0);
+        const importedRevenue = importedRevenues.filter(r => filterFn(r.date)).reduce<number>((sum, r) => sum + (r.receitaLiquidaEQI || 0), 0);
         const totalRevenue = Number(manualRevenue) + Number(importedRevenue);
         const expenseTrans = fTrans.filter(t => t.type === TransactionType.EXPENSE);
         const totalExpense = expenseTrans.reduce<number>((sum, t) => sum + t.amount, 0);
@@ -1639,15 +1648,83 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
         expenseTrans.forEach(t => { expensesByCategory[t.category] = (expensesByCategory[t.category] || 0) + t.amount; });
         const sortedExpenses = Object.entries(expensesByCategory).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
         return { totalRevenue, totalExpense, sortedExpenses, result: Number(totalRevenue) - Number(totalExpense) };
-    }, [transactions, importedRevenues, period]);
+    }, [transactions, importedRevenues, selectedYear, selectedMonth]);
+
+    const valuationMonthlyData = useMemo(() => {
+        const monthlyMap: Record<string, { revenue: number; expense: number }> = {};
+        
+        transactions.forEach(t => {
+            if (!filterFn(t.date)) return;
+            const key = t.date.substring(0, 7); // YYYY-MM
+            if (!monthlyMap[key]) monthlyMap[key] = { revenue: 0, expense: 0 };
+            if (t.type === TransactionType.INCOME) monthlyMap[key].revenue += t.amount;
+            else monthlyMap[key].expense += t.amount;
+        });
+
+        importedRevenues.forEach(r => {
+            if (!filterFn(r.date)) return;
+            const key = r.date.substring(0, 7);
+            if (!monthlyMap[key]) monthlyMap[key] = { revenue: 0, expense: 0 };
+            monthlyMap[key].revenue += (r.receitaLiquidaEQI || 0);
+        });
+
+        const calcularValuation = (llaMensal: number): number => {
+            return llaMensal > 0 ? llaMensal * 5 : 0;
+        };
+
+        return Object.entries(monthlyMap)
+            .map(([monthKey, data]) => {
+                const lla = data.revenue - data.expense;
+                const valuation = calcularValuation(lla);
+                const [year, month] = monthKey.split('-');
+                const date = new Date(parseInt(year), parseInt(month) - 1, 1, 12, 0, 0);
+                return {
+                    monthYear: date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
+                    lla,
+                    valuation,
+                    key: monthKey
+                };
+            })
+            .sort((a, b) => b.key.localeCompare(a.key));
+    }, [transactions, importedRevenues, selectedYear, selectedMonth]);
+
+    const accumulatedLLA = useMemo(() => valuationMonthlyData.reduce((acc, curr) => acc + curr.lla, 0), [valuationMonthlyData]);
+    const accumulatedValuation = useMemo(() => accumulatedLLA > 0 ? accumulatedLLA * 5 : 0, [accumulatedLLA]);
+
     return (
         <div className="space-y-6 animate-fade-in">
-             <div className="flex justify-between items-center"><h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Relatórios</h2>
-                <div className="flex gap-2">
-                    {['month','year','all'].map(p => <button key={p} onClick={() => setPeriod(p as any)} className={`px-3 py-1 rounded text-sm transition-colors ${period === p ? 'bg-primary text-white' : 'bg-surface text-text-secondary hover:text-text-primary'}`}>{p === 'month' ? 'Mês' : p === 'year' ? 'Ano' : 'Tudo'}</button>)}
+             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Relatórios</h2>
+                <div className="flex flex-wrap gap-2">
+                    <select 
+                        value={selectedYear} 
+                        onChange={e => setSelectedYear(e.target.value === 'all' ? 'all' : Number(e.target.value))} 
+                        className="bg-surface border border-border-color rounded-md px-3 py-1.5 text-xs text-text-primary focus:ring-primary outline-none"
+                    >
+                        <option value="all">Todos os Anos</option>
+                        {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                    <select 
+                        value={selectedMonth} 
+                        onChange={e => setSelectedMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))} 
+                        className="bg-surface border border-border-color rounded-md px-3 py-1.5 text-xs text-text-primary focus:ring-primary outline-none"
+                    >
+                        <option value="all">Todos os Meses</option>
+                        {['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'].map((m, i) => (
+                            <option key={i} value={i}>{m}</option>
+                        ))}
+                    </select>
                 </div>
             </div>
-            <Card className="max-w-4xl mx-auto"><div className="border-b border-border-color pb-4 mb-4"><h3 className="text-xl font-bold text-text-primary text-center uppercase tracking-tight">Demonstrativo do Resultado (DRE)</h3><p className="text-center text-text-secondary text-sm">{period === 'month' ? 'Mês Atual' : period === 'year' ? 'Ano Atual' : 'Período Completo'}</p></div>
+
+            <Card className="max-w-4xl mx-auto">
+                <div className="border-b border-border-color pb-4 mb-4">
+                    <h3 className="text-xl font-bold text-text-primary text-center uppercase tracking-tight">Demonstrativo do Resultado (DRE)</h3>
+                    <p className="text-center text-text-secondary text-sm">
+                        {selectedMonth !== 'all' ? ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][selectedMonth] + ' ' : ''}
+                        {selectedYear === 'all' ? 'Todo o Período' : selectedYear}
+                    </p>
+                </div>
                 <div className="space-y-3 font-mono text-sm sm:text-base">
                     <div className="flex justify-between items-center py-2"><span className="font-bold text-text-primary">RECEITA OPERACIONAL BRUTA</span><span className="font-bold text-green-400">{formatCurrency(dreData.totalRevenue)}</span></div>
                     <div className="flex justify-between items-center py-2 border-t border-border-color/30 mt-2"><span className="font-bold text-text-primary">(-) DESPESAS OPERACIONAIS</span><span className="font-bold text-danger">{formatCurrency(dreData.totalExpense)}</span></div>
@@ -1657,6 +1734,60 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
                         ))}
                     </div>
                     <div className="flex justify-between items-center py-3 border-t-2 border-border-color mt-4 bg-background/30 px-2 rounded"><span className="font-bold text-lg text-text-primary">RESULTADO DO PERÍODO</span><span className={`font-bold text-lg ${dreData.result >= 0 ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(dreData.result)}</span></div>
+                </div>
+            </Card>
+
+            <Card className="max-w-4xl mx-auto mt-6">
+                <div className="border-b border-border-color pb-4 mb-4 text-center">
+                    <h3 className="text-xl font-bold text-text-primary uppercase tracking-tight">Valuation</h3>
+                    <p className="text-text-secondary text-sm">Cálculo baseado no Lucro Líquido Ajustado mensal</p>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                        <thead>
+                            <tr className="text-[10px] text-text-secondary uppercase tracking-wider border-b border-border-color">
+                                <th className="p-3">Mês / Ano</th>
+                                <th className="p-3 text-right">LLA Mensal</th>
+                                <th className="p-3 text-right text-primary">Valuation (5x)</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border-color/30 font-mono">
+                            {valuationMonthlyData.map(item => (
+                                <tr key={item.key} className="hover:bg-background/50 transition-colors">
+                                    <td className="p-3 text-sm font-bold capitalize">{item.monthYear}</td>
+                                    <td className={`p-3 text-right text-sm ${item.lla >= 0 ? 'text-green-400' : 'text-danger'}`}>
+                                        {formatCurrency(item.lla)}
+                                    </td>
+                                    <td className={`p-3 text-right text-sm font-bold ${item.valuation >= 0 ? 'text-primary' : 'text-danger'}`}>
+                                        {formatCurrency(item.valuation)}
+                                    </td>
+                                </tr>
+                            ))}
+                            {valuationMonthlyData.length === 0 && (
+                                <tr>
+                                    <td colSpan={3} className="p-8 text-center text-text-secondary text-sm">Sem dados suficientes para o período selecionado.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div className="mt-6 pt-6 border-t-2 border-border-color bg-background/20 p-4 rounded-lg">
+                    <h4 className="text-sm font-bold text-text-secondary uppercase tracking-widest mb-4">Resumo Acumulado (Filtro)</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="flex justify-between items-center p-3 bg-surface rounded-lg border border-border-color">
+                            <span className="text-xs font-semibold text-text-secondary">LLA Acumulado:</span>
+                            <span className={`text-lg font-bold ${accumulatedLLA >= 0 ? 'text-green-400' : 'text-danger'}`}>
+                                {formatCurrency(accumulatedLLA)}
+                            </span>
+                        </div>
+                        <div className="flex justify-between items-center p-3 bg-surface rounded-lg border border-primary/30">
+                            <span className="text-xs font-semibold text-primary">Valuation 5x LLA Anual:</span>
+                            <span className="text-lg font-bold text-primary">
+                                {formatCurrency(accumulatedValuation)}
+                            </span>
+                        </div>
+                    </div>
                 </div>
             </Card>
         </div>
@@ -1842,7 +1973,6 @@ const App: FC = () => {
     const [activeView, setActiveView] = useState<View>('dashboard');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     
-    // Removing explicit generic types and ensuring two arguments for hook calls to fix "Expected 2 arguments" errors
     const [incomeCategories, setIncomeCategories] = useLocalStorage('incomeCategories', initialIncomeCategories);
     const [expenseCategories, setExpenseCategories] = useLocalStorage('expenseCategories', initialExpenseCategories);
     const [paymentMethods, setPaymentMethods] = useLocalStorage('paymentMethods', initialPaymentMethods);
@@ -1851,10 +1981,9 @@ const App: FC = () => {
     const [globalTaxRate, setGlobalTaxRate] = useLocalStorage('globalTaxRate', 6);
     const [goals, setGoals] = useLocalStorage('goals', getInitialGoals());
 
-    // Using useLocalStorage for data persistence where expected by reported errors
     const [partners, setPartners] = useLocalStorage<Partner[]>('partners', []);
-    const [transactions, setTransactions] = useLocalStorage<Transaction[]>('transactions', []);
-    const [importedRevenues, setImportedRevenues] = useLocalStorage<ImportedRevenue[]>('importedRevenues', []);
+    const [transactions, setTransactions] = useState<Transaction[]>([]);
+    const [importedRevenues, setImportedRevenues] = useState<ImportedRevenue[]>([]);
 
     const [loadingData, setLoadingData] = useState(false);
     useEffect(() => {
@@ -1882,7 +2011,7 @@ const App: FC = () => {
                 setLoadingData(false);
             });
         }
-    }, [user, setTransactions, setImportedRevenues, setPartners]);
+    }, [user, setPartners]);
 
     const handleAddTransaction = async (data: TransactionFormValues) => {
         if (!user) return;
