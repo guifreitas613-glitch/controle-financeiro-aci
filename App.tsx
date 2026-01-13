@@ -856,7 +856,7 @@ const PartnershipView: FC<{ partners: Partner[], onSave: (partners: Partner[]) =
     const [newQuotas, setNewQuotas] = useState('');
     const [editingId, setEditingId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
-    const [sortConfig, setSortConfig] = useState<{ key: keyof Partner; direction: 'asc' | 'desc' } | null>(null);
+    const [sortConfig, setSortConfig] = useState<{ key: keyof Partner; direction: 'asc' | 'desc' } | null>({ key: 'percentage', direction: 'desc' });
 
     const handleSave = () => {
         if (!newName || !newPercentage || !newQuotas) return;
@@ -881,7 +881,9 @@ const PartnershipView: FC<{ partners: Partner[], onSave: (partners: Partner[]) =
         setEditingId(partner.id);
         setNewName(partner.name);
         setNewPercentage(partner.percentage.toString());
-        setNewQuotas(partner.quotas.toString());
+        setNewQuotas((partner.quotas || 0).toString());
+        // Scroll para o formulário de edição para melhor UX
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     const cancelEdit = () => {
@@ -909,8 +911,12 @@ const PartnershipView: FC<{ partners: Partner[], onSave: (partners: Partner[]) =
         }
         if (sortConfig) {
             result.sort((a, b) => {
-                const aVal = a[sortConfig.key];
-                const bVal = b[sortConfig.key];
+                let aVal = a[sortConfig.key];
+                let bVal = b[sortConfig.key];
+                
+                if (aVal === undefined) aVal = 0;
+                if (bVal === undefined) bVal = 0;
+
                 if (typeof aVal === 'string' && typeof bVal === 'string') {
                     return sortConfig.direction === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
                 }
