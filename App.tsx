@@ -249,7 +249,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         costCenter: initialData?.costCenter || 'conta-pj',
     });
     
-    const [searchPeriod, setSearchPeriod] = useState({ start: '', end: '', show: false });
+    const [searchPeriod, setsearchPeriod] = useState({ start: '', end: '', show: false });
     const [commissionAmount, setCommissionAmount] = useState(initialData?.commissionAmount || 0);
     const [isCommissionManual, setIsCommissionManual] = useState(false);
     
@@ -376,17 +376,6 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         setSplits(newSplits);
     };
 
-    const autoAdjustSplits = () => {
-        if (splits.length === 0 || gross <= 0) return;
-        const perSplit = gross / splits.length;
-        const newSplits = splits.map(s => ({ ...s, revenueAmount: perSplit }));
-        setSplits(newSplits);
-    };
-
-    const handleSearchPeriod = () => {
-        setSearchPeriod({ ...searchPeriod, show: true });
-    };
-
     const confirmSearchPeriod = async () => {
         if (!searchPeriod.start || !searchPeriod.end) {
             alert("Selecione a data inicial e final.");
@@ -424,7 +413,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             });
             setSplits(newSplits);
             setFormData(prev => ({ ...prev, grossAmount: totalRevenueFound.toFixed(2) }));
-            setSearchPeriod({ ...searchPeriod, show: false });
+            setsearchPeriod({ ...searchPeriod, show: false });
         } catch (error) {
             console.error(error);
             alert("Erro ao buscar receitas.");
@@ -570,22 +559,22 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                 <div className="border border-border-color rounded-lg p-4 bg-background/50">
                     <div className="flex flex-wrap gap-3 mb-3">
                          {!searchPeriod.show ? (
-                             <Button type="button" onClick={handleSearchPeriod} variant="secondary" className="flex-1 sm:flex-none py-2 px-4 text-xs font-semibold border border-primary/30 whitespace-nowrap" title="Busca e agrupa receitas já lançadas para os assessores por período">
+                             <Button type="button" onClick={() => setsearchPeriod({...searchPeriod, show: true})} variant="secondary" className="flex-1 sm:flex-none py-2 px-4 text-xs font-semibold border border-primary/30 whitespace-nowrap" title="Busca e agrupa receitas já lançadas para os assessores por período">
                                  Buscar receitas do período
                              </Button>
                          ) : (
                             <div className="flex flex-col sm:flex-row gap-2 items-end bg-surface p-2 rounded border border-border-color w-full sm:w-auto">
                                 <div>
                                     <label className="block text-[10px] text-text-secondary">De</label>
-                                    <input type="date" value={searchPeriod.start} onChange={(e) => setSearchPeriod({...searchPeriod, start: e.target.value})} className="bg-background border border-border-color rounded px-2 py-1 text-xs min-w-[150px]" />
+                                    <input type="date" value={searchPeriod.start} onChange={(e) => setsearchPeriod({...searchPeriod, start: e.target.value})} className="bg-background border border-border-color rounded px-2 py-1 text-xs min-w-[150px]" />
                                 </div>
                                 <div>
                                     <label className="block text-[10px] text-text-secondary">Até</label>
-                                    <input type="date" value={searchPeriod.end} onChange={(e) => setSearchPeriod({...searchPeriod, end: e.target.value})} className="bg-background border border-border-color rounded px-2 py-1 text-xs min-w-[150px]" />
+                                    <input type="date" value={searchPeriod.end} onChange={(e) => setsearchPeriod({...searchPeriod, end: e.target.value})} className="bg-background border border-border-color rounded px-2 py-1 text-xs min-w-[150px]" />
                                 </div>
                                 <div className="flex gap-1">
                                     <Button type="button" onClick={confirmSearchPeriod} className="py-1 px-3 text-xs min-w-[50px]">OK</Button>
-                                    <Button type="button" onClick={() => setSearchPeriod({...searchPeriod, show: false})} variant="ghost" className="py-1 px-2 text-xs">X</Button>
+                                    <Button type="button" onClick={() => setsearchPeriod({...searchPeriod, show: false})} variant="ghost" className="py-1 px-2 text-xs">X</Button>
                                 </div>
                             </div>
                          )}
@@ -968,7 +957,7 @@ const PartnershipView: FC<{ partners: Partner[], onSave: (partners: Partner[]) =
                         <div className="flex flex-wrap gap-4 items-center">
                             <div className="relative">
                                 <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary" />
-                                <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Filtrar..." className="bg-background border border-border-color rounded-md pl-8 pr-3 py-1.5 text-xs focus:ring-1 focus:ring-primary outline-none w-32 sm:w-40" />
+                                <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Filtrar..." className="bg-background border border-border-color rounded-md pl-8 pr-3 py-1.5 text-xs focus:ring-1 focus:ring-primary outline-none w-32 sm:w-40" />
                             </div>
                             <div className="flex gap-2">
                                 <div className={`px-3 py-1.5 rounded-lg text-xs font-bold ${Math.abs(totalPercent - 100) < 0.01 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-danger'}`}>
@@ -1076,8 +1065,8 @@ const AdvisorSettingsItem: FC<{
                 ))}
                 
                 <div className="flex gap-2 items-center mt-2">
-                    <input type="text" placeholder="Novo custo (ex: CRM)" value={newCostDesc} onChange={e => setNewCostDesc(e.target.value)} className="flex-1 bg-background border border-border-color rounded px-2 py-1 text-xs" />
-                    <input type="number" placeholder="Valor (-)" value={newCostVal} onChange={e => setNewCostVal(e.target.value)} className="w-20 bg-background border border-border-color rounded px-2 py-1 text-xs" />
+                    <input type="text" placeholder="Novo custo (ex: CRM)" value={newCostDesc} onChange={(e) => setNewCostDesc(e.target.value)} className="flex-1 bg-background border border-border-color rounded px-2 py-1 text-xs" />
+                    <input type="number" placeholder="Valor (-)" value={newCostVal} onChange={(e) => setNewCostVal(e.target.value)} className="w-20 bg-background border border-border-color rounded px-2 py-1 text-xs" />
                     <Button onClick={addCost} variant="secondary" className="py-1 px-2 text-xs"><PlusIcon className="w-3 h-3"/></Button>
                 </div>
             </div>
@@ -1653,16 +1642,39 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
         const expensesByCategory: Record<string, number> = {};
         expenseTrans.forEach(t => { expensesByCategory[t.category] = (expensesByCategory[t.category] || 0) + t.amount; });
         const sortedExpenses = Object.entries(expensesByCategory).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-        return { totalRevenue, totalExpense, sortedExpenses, result: Number(totalRevenue) - Number(totalExpense) };
+        
+        const result = Number(totalRevenue) - Number(totalExpense);
+
+        // --- CÁLCULO: Caixa da Empresa (Saldo PJ até o fim do período filtrado) ---
+        let limitDate = new Date();
+        if (selectedYear !== 'all') {
+            if (selectedMonth !== 'all') {
+                limitDate = new Date(selectedYear, selectedMonth + 1, 0, 23, 59, 59);
+            } else {
+                limitDate = new Date(selectedYear, 12, 0, 23, 59, 59);
+            }
+        }
+        
+        const caixaEmpresa = transactions.reduce((acc, t) => {
+            if (t.costCenter === 'conta-pj' && new Date(t.date) <= limitDate) {
+                return acc + (t.type === TransactionType.INCOME ? t.amount : -t.amount);
+            }
+            return acc;
+        }, 0);
+
+        const lucroLiquidoAjustado = result + caixaEmpresa;
+
+        return { totalRevenue, totalExpense, sortedExpenses, result, caixaEmpresa, lucroLiquidoAjustado };
     }, [transactions, importedRevenues, selectedYear, selectedMonth]);
 
     const valuationMonthlyData = useMemo(() => {
-        const monthlyMap: Record<string, { revenue: number; expense: number }> = {};
+        const monthlyMap: Record<string, { revenue: number; expense: number; pjBalanceInMonth: number }> = {};
         
+        // Coletar movimentação mensal
         transactions.forEach(t => {
             if (!filterFn(t.date)) return;
             const key = t.date.substring(0, 7); // YYYY-MM
-            if (!monthlyMap[key]) monthlyMap[key] = { revenue: 0, expense: 0 };
+            if (!monthlyMap[key]) monthlyMap[key] = { revenue: 0, expense: 0, pjBalanceInMonth: 0 };
             if (t.type === TransactionType.INCOME) monthlyMap[key].revenue += t.amount;
             else monthlyMap[key].expense += t.amount;
         });
@@ -1670,7 +1682,7 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
         importedRevenues.forEach(r => {
             if (!filterFn(r.date)) return;
             const key = r.date.substring(0, 7);
-            if (!monthlyMap[key]) monthlyMap[key] = { revenue: 0, expense: 0 };
+            if (!monthlyMap[key]) monthlyMap[key] = { revenue: 0, expense: 0, pjBalanceInMonth: 0 };
             monthlyMap[key].revenue += (r.receitaLiquidaEQI || 0);
         });
 
@@ -1680,10 +1692,22 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
 
         return Object.entries(monthlyMap)
             .map(([monthKey, data]) => {
-                const lla = data.revenue - data.expense;
+                const [year, month] = monthKey.split('-').map(Number);
+                const lastDayOfMonth = new Date(year, month, 0, 23, 59, 59);
+                
+                // Saldo PJ no fim daquele mês específico
+                const caixaNoMes = transactions.reduce((acc, t) => {
+                    if (t.costCenter === 'conta-pj' && new Date(t.date) <= lastDayOfMonth) {
+                        return acc + (t.type === TransactionType.INCOME ? t.amount : -t.amount);
+                    }
+                    return acc;
+                }, 0);
+
+                const resultadoMes = data.revenue - data.expense;
+                const lla = resultadoMes + caixaNoMes; 
                 const valuation = calcularValuation(lla);
-                const [year, month] = monthKey.split('-');
-                const date = new Date(parseInt(year), parseInt(month) - 1, 1, 12, 0, 0);
+                
+                const date = new Date(year, month - 1, 1, 12, 0, 0);
                 return {
                     monthYear: date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
                     lla,
@@ -1694,8 +1718,8 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
             .sort((a, b) => b.key.localeCompare(a.key));
     }, [transactions, importedRevenues, selectedYear, selectedMonth]);
 
-    const accumulatedLLA = useMemo(() => valuationMonthlyData.reduce((acc, curr) => acc + curr.lla, 0), [valuationMonthlyData]);
-    const accumulatedValuation = useMemo(() => accumulatedLLA > 0 ? accumulatedLLA * 5 : 0, [accumulatedLLA]);
+    const accumulatedLLA = dreData.lucroLiquidoAjustado;
+    const accumulatedValuation = accumulatedLLA > 0 ? accumulatedLLA * 5 : 0;
 
     return (
         <div className="space-y-6 animate-fade-in">
@@ -1739,7 +1763,16 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
                             <div key={idx} className="flex justify-between text-text-secondary text-xs sm:text-sm hover:bg-background/50 px-2 rounded"><span>{exp.name}</span><span>{formatCurrency(exp.value)}</span></div>
                         ))}
                     </div>
-                    <div className="flex justify-between items-center py-3 border-t-2 border-border-color mt-4 bg-background/30 px-2 rounded"><span className="font-bold text-lg text-text-primary">RESULTADO DO PERÍODO</span><span className={`font-bold text-lg ${dreData.result >= 0 ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(dreData.result)}</span></div>
+                    <div className="flex justify-between items-center py-3 border-t-2 border-border-color mt-4 bg-background/30 px-2 rounded">
+                        <span className="font-bold text-lg text-text-primary">RESULTADO DO PERÍODO</span>
+                        <span className={`font-bold text-lg ${dreData.result >= 0 ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(dreData.result)}</span>
+                    </div>
+                    
+                    {/* NOVA LINHA OBRIGATÓRIA */}
+                    <div className="flex justify-between items-center py-3 border-t border-border-color/50 bg-primary/10 px-2 rounded mt-1">
+                        <span className="font-bold text-lg text-primary">LUCRO LÍQUIDO AJUSTADO</span>
+                        <span className={`font-bold text-lg ${dreData.lucroLiquidoAjustado >= 0 ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(dreData.lucroLiquidoAjustado)}</span>
+                    </div>
                 </div>
             </Card>
 
