@@ -1,12 +1,12 @@
 
 import React, { useState, useMemo, FC, ReactNode, useEffect, useRef } from 'react';
-import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType, AdvisorSplit, ImportedRevenue, AdvisorCost } from './types';
+import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType, AdvisorSplit, ImportedRevenue, AdvisorCost, Partner } from './types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area } from 'recharts';
 import Login from './Login';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { logoutUser } from './auth';
-import { getTransactions, saveTransaction, updateTransaction, deleteTransaction as deleteTransactionFromDb, getImportedRevenues, saveImportedRevenue, deleteImportedRevenue, getRevenuesByPeriod, deduplicateImportedRevenues } from './firestore';
+import { getTransactions, saveTransaction, updateTransaction, deleteTransaction as deleteTransactionFromDb, getImportedRevenues, saveImportedRevenue, deleteImportedRevenue, getRevenuesByPeriod, deduplicateImportedRevenues, getPartnership, savePartnership } from './firestore';
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
 // --- ÍCONES ---
@@ -15,6 +15,7 @@ const TransactionsIcon: FC<{ className?: string }> = ({ className }) => (<svg cl
 const GoalsIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>);
 const ReportsIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>);
 const SettingsIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 0 2.73l-.15.08a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0 .73-2.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1 0-2.73l.15-.08a2 2 0 0 0 .73-2.73l.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>);
+const PartnershipIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>);
 const PlusIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>);
 const EditIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>);
 const TrashIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>);
@@ -914,6 +915,81 @@ const GoalsView: FC<{ goals: Goal[], onAdd: (g: any) => void, onUpdateProgress: 
     );
 };
 
+const PartnershipView: FC<{ partners: Partner[], onSave: (partners: Partner[]) => void }> = ({ partners, onSave }) => {
+    const [newName, setNewName] = useState('');
+    const [newPercentage, setNewPercentage] = useState('');
+
+    const handleAdd = () => {
+        if (!newName || !newPercentage) return;
+        const p = parseFloat(newPercentage);
+        if (isNaN(p)) return;
+        const updated = [...partners, { id: crypto.randomUUID(), name: newName, percentage: p }];
+        onSave(updated);
+        setNewName('');
+        setNewPercentage('');
+    };
+
+    const handleRemove = (id: string) => {
+        if (!window.confirm("Remover sócio?")) return;
+        onSave(partners.filter(p => p.id !== id));
+    };
+
+    const totalPercent = partners.reduce((acc, p) => acc + p.percentage, 0);
+
+    return (
+        <div className="space-y-6 animate-fade-in">
+             <div className="flex justify-between items-center">
+                <div><h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Partnership ACI</h2><p className="text-text-secondary">Gerencie o quadro societário da empresa.</p></div>
+            </div>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <Card className="lg:col-span-1">
+                    <h3 className="font-bold mb-4 text-primary uppercase text-sm tracking-wider">Adicionar Sócio</h3>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-xs text-text-secondary mb-1">Nome Completo</label>
+                            <input type="text" value={newName} onChange={e => setNewName(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm" placeholder="Nome do sócio" />
+                        </div>
+                        <div>
+                            <label className="block text-xs text-text-secondary mb-1">Percentual (%)</label>
+                            <input type="number" step="0.01" value={newPercentage} onChange={e => setNewPercentage(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm" placeholder="Ex: 25" />
+                        </div>
+                        <Button onClick={handleAdd} className="w-full"><PlusIcon className="w-4 h-4"/> Adicionar</Button>
+                    </div>
+                </Card>
+
+                <Card className="lg:col-span-2">
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="font-bold text-text-primary uppercase text-sm tracking-wider">Quadro de Sócios</h3>
+                        <div className={`px-3 py-1 rounded-full text-xs font-bold ${Math.abs(totalPercent - 100) < 0.01 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-danger'}`}>
+                            Total: {totalPercent.toFixed(2)}%
+                        </div>
+                    </div>
+                    <ul className="space-y-3">
+                        {partners.map(p => (
+                            <li key={p.id} className="flex justify-between items-center bg-background/50 p-4 rounded-lg border border-border-color/50 group">
+                                <div className="flex flex-col">
+                                    <span className="font-bold text-text-primary">{p.name}</span>
+                                    <span className="text-xs text-text-secondary">Sócio da ACI Capital</span>
+                                </div>
+                                <div className="flex items-center gap-6">
+                                    <span className="font-mono text-xl font-bold text-primary">{p.percentage}%</span>
+                                    <button onClick={() => handleRemove(p.id)} className="text-text-secondary hover:text-danger opacity-0 group-hover:opacity-100 transition-opacity"><TrashIcon className="w-5 h-5"/></button>
+                                </div>
+                            </li>
+                        ))}
+                        {partners.length === 0 && (
+                            <div className="text-center py-12 text-text-secondary border-2 border-dashed border-border-color rounded-xl">
+                                <p>Nenhum sócio cadastrado.</p>
+                            </div>
+                        )}
+                    </ul>
+                </Card>
+            </div>
+        </div>
+    );
+};
+
 const AdvisorSettingsItem: FC<{ 
     advisor: Advisor; 
     onDelete: () => void; 
@@ -1082,6 +1158,7 @@ const Sidebar: FC<{ activeView: View; setActiveView: (view: View) => void; isSid
         { view: 'imported-revenues', label: 'Receitas Importadas', icon: <FileTextIcon className="w-6 h-6"/> },
         { view: 'reports', label: 'Relatórios', icon: <ReportsIcon className="w-6 h-6"/> },
         { view: 'goals', label: 'Metas', icon: <GoalsIcon className="w-6 h-6"/> },
+        { view: 'partnership', label: 'Partnership ACI', icon: <PartnershipIcon className="w-6 h-6"/> },
         { view: 'settings', label: 'Configurações', icon: <SettingsIcon className="w-6 h-6"/> },
     ];
     return (
@@ -1724,6 +1801,7 @@ const App: FC = () => {
     const [advisors, setAdvisors] = useLocalStorage<Advisor[]>('advisors', initialAdvisors);
     const [globalTaxRate, setGlobalTaxRate] = useLocalStorage<number>('globalTaxRate', 6);
     const [goals, setGoals] = useLocalStorage<Goal[]>('goals', getInitialGoals());
+    const [partners, setPartners] = useState<Partner[]>([]);
     
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [importedRevenues, setImportedRevenues] = useState<ImportedRevenue[]>([]);
@@ -1735,7 +1813,7 @@ const App: FC = () => {
     useEffect(() => {
         if (user) {
             setLoadingData(true);
-            Promise.all([getTransactions(), getImportedRevenues()]).then(([transSnap, revSnap]) => {
+            Promise.all([getTransactions(), getImportedRevenues(), getPartnership()]).then(([transSnap, revSnap, partSnap]) => {
                 if (transSnap && transSnap.docs) {
                     const transData = transSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Transaction));
                     setTransactions(transData);
@@ -1744,6 +1822,10 @@ const App: FC = () => {
                 if (revSnap && revSnap.docs) {
                     const revData = revSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as ImportedRevenue));
                     setImportedRevenues(revData);
+                }
+
+                if (partSnap && partSnap.exists()) {
+                    setPartners(partSnap.data().socios || []);
                 }
             }).finally(() => {
                 setLoadingData(false);
@@ -1850,13 +1932,19 @@ const App: FC = () => {
         await deleteImportedRevenue(id);
         setImportedRevenues(prev => prev.filter(r => r.id !== id));
     };
+
+    const handleSavePartnership = async (updatedPartners: Partner[]) => {
+        setPartners(updatedPartners);
+        await savePartnership(updatedPartners);
+    };
+
     if (loadingAuth) return <div className="min-h-screen flex items-center justify-center bg-background text-text-primary">Carregando...</div>;
     if (!user) return <Login />;
     return (
         <div className="flex h-screen bg-background text-text-primary overflow-hidden font-sans">
              <Sidebar activeView={activeView} setActiveView={(v) => { setActiveView(v); setIsSidebarOpen(false); }} isSidebarOpen={isSidebarOpen} user={user} />
              <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
-                <Header pageTitle={activeView === 'dashboard' ? 'Dashboard' : activeView === 'transactions' ? 'Transações' : activeView === 'imported-revenues' ? 'Receitas Importadas' : activeView === 'reports' ? 'Relatórios' : activeView === 'goals' ? 'Metas' : 'Configurações'} onMenuClick={() => setIsSidebarOpen(true)} />
+                <Header pageTitle={activeView === 'dashboard' ? 'Dashboard' : activeView === 'transactions' ? 'Transações' : activeView === 'imported-revenues' ? 'Receitas Importadas' : activeView === 'reports' ? 'Relatórios' : activeView === 'goals' ? 'Metas' : activeView === 'partnership' ? 'Partnership ACI' : 'Configurações'} onMenuClick={() => setIsSidebarOpen(true)} />
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-background p-4 md:p-6 relative">
                     {loadingData ? <div className="flex items-center justify-center h-full">Carregando dados...</div> : (
                         <>
@@ -1864,10 +1952,8 @@ const App: FC = () => {
                             {activeView === 'transactions' && <TransactionsView transactions={transactions} onAdd={handleAddTransaction} onEdit={handleEditTransaction} onDelete={handleDeleteTransaction} onSetPaid={handleSetPaid} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} onImportTransactions={handleImportTransactions} globalTaxRate={globalTaxRate} importedRevenues={importedRevenues} userId={user.uid} />}
                             {activeView === 'imported-revenues' && <ImportedRevenuesView importedRevenues={importedRevenues} advisors={advisors} onImport={handleImportRevenues} onDelete={handleDeleteRevenue} userId={user.uid} />}
                             {activeView === 'reports' && <ReportsView transactions={transactions} importedRevenues={importedRevenues} />}
-                            {/**
-                             * Fixed arithmetic operation by using Number() to ensure type compatibility during addition.
-                             */}
                             {activeView === 'goals' && <GoalsView goals={goals} onAdd={v => setGoals([...goals, { ...v, id: crypto.randomUUID(), currentAmount: 0 }])} onUpdateProgress={(id, amount) => setGoals(goals.map(g => g.id === id ? { ...g, currentAmount: (Number(g.currentAmount) || 0) + (Number(amount) || 0) } : g))} onDelete={id => setGoals(goals.filter(g => g.id !== id))} />}
+                            {activeView === 'partnership' && <PartnershipView partners={partners} onSave={handleSavePartnership} />}
                             {activeView === 'settings' && <SettingsView incomeCategories={incomeCategories} setIncomeCategories={setIncomeCategories} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} paymentMethods={paymentMethods} setPaymentMethods={setPaymentMethods} costCenters={costCenters} setCostCenters={setCostCenters} advisors={advisors} setAdvisors={setAdvisors} globalTaxRate={globalTaxRate} setGlobalTaxRate={setGlobalTaxRate} />}
                         </>
                     )}

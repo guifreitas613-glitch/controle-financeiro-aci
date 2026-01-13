@@ -102,6 +102,12 @@ export interface ExpenseCategory {
     type: ExpenseType; // Custo ou Despesa
 }
 
-export type View = 'dashboard' | 'transactions' | 'imported-revenues' | 'goals' | 'reports' | 'settings';
+export interface Partner {
+  id: string;
+  name: string;
+  percentage: number;
+}
+
+export type View = 'dashboard' | 'transactions' | 'imported-revenues' | 'goals' | 'reports' | 'settings' | 'partnership';
 
 export type AspectRatio = "1:1" | "3:4" | "4:3" | "9:16" | "16:9";
