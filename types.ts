@@ -69,6 +69,9 @@ export interface AdvisorSplit {
     crmCost?: number; // Mantido para compatibilidade, mas agora representa a soma dos custos
     netPayout?: number;
     additionalCost?: number; // Campo local para custo adicional na tela de rateio
+    // Fix: Added missing optional properties to resolve type errors in App.tsx
+    grossPayout?: number;
+    taxAmount?: number;
 }
 
 export interface Goal {

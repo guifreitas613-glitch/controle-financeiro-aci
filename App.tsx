@@ -8,6 +8,9 @@ import { logoutUser } from './auth';
 import { getTransactions, saveTransaction, updateTransaction, deleteTransaction as deleteTransactionFromDb, getImportedRevenues, saveImportedRevenue, deleteImportedRevenue, getRevenuesByPeriod, deduplicateImportedRevenues, getPartnership, savePartnership } from './firestore';
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
+// --- UTILITÁRIOS GLOBAIS ---
+const round = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100;
+
 // --- ÍCONES ---
 const DashboardIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>);
 const TransactionsIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>);
@@ -106,7 +109,7 @@ const parseOFX = (content: string): ImportableTransaction[] => {
                 tempId: crypto.randomUUID(),
                 selected: true,
                 date: dateIso,
-                amount: absAmount,
+                amount: round(absAmount),
                 description: description || 'Transação OFX',
                 type: type,
                 category: 'Outros',
@@ -241,7 +244,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     
     const [formData, setFormData] = useState({
         description: initialData?.description || '',
-        grossAmount: (initialData?.grossAmount ?? initialData?.amount)?.toString() || '',
+        grossAmount: (initialData?.grossAmount ?? initialData?.amount)?.toFixed(2) || '',
         date: initialData?.date ? formatDateForInput(initialData.date) : formatDateForInput(new Date().toISOString()),
         category: initialData?.category || (currentCategories.length > 0 ? currentCategories[0] : ''),
         clientSupplier: initialData?.clientSupplier || '',
@@ -270,7 +273,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                 setApplyTax(true);
                 const rateStr = storedRate !== undefined ? storedRate.toString() : (iGross > 0 ? ((iTax / iGross) * 100).toFixed(2) : globalTaxRate.toString());
                 setTaxRateInput(rateStr);
-                setTaxValueCents(Math.round(iTax * 100));
+                setTaxValueCents(Math.round(round(iTax) * 100));
             } else {
                 setApplyTax(false);
                 setTaxRateInput(globalTaxRate.toString());
@@ -279,7 +282,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         } else if (!initialData) {
             setApplyTax(true);
             setTaxRateInput(globalTaxRate.toString());
-            const val = gross * (globalTaxRate / 100);
+            const val = round(gross * (globalTaxRate / 100));
             setTaxValueCents(Math.round(val * 100));
         }
         setTimeout(() => { isInitializing.current = false; }, 0);
@@ -288,7 +291,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     useEffect(() => {
         if (!isInitializing.current && applyTax && !isEditing) {
             const rate = parseFloat(taxRateInput) || 0;
-            const val = gross * (rate / 100);
+            const val = round(gross * (rate / 100));
             setTaxValueCents(Math.round(val * 100));
         }
     }, [gross, applyTax, taxRateInput, isEditing]); 
@@ -296,7 +299,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     const handleRateInputChange = (val: string) => {
         setTaxRateInput(val);
         const rate = parseFloat(val) || 0;
-        const valR = gross * (rate / 100);
+        const valR = round(gross * (rate / 100));
         setTaxValueCents(Math.round(valR * 100));
     };
 
@@ -316,13 +319,13 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         setApplyTax(checked);
         if (checked) {
             const rate = parseFloat(taxRateInput) || globalTaxRate;
-            const val = gross * (rate / 100);
+            const val = round(gross * (rate / 100));
             setTaxValueCents(Math.round(val * 100));
         }
     };
 
     const effectiveTaxAmount: number = applyTax ? (taxValueCents / 100) : 0;
-    const basePostTax: number = Number(gross) - Number(effectiveTaxAmount);
+    const basePostTax: number = round(Number(gross) - Number(effectiveTaxAmount));
     const formattedTaxValue = (taxValueCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
     useEffect(() => {
@@ -335,7 +338,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     
     useEffect(() => {
         if (!isInitializing.current && !isCommissionManual && type === TransactionType.INCOME && advisorId && splits.length === 0 && !isEditing) {
-             const comm = basePostTax * 0.30;
+             const comm = round(basePostTax * 0.30);
              setCommissionAmount(comm > 0 ? comm : 0);
         }
     }, [formData.grossAmount, advisorId, splits.length, type, basePostTax, isCommissionManual, isEditing]);
@@ -391,9 +394,9 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                 if (rev.classificacao === 'CUSTOS') return;
                 const advisor = advisors.find(adv => adv.name.toLowerCase() === (rev.assessorPrincipal || '').toLowerCase());
                 if (advisor) {
-                    const val = rev.comissaoLiquida || 0;
-                    revenueByAdvisor[advisor.id] = (revenueByAdvisor[advisor.id] || 0) + val;
-                    totalRevenueFound += val;
+                    const val = round(rev.comissaoLiquida || 0);
+                    revenueByAdvisor[advisor.id] = round((revenueByAdvisor[advisor.id] || 0) + val);
+                    totalRevenueFound = round(totalRevenueFound + val);
                 }
             });
             const newSplits: AdvisorSplit[] = Object.keys(revenueByAdvisor).map(advId => {
@@ -401,7 +404,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                 return {
                     advisorId: advisor.id,
                     advisorName: advisor.name,
-                    revenueAmount: revenueByAdvisor[advId],
+                    revenueAmount: round(revenueByAdvisor[advId]),
                     percentage: advisor.commissionRate || 30,
                     additionalCost: 0
                 };
@@ -424,25 +427,25 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             const percentage = Number(split.percentage) || 0;
             const additionalCost = Number(split.additionalCost) || 0;
             const effectiveTaxRate = applyTax ? (parseFloat(taxRateInput) || 0) : 0;
-            const grossPayout = revenueAmount * (percentage / 100);
-            const taxAmount = grossPayout * (effectiveTaxRate / 100);
-            const netPayout = grossPayout - taxAmount - additionalCost;
+            const grossPayout = round(revenueAmount * (percentage / 100));
+            const taxAmount = round(grossPayout * (effectiveTaxRate / 100));
+            const netPayout = round(grossPayout - taxAmount - additionalCost);
             return { ...split, grossPayout, taxAmount, netPayout };
         });
     }, [splits, taxRateInput, applyTax, isEditing]);
 
     const totalNetPayouts = useMemo(() => 
-        splitsDetails.reduce((acc, s) => acc + (Number(s.netPayout) || 0), 0)
+        round(splitsDetails.reduce((acc, s) => acc + (Number(s.netPayout) || 0), 0))
     , [splitsDetails]);
 
     const officeShare = useMemo(() => {
-        const totalTax = applyTax ? gross * ((parseFloat(taxRateInput) || 0) / 100) : 0;
-        const totalAdditionalCosts = splitsDetails.reduce((acc, s) => acc + (Number(s.additionalCost) || 0), 0);
-        return gross - totalNetPayouts - totalTax - totalAdditionalCosts;
+        const totalTax = applyTax ? round(gross * ((parseFloat(taxRateInput) || 0) / 100)) : 0;
+        const totalAdditionalCosts = round(splitsDetails.reduce((acc, s) => acc + (Number(s.additionalCost) || 0), 0));
+        return round(gross - totalNetPayouts - totalTax - totalAdditionalCosts);
     }, [gross, totalNetPayouts, taxRateInput, applyTax, splitsDetails]);
 
-    const totalSplitRevenue: number = splits.reduce((acc: number, s: any) => acc + (Number(s.revenueAmount) || 0), 0);
-    const splitRevenueDifference: number = Number(gross) - Number(totalSplitRevenue);
+    const totalSplitRevenue: number = round(splits.reduce((acc: number, s: any) => acc + (Number(s.revenueAmount) || 0), 0));
+    const splitRevenueDifference: number = round(Number(gross) - Number(totalSplitRevenue));
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -461,7 +464,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             return;
         }
 
-        const parsedGrossAmount = parseFloat(grossAmount);
+        const parsedGrossAmount = round(parseFloat(grossAmount));
         if(isNaN(parsedGrossAmount)) {
              alert("O valor inserido é inválido.");
             return;
@@ -474,9 +477,9 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             }
         }
         
-        const officeNetAmount = type === TransactionType.INCOME 
+        const officeNetAmount = round(type === TransactionType.INCOME 
             ? (splits.length > 0 ? officeShare : (basePostTax - (advisorId ? commissionAmount : 0)))
-            : parsedGrossAmount;
+            : parsedGrossAmount);
 
         const submissionData: TransactionFormValues = {
             description,
@@ -490,14 +493,21 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         };
         
         if (type === TransactionType.INCOME) {
-            submissionData.taxAmount = effectiveTaxAmount;
+            submissionData.taxAmount = round(effectiveTaxAmount);
             submissionData.grossAmount = parsedGrossAmount;
             submissionData.taxRate = parseFloat(taxRateInput) || 0;
 
             if (splits.length > 0) {
-                submissionData.splits = splitsDetails;
+                submissionData.splits = splitsDetails.map(s => ({
+                  ...s,
+                  revenueAmount: round(Number(s.revenueAmount)),
+                  grossPayout: round(Number(s.grossPayout)),
+                  taxAmount: round(Number(s.taxAmount)),
+                  netPayout: round(Number(s.netPayout)),
+                  additionalCost: round(Number(s.additionalCost))
+                }));
             } else {
-                submissionData.commissionAmount = commissionAmount;
+                submissionData.commissionAmount = round(commissionAmount);
                 submissionData.advisorId = advisorId;
             }
         }
@@ -595,7 +605,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                                         <div className="col-span-3">
                                             <input type="text" value={Number(split.revenueAmount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} onChange={(e) => {
                                                     const rawValue = e.target.value.replace(/\D/g, '');
-                                                    updateSplit(index, 'revenueAmount', Number(rawValue) / 100);
+                                                    updateSplit(index, 'revenueAmount', round(Number(rawValue) / 100));
                                                 }} placeholder="R$ 0,00" className="w-full bg-background border-border-color rounded-md text-sm py-1" />
                                         </div>
                                         <div className="col-span-1">
@@ -604,7 +614,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                                         <div className="col-span-2">
                                             <input type="text" value={Number(split.additionalCost || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} onChange={(e) => {
                                                     const rawValue = e.target.value.replace(/\D/g, '');
-                                                    updateSplit(index, 'additionalCost', Number(rawValue) / 100);
+                                                    updateSplit(index, 'additionalCost', round(Number(rawValue) / 100));
                                                 }} placeholder="R$ 0,00" className="w-full bg-background border-border-color rounded-md text-sm py-1" />
                                         </div>
                                         <div className="col-span-2 text-right font-bold text-danger text-sm">
@@ -722,7 +732,7 @@ const GoalForm: FC<GoalFormProps> = ({ onSubmit, onClose, initialData }) => {
     if (!name || !targetAmount) return;
     onSubmit({
       name,
-      targetAmount: parseFloat(targetAmount as string),
+      targetAmount: round(parseFloat(targetAmount as string)),
       deadline: deadline ? new Date(deadline).toISOString() : undefined,
     });
   };
@@ -759,7 +769,7 @@ const AddProgressForm: FC<AddProgressFormProps> = ({ onSubmit, onClose }) => {
     const [amount, setAmount] = useState('');
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const parsedAmount = parseFloat(amount);
+        const parsedAmount = round(parseFloat(amount));
         if (!isNaN(parsedAmount) && parsedAmount > 0) {
             onSubmit(parsedAmount);
         } else {
@@ -1011,7 +1021,7 @@ const AdvisorSettingsItem: FC<{
 
     const addCost = () => {
         if (!newCostDesc || !newCostVal) return;
-        const val = parseFloat(newCostVal);
+        const val = round(parseFloat(newCostVal));
         if (isNaN(val)) return;
 
         const updatedAdvisor = {
@@ -1030,7 +1040,7 @@ const AdvisorSettingsItem: FC<{
     };
 
     const saveBaseInfo = () => {
-        onUpdate({ ...advisor, name: editName, commissionRate: parseFloat(editRate) || 0 });
+        onUpdate({ ...advisor, name: editName, commissionRate: round(parseFloat(editRate) || 0) });
         setIsEditingBase(false);
     };
 
@@ -1194,7 +1204,7 @@ const SettingsView: FC<SettingsViewProps> = ({
         setEditingCostCenterIdx(null);
     };
 
-    const addAdvisor = () => { if (newAdvisorName) { setAdvisors([...advisors, { id: crypto.randomUUID(), name: newAdvisorName, commissionRate: parseFloat(newAdvisorRate) || 30, costs: [] }]); setNewAdvisorName(''); setNewAdvisorRate('30'); } };
+    const addAdvisor = () => { if (newAdvisorName) { setAdvisors([...advisors, { id: crypto.randomUUID(), name: newAdvisorName, commissionRate: round(parseFloat(newAdvisorRate) || 30), costs: [] }]); setNewAdvisorName(''); setNewAdvisorRate('30'); } };
     const removeAdvisor = (id: string) => setAdvisors(advisors.filter(a => a.id !== id));
     const updateAdvisor = (updated: Advisor) => setAdvisors(advisors.map(a => a.id === updated.id ? updated : a));
 
@@ -1570,7 +1580,7 @@ const TransactionsView: FC<{
         return items;
     }, [transactions, filterYear, filterMonth, activeTab, filterCategory, searchTerm, sortConfig]);
 
-    const totalFilteredAmount = useMemo(() => filtered.reduce<number>((sum, t) => sum + t.amount, 0), [filtered]);
+    const totalFilteredAmount = useMemo(() => round(filtered.reduce<number>((sum, t) => sum + t.amount, 0)), [filtered]);
 
     const requestSort = (key: keyof Transaction) => {
         let direction: 'asc' | 'desc' = 'asc';
@@ -1851,9 +1861,9 @@ const ImportedRevenuesView: FC<{
                                             produtoCategoria: row['Produto/Categoria'] || '',
                                             ativo: row['Ativo'] || '',
                                             tipoReceita: row['Tipo Receita'] || '',
-                                            receitaLiquidaEQI: parseFloat(row['Receita Liquida EQI']) || 0,
+                                            receitaLiquidaEQI: round(parseFloat(row['Receita Liquida EQI']) || 0),
                                             percentualRepasse: Math.round(rawRepasse),
-                                            comissaoLiquida: parseFloat(row['Comissão Líquida']) || 0,
+                                            comissaoLiquida: round(parseFloat(row['Comissão Líquida']) || 0),
                                             tipo: row['Tipo'] || ''
                                         };
                                     }).filter((r: any) => r !== null);
@@ -1936,14 +1946,14 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
         const fTrans = transactions.filter(t => filterFn(t.date));
         const manualRevenue = fTrans.filter(t => t.type === TransactionType.INCOME).reduce<number>((sum, t) => sum + t.amount, 0);
         const importedRevenue = importedRevenues.filter(r => filterFn(r.date)).reduce<number>((sum, r) => sum + (r.receitaLiquidaEQI || 0), 0);
-        const totalRevenue = Number(manualRevenue) + Number(importedRevenue);
+        const totalRevenue = round(Number(manualRevenue) + Number(importedRevenue));
         const expenseTrans = fTrans.filter(t => t.type === TransactionType.EXPENSE);
-        const totalExpense = expenseTrans.reduce<number>((sum, t) => sum + t.amount, 0);
+        const totalExpense = round(expenseTrans.reduce<number>((sum, t) => sum + t.amount, 0));
         const expensesByCategory: Record<string, number> = {};
-        expenseTrans.forEach(t => { expensesByCategory[t.category] = (expensesByCategory[t.category] || 0) + t.amount; });
+        expenseTrans.forEach(t => { expensesByCategory[t.category] = round((expensesByCategory[t.category] || 0) + t.amount); });
         const sortedExpenses = Object.entries(expensesByCategory).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
         
-        const result = Number(totalRevenue) - Number(totalExpense);
+        const result = round(Number(totalRevenue) - Number(totalExpense));
 
         let limitDate = new Date();
         if (selectedYear !== 'all') {
@@ -1954,14 +1964,14 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
             }
         }
         
-        const caixaEmpresa = transactions.reduce((acc, t) => {
+        const caixaEmpresa = round(transactions.reduce((acc, t) => {
             if (t.costCenter === 'conta-pj' && new Date(t.date) <= limitDate) {
                 return acc + (t.type === TransactionType.INCOME ? t.amount : -t.amount);
             }
             return acc;
-        }, 0);
+        }, 0));
 
-        const lucroLiquidoAjustado = result + caixaEmpresa;
+        const lucroLiquidoAjustado = round(result + caixaEmpresa);
 
         return { totalRevenue, totalExpense, sortedExpenses, result, caixaEmpresa, lucroLiquidoAjustado };
     }, [transactions, importedRevenues, selectedYear, selectedMonth]);
@@ -1973,19 +1983,19 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
             if (!filterFn(t.date)) return;
             const key = t.date.substring(0, 7); // YYYY-MM
             if (!monthlyMap[key]) monthlyMap[key] = { revenue: 0, expense: 0, pjBalanceInMonth: 0 };
-            if (t.type === TransactionType.INCOME) monthlyMap[key].revenue += t.amount;
-            else monthlyMap[key].expense += t.amount;
+            if (t.type === TransactionType.INCOME) monthlyMap[key].revenue = round(monthlyMap[key].revenue + t.amount);
+            else monthlyMap[key].expense = round(monthlyMap[key].expense + t.amount);
         });
 
         importedRevenues.forEach(r => {
             if (!filterFn(r.date)) return;
             const key = r.date.substring(0, 7);
             if (!monthlyMap[key]) monthlyMap[key] = { revenue: 0, expense: 0, pjBalanceInMonth: 0 };
-            monthlyMap[key].revenue += (r.receitaLiquidaEQI || 0);
+            monthlyMap[key].revenue = round(monthlyMap[key].revenue + (r.receitaLiquidaEQI || 0));
         });
 
         const calcularValuation = (llaMensal: number): number => {
-            return llaMensal > 0 ? llaMensal * 5 : 0;
+            return llaMensal > 0 ? round(llaMensal * 5) : 0;
         };
 
         return Object.entries(monthlyMap)
@@ -1993,15 +2003,15 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
                 const [year, month] = monthKey.split('-').map(Number);
                 const lastDayOfMonth = new Date(year, month, 0, 23, 59, 59);
                 
-                const caixaNoMes = transactions.reduce((acc, t) => {
+                const caixaNoMes = round(transactions.reduce((acc, t) => {
                     if (t.costCenter === 'conta-pj' && new Date(t.date) <= lastDayOfMonth) {
                         return acc + (t.type === TransactionType.INCOME ? t.amount : -t.amount);
                     }
                     return acc;
-                }, 0);
+                }, 0));
 
-                const resultadoMes = data.revenue - data.expense;
-                const lla = resultadoMes + caixaNoMes; 
+                const resultadoMes = round(data.revenue - data.expense);
+                const lla = round(resultadoMes + caixaNoMes); 
                 const valuation = calcularValuation(lla);
                 
                 const date = new Date(year, month - 1, 1, 12, 0, 0);
@@ -2015,8 +2025,8 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
             .sort((a, b) => b.key.localeCompare(a.key));
     }, [transactions, importedRevenues, selectedYear, selectedMonth]);
 
-    const accumulatedLLA = dreData.lucroLiquidoAjustado;
-    const accumulatedValuation = accumulatedLLA > 0 ? accumulatedLLA * 5 : 0;
+    const accumulatedLLA = round(dreData.lucroLiquidoAjustado);
+    const accumulatedValuation = accumulatedLLA > 0 ? round(accumulatedLLA * 5) : 0;
 
     return (
         <div className="space-y-6 animate-fade-in">
@@ -2167,12 +2177,12 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         }), [transactions, selectedYear, selectedMonth]);
 
     const { totalIncome, totalExpense, netProfit } = useMemo(() => {
-        const income = filteredTransactions.filter(t => t.type === TransactionType.INCOME).reduce<number>((acc, t) => acc + t.amount, 0);
-        const expense = filteredTransactions.filter(t => t.type === TransactionType.EXPENSE).reduce<number>((acc, t) => acc + t.amount, 0);
-        return { totalIncome: income, totalExpense: expense, netProfit: Number(income) - Number(expense) };
+        const income = round(filteredTransactions.filter(t => t.type === TransactionType.INCOME).reduce<number>((acc, t) => acc + t.amount, 0));
+        const expense = round(filteredTransactions.filter(t => t.type === TransactionType.EXPENSE).reduce<number>((acc, t) => acc + t.amount, 0));
+        return { totalIncome: income, totalExpense: expense, netProfit: round(Number(income) - Number(expense)) };
     }, [filteredTransactions]);
 
-    const saldoHoje = useMemo(() => transactions.reduce((acc: number, t: Transaction) => {
+    const saldoHoje = useMemo(() => round(transactions.reduce((acc: number, t: Transaction) => {
         const txDate = new Date(t.date).getTime();
         const now = new Date().getTime();
         if (txDate <= now) {
@@ -2182,9 +2192,9 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
             return acc + value;
         }
         return acc;
-    }, 0), [transactions]);
+    }, 0)), [transactions]);
 
-    const saldoProvisaoHoje = useMemo(() => transactions.reduce((acc: number, t: Transaction) => {
+    const saldoProvisaoHoje = useMemo(() => round(transactions.reduce((acc: number, t: Transaction) => {
         const txDate = new Date(t.date).getTime();
         const now = new Date().getTime();
         if (txDate <= now) {
@@ -2194,7 +2204,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
             return acc + value;
         }
         return acc;
-    }, 0), [transactions]);
+    }, 0)), [transactions]);
 
     const achievedGoals = useMemo(() => goals.filter(g => g.currentAmount >= g.targetAmount).length, [goals]);
     
@@ -2211,10 +2221,10 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
 
     const expenseSubcategoryData = useMemo(() => {
         const expenses = filteredTransactions.filter(t => t.type === TransactionType.EXPENSE);
-        const total = expenses.reduce((sum, t) => sum + t.amount, 0);
+        const total = round(expenses.reduce((sum, t) => sum + t.amount, 0));
         if (total === 0) return [];
-        const data = expenses.reduce((acc, t) => { acc[t.nature === ExpenseNature.FIXED ? 0 : 1].amount += t.amount; return acc; }, [{ name: 'Fixo', amount: 0 }, { name: 'Variável', amount: 0 }]);
-        return data.map(d => ({ ...d, value: (d.amount / total) * 100, percent: (d.amount / total) * 100 })).filter(d => d.amount > 0);
+        const data = expenses.reduce((acc, t) => { acc[t.nature === ExpenseNature.FIXED ? 0 : 1].amount = round(acc[t.nature === ExpenseNature.FIXED ? 0 : 1].amount + t.amount); return acc; }, [{ name: 'Fixo', amount: 0 }, { name: 'Variável', amount: 0 }]);
+        return data.map(d => ({ ...d, value: round((d.amount / total) * 100), percent: round((d.amount / total) * 100) })).filter(d => d.amount > 0);
     }, [filteredTransactions]);
 
     const cashFlowData = useMemo(() => { 
@@ -2227,7 +2237,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         
         let balance = 0;
         const history = realInScope.map(t => { 
-            balance += t.type === TransactionType.INCOME ? t.amount : -t.amount; 
+            balance = round(balance + (t.type === TransactionType.INCOME ? t.amount : -t.amount)); 
             return { date: formatDate(t.date), balance, isProjection: false }; 
         }).reduce((acc: any[], item) => {
             if (acc.length && acc[acc.length-1].date === item.date) acc[acc.length-1].balance = item.balance; else acc.push(item); return acc;
@@ -2244,13 +2254,13 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                    d.getUTCFullYear() === curY &&
                    d.getUTCMonth() === curM;
         });
-        const monthlyFixedTotal = fixedInCurrent.reduce((sum, t) => sum + t.amount, 0);
+        const monthlyFixedTotal = round(fixedInCurrent.reduce((sum, t) => sum + t.amount, 0));
 
         let projectedBalance = balance;
         const projectionPoints = [];
         for (let i = 1; i <= 12; i++) {
             const projDate = new Date(Date.UTC(curY, curM + i + 1, 0));
-            projectedBalance -= monthlyFixedTotal;
+            projectedBalance = round(projectedBalance - monthlyFixedTotal);
             projectionPoints.push({
                 date: formatDate(projDate.toISOString()),
                 balance: projectedBalance,
@@ -2427,7 +2437,7 @@ const App: FC = () => {
             const splitsToProcess = data.splits || [];
             if (splitsToProcess.length > 0) {
                 for (const split of splitsToProcess) {
-                    const netPayout = Number(split.netPayout);
+                    const netPayout = round(Number(split.netPayout));
                     if (netPayout > 0) {
                         try {
                             await addDoc(collection(db, "transacoes"), {
@@ -2455,7 +2465,7 @@ const App: FC = () => {
                 const advisorObj = advisors.find(a => a.id === data.advisorId);
                 try {
                     await addDoc(collection(db, "transacoes"), {
-                        amount: data.commissionAmount,
+                        amount: round(data.commissionAmount),
                         date: data.date,
                         type: TransactionType.EXPENSE,
                         category: "Remuneração de Assessores",
@@ -2538,7 +2548,7 @@ const App: FC = () => {
                             {activeView === 'transactions' && <TransactionsView transactions={transactions} onAdd={handleAddTransaction} onEdit={handleEditTransaction} onDelete={handleDeleteTransaction} onSetPaid={handleSetPaid} onToggleReconciliation={handleToggleReconciliation} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} onImportTransactions={handleImportTransactions} globalTaxRate={globalTaxRate} importedRevenues={importedRevenues} userId={user.uid} />}
                             {activeView === 'imported-revenues' && <ImportedRevenuesView importedRevenues={importedRevenues} advisors={advisors} onImport={handleImportRevenues} onDelete={handleDeleteRevenue} userId={user.uid} />}
                             {activeView === 'reports' && <ReportsView transactions={transactions} importedRevenues={importedRevenues} />}
-                            {activeView === 'goals' && <GoalsView goals={goals} onAdd={v => setGoals([...goals, { ...v, id: crypto.randomUUID(), currentAmount: 0 }])} onUpdateProgress={(id, amount) => setGoals(goals.map(g => g.id === id ? { ...g, currentAmount: (Number(g.currentAmount) || 0) + (Number(amount) || 0) } : g))} onDelete={id => setGoals(goals.filter(g => g.id !== id))} />}
+                            {activeView === 'goals' && <GoalsView goals={goals} onAdd={v => setGoals([...goals, { ...v, id: crypto.randomUUID(), currentAmount: round(0) }])} onUpdateProgress={(id, amount) => setGoals(goals.map(g => g.id === id ? { ...g, currentAmount: round((Number(g.currentAmount) || 0) + (Number(amount) || 0)) } : g))} onDelete={id => setGoals(goals.filter(g => g.id !== id))} />}
                             {activeView === 'partnership' && <PartnershipView partners={partners} onSave={handleSavePartnership} />}
                             {activeView === 'settings' && <SettingsView incomeCategories={incomeCategories} setIncomeCategories={setIncomeCategories} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} paymentMethods={paymentMethods} setPaymentMethods={setPaymentMethods} costCenters={costCenters} setCostCenters={setCostCenters} advisors={advisors} setAdvisors={setAdvisors} globalTaxRate={globalTaxRate} setGlobalTaxRate={setGlobalTaxRate} />}
                         </>
