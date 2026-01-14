@@ -225,7 +225,6 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     const [type, setType] = useState<TransactionType>(initialData?.type || defaultType || TransactionType.EXPENSE);
     const [nature, setNature] = useState<ExpenseNature>(initialData?.nature || ExpenseNature.VARIABLE);
     const [advisorId, setAdvisorId] = useState(initialData?.advisorId || '');
-    const [recurringCount, setRecurringCount] = useState('1');
     const [splits, setSplits] = useState<AdvisorSplit[]>(initialData?.splits || []);
 
     const isAddingFromTab = !!defaultType;
@@ -332,12 +331,6 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         }));
     }, [type, incomeCategories, expenseCategories]);
     
-    useEffect(() => {
-        if (nature === ExpenseNature.VARIABLE) {
-            setRecurringCount('1');
-        }
-    }, [nature]);
-
     useEffect(() => {
         if (!isInitializing.current && !isCommissionManual && type === TransactionType.INCOME && advisorId && splits.length === 0 && !isEditing) {
              const comm = basePostTax * 0.30;
@@ -510,9 +503,6 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         if (type === TransactionType.EXPENSE) {
             submissionData.status = status;
             submissionData.nature = nature;
-            if (nature === ExpenseNature.FIXED && !isEditing) {
-                submissionData.recurringCount = parseInt(recurringCount, 10) || 1;
-            }
         }
         
         onSubmit(submissionData);
@@ -693,7 +683,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                             </select>
                         </div>
                     </div>
-                    <div className={`grid grid-cols-1 ${nature === ExpenseNature.FIXED && !isEditing ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-4`}>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                          <div>
                             <label className="block text-sm font-medium text-text-secondary">Natureza do Gasto</label>
                             <select value={nature} onChange={(e) => setNature(e.target.value as ExpenseNature)} name="nature" className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary">
@@ -701,17 +691,6 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                                 <option value={ExpenseNature.FIXED}>Fixo</option>
                             </select>
                         </div>
-                         {nature === ExpenseNature.FIXED && !isEditing && (
-                            <div>
-                                <label className="block text-sm font-medium text-text-secondary">Repetir por (meses)</label>
-                                <input type="number" min="1" step="1" value={recurringCount} onChange={(e) => {
-                                        const val = parseInt(e.target.value, 10);
-                                        if (val > 0 || e.target.value === '') {
-                                            setRecurringCount(e.target.value);
-                                        }
-                                    }} disabled={isEditing} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary disabled:opacity-70 disabled:cursor-not-allowed" />
-                            </div>
-                         )}
                         <div>
                             <label className="block text-sm font-medium text-text-secondary">Status</label>
                             <select name="status" value={formData.status} onChange={handleChange} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary">
@@ -851,6 +830,7 @@ const PartnershipView: FC<{ partners: Partner[], onSave: (partners: Partner[]) =
         if (!newName || !newPercentage || !newQuotas) return;
         const p = parseFloat(newPercentage);
         const q = parseFloat(newQuotas);
+        // Fix: Changed iNaN to isNaN
         if (isNaN(p) || isNaN(q)) return;
         
         let updated;
@@ -1074,98 +1054,6 @@ const AdvisorSettingsItem: FC<{
     );
 };
 
-const SettingsView: FC<{
-    incomeCategories: string[]; setIncomeCategories: (v: string[]) => void;
-    expenseCategories: ExpenseCategory[]; setExpenseCategories: (v: ExpenseCategory[]) => void;
-    paymentMethods: string[]; setPaymentMethods: (v: string[]) => void;
-    costCenters: CostCenter[]; setCostCenters: (v: CostCenter[]) => void;
-    advisors: Advisor[]; setAdvisors: (v: Advisor[]) => void;
-    globalTaxRate: number; setGlobalTaxRate: (v: number) => void;
-}> = (props) => {
-    const [activeTab, setActiveTab] = useState('categories');
-    const [newItem, setnewItem] = useState('');
-    const [newAdvisorName, setNewAdvisorName] = useState('');
-    const [newAdvisorRate, setNewAdvisorRate] = useState('30');
-
-    const addItem = (list: string[], setList: (v: string[]) => void) => { if(newItem && !list.includes(newItem)) { setList([...list, newItem]); setnewItem(''); } };
-    const removeItem = (list: string[], setList: (v: string[]) => void, item: string) => setList(list.filter(i => i !== item));
-    
-    const [newExpCatName, setNewExpCatName] = useState('');
-    const [newExpCatType, setNewExpCatType] = useState<ExpenseType>(ExpenseType.EXPENSE);
-    const addExpenseCat = () => { if(newExpCatName) { props.setExpenseCategories([...props.expenseCategories, { name: newExpCatName, type: newExpCatType }]); setNewExpCatName(''); } };
-    
-    const [newCCName, setNewCCName] = useState('');
-    const addCC = () => { if(newCCName) { props.setCostCenters([...props.costCenters, { id: newCCName.toLowerCase().replace(/\s/g, '-'), name: newCCName }]); setNewCCName(''); } };
-
-    const addAdvisor = () => { 
-        if(newAdvisorName) { 
-            props.setAdvisors([...props.advisors, { id: crypto.randomUUID(), name: newAdvisorName, commissionRate: parseFloat(newAdvisorRate) || 30, costs: [] }]); 
-            setNewAdvisorName(''); 
-        } 
-    };
-
-    const updateAdvisor = (updated: Advisor) => {
-        const newAdvisors = props.advisors.map(adv => adv.id === updated.id ? updated : adv);
-        props.setAdvisors(newAdvisors);
-    };
-
-    return (
-        <div className="space-y-6 animate-fade-in">
-             <div><h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Configurações</h2><p className="text-text-secondary">Personalize as categorias e opções do sistema.</p></div>
-            <div className="flex border-b border-border-color overflow-x-auto">
-                <button onClick={() => setActiveTab('categories')} className={`px-4 py-2 text-sm font-medium whitespace-nowrap ${activeTab === 'categories' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}>Categorias</button>
-                <button onClick={() => setActiveTab('payment')} className={`px-4 py-2 text-sm font-medium whitespace-nowrap ${activeTab === 'payment' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}>Pagamentos</button>
-                <button onClick={() => setActiveTab('advisors')} className={`px-4 py-2 text-sm font-medium whitespace-nowrap ${activeTab === 'advisors' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}>Assessores & Taxas</button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {activeTab === 'categories' && (
-                    <>
-                        <Card><h3 className="font-bold mb-4 text-green-400">Categorias de Receita</h3><div className="flex gap-2 mb-4"><input type="text" value={newItem} onChange={(e) => setnewItem(e.target.value)} placeholder="Nova categoria..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" /><Button onClick={() => addItem(props.incomeCategories, props.setIncomeCategories)} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button></div><ul className="space-y-2 max-h-60 overflow-y-auto">{props.incomeCategories.map((cat: string, i: number) => (<li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm"><span>{cat}</span><button onClick={() => removeItem(props.incomeCategories, props.setIncomeCategories, cat)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button></li>))}</ul></Card>
-                         <Card>
-                            <h3 className="font-bold mb-4 text-danger">Categorias de Despesa</h3>
-                            <div className="flex flex-col gap-2 mb-4">
-                                <input type="text" value={newExpCatName} onChange={(e) => setNewExpCatName(e.target.value)} placeholder="Nova categoria..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" />
-                                <div className="flex gap-2">
-                                    <select value={newExpCatType} onChange={(e) => setNewExpCatType(e.target.value as ExpenseType)} className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm">
-                                        <option value={ExpenseType.COST}>Custo</option>
-                                        <option value={ExpenseType.EXPENSE}>Despesa</option>
-                                    </select>
-                                    <Button onClick={addExpenseCat} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button>
-                                </div>
-                            </div>
-                            <ul className="space-y-2 max-h-60 overflow-y-auto">{props.expenseCategories.map((cat: ExpenseCategory, i: number) => (<li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm"><span>{cat.name} <span className="text-[10px] uppercase bg-background px-1 rounded ml-1 text-text-secondary">{cat.type}</span></span><button onClick={() => props.setExpenseCategories(props.expenseCategories.filter((_, idx) => idx !== i))} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button></li>))}</ul>
-                        </Card>
-                    </>
-                )}
-                {activeTab === 'payment' && (
-                    <>
-                        <Card><h3 className="font-bold mb-4">Formas de Pagamento</h3><div className="flex gap-2 mb-4"><input type="text" value={newItem} onChange={(e) => setnewItem(e.target.value)} placeholder="Nova método..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" /><Button onClick={() => addItem(props.paymentMethods, props.setPaymentMethods)} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button></div><ul className="space-y-2 max-h-60 overflow-y-auto">{props.paymentMethods.map((pm: string, i: number) => (<li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm"><span>{pm}</span><button onClick={() => removeItem(props.paymentMethods, props.setPaymentMethods, pm)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button></li>))}</ul></Card>
-                        <Card><h3 className="font-bold mb-4">Centros de Custo</h3><div className="flex gap-2 mb-4"><input type="text" value={newCCName} onChange={(e) => setNewCCName(e.target.value)} placeholder="Novo centro..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" /><Button onClick={addCC} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button></div><ul className="space-y-2 max-h-60 overflow-y-auto">{props.costCenters.map((cc: CostCenter, i: number) => (<li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm"><span>{cc.name}</span>{!cc.isDefault && <button onClick={() => props.setCostCenters(props.costCenters.filter(c => c.id !== cc.id))} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>}</li>))}</ul></Card>
-                    </>
-                )}
-                {activeTab === 'advisors' && (
-                    <>
-                         <Card className="md:col-span-2">
-                            <h3 className="font-bold mb-4">Gerenciar Assessores</h3>
-                            <div className="flex flex-wrap gap-2 mb-4 items-end">
-                                <div className="flex-1 min-w-[200px]"><label className="text-xs text-text-secondary block mb-1">Nome</label><input type="text" value={newAdvisorName} onChange={(e) => setNewAdvisorName(e.target.value)} placeholder="Nome do Assessor..." className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm" /></div>
-                                <div className="w-24"><label className="text-xs text-text-secondary block mb-1">Comissão (%)</label><input type="number" value={newAdvisorRate} onChange={(e) => setNewAdvisorRate(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm" /></div>
-                                <Button onClick={addAdvisor} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button>
-                            </div>
-                            <ul className="space-y-2 max-h-96 overflow-y-auto">
-                                {props.advisors.map((adv: Advisor, i: number) => (
-                                    <AdvisorSettingsItem key={adv.id} advisor={adv} onUpdate={updateAdvisor} onDelete={() => props.setAdvisors(props.advisors.filter((_, idx) => idx !== i))} />
-                                ))}
-                            </ul>
-                        </Card>
-                        <Card className="md:col-span-2"><h3 className="font-bold mb-4">Taxas Globais</h3><div className="space-y-4"><div><label className="block text-sm text-text-secondary mb-1">Imposto Padrão (%)</label><input type="number" step="0.01" value={props.globalTaxRate} onChange={(e) => props.setGlobalTaxRate(parseFloat(e.target.value) || 0)} className="w-full md:w-1/3 bg-background border border-border-color rounded-md px-3 py-2 text-sm"/><p className="text-xs text-text-secondary mt-1">Este valor será usado para calcular o imposto sobre receitas automaticamente.</p></div></div></Card>
-                    </>
-                )}
-            </div>
-        </div>
-    );
-};
-
 const Sidebar: FC<{ activeView: View; setActiveView: (view: View) => void; isSidebarOpen: boolean; user: User | null; }> = ({ activeView, setActiveView, isSidebarOpen, user }) => {
     const getUserDisplayName = (user: User | null) => {
         if (!user) return "";
@@ -1255,8 +1143,8 @@ const TransactionsView: FC<{
     importedRevenues: ImportedRevenue[];
     userId?: string;
 }> = ({ transactions, onAdd, onEdit, onDelete, onSetPaid, incomeCategories, expenseCategories, paymentMethods, costCenters, advisors, onImportTransactions, globalTaxRate, importedRevenues, userId }) => {
-    const [filterYear, setFilterYear] = useState<number | 'all'>('all');
-    const [filterMonth, setFilterMonth] = useState<number | 'all'>('all');
+    const [filterYear, setFilterYear] = useState<number | 'all'>(new Date().getUTCFullYear());
+    const [filterMonth, setFilterMonth] = useState<number | 'all'>(new Date().getUTCMonth());
     const [activeTab, setActiveTab] = useState<TransactionType>(TransactionType.EXPENSE);
     const [filterCategory, setFilterCategory] = useState<string>('all');
     const [searchTerm, setSearchTerm] = useState('');
@@ -1265,17 +1153,27 @@ const TransactionsView: FC<{
     const [editingId, setEditingId] = useState<string | null>(null);
 
     const availableYears = useMemo(() => {
-        const years = [...new Set(transactions.map(t => new Date(t.date).getFullYear()))];
-        const currentYear = new Date().getFullYear();
-        if (!years.includes(currentYear)) years.push(currentYear);
-        return years.sort((a: number, b: number) => b - a);
+        const yearsSet = new Set(transactions.map(t => new Date(t.date).getUTCFullYear()));
+        const today = new Date();
+        const currentYear = today.getUTCFullYear();
+        const nextMonthDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 1));
+        const nextYear = nextMonthDate.getUTCFullYear();
+        
+        yearsSet.add(currentYear);
+        yearsSet.add(nextYear);
+        
+        return Array.from(yearsSet).sort((a: number, b: number) => b - a);
     }, [transactions]);
 
     const filtered = useMemo(() => {
+        const now = new Date();
+        const curM = now.getUTCMonth();
+        const curY = now.getUTCFullYear();
+
         let items = transactions.filter(t => {
             const d = new Date(t.date);
-            if (filterYear !== 'all' && d.getFullYear() !== filterYear) return false;
-            if (filterMonth !== 'all' && d.getMonth() !== filterMonth) return false;
+            if (filterYear !== 'all' && d.getUTCFullYear() !== filterYear) return false;
+            if (filterMonth !== 'all' && d.getUTCMonth() !== filterMonth) return false;
             if (t.type !== activeTab) return false;
             if (filterCategory !== 'all' && t.category !== filterCategory) return false;
             if (searchTerm) {
@@ -1284,6 +1182,36 @@ const TransactionsView: FC<{
             }
             return true;
         });
+
+        if (activeTab === TransactionType.EXPENSE && filterYear !== 'all' && filterMonth !== 'all') {
+            const isFuture = (filterYear > curY) || (filterYear === curY && filterMonth > curM);
+            
+            if (isFuture) {
+                const fixedInCurrent = transactions.filter(t => {
+                    const d = new Date(t.date);
+                    return t.type === TransactionType.EXPENSE && 
+                           t.nature === ExpenseNature.FIXED && 
+                           d.getUTCFullYear() === curY && 
+                           d.getUTCMonth() === curM;
+                });
+
+                fixedInCurrent.forEach(t => {
+                    if (!items.find(item => item.description === t.description)) {
+                        const projDate = new Date(t.date);
+                        projDate.setUTCFullYear(filterYear as number);
+                        projDate.setUTCMonth(filterMonth as number);
+                        
+                        items.push({
+                            ...t,
+                            id: `virtual-${t.id}-${filterYear}-${filterMonth}`,
+                            date: projDate.toISOString(),
+                            status: ExpenseStatus.PENDING
+                        } as Transaction);
+                    }
+                });
+            }
+        }
+
         if (sortConfig !== null) {
             items.sort((a, b) => {
                 const valA = a[sortConfig.key as keyof Transaction] as (string | number);
@@ -1309,7 +1237,11 @@ const TransactionsView: FC<{
         return sortConfig.direction === 'asc' ? <ArrowUpIcon className="w-4 h-4 ml-1 inline" /> : <ArrowDownIcon className="w-4 h-4 ml-1 inline" />;
     };
 
-    const handleEdit = (t: Transaction) => { setEditingId(t.id); setIsModalOpen(true); };
+    const handleEdit = (t: Transaction) => { 
+        if (t.id.startsWith('virtual-')) return;
+        setEditingId(t.id); 
+        setIsModalOpen(true); 
+    };
     const handleClose = () => { setIsModalOpen(false); setEditingId(null); };
     const handleSubmit = (data: TransactionFormValues) => { if (editingId) onEdit(editingId, data); else onAdd(data); handleClose(); };
 
@@ -1436,10 +1368,12 @@ const TransactionsView: FC<{
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border-color/30 text-sm font-medium">
-                            {filtered.map(t => (
-                                <tr key={t.id} className="hover:bg-background/50 transition-colors">
+                            {filtered.map(t => {
+                                const isVirtual = t.id.toString().startsWith('virtual-');
+                                return (
+                                <tr key={t.id} className={`hover:bg-background/50 transition-colors ${isVirtual ? 'opacity-70 bg-primary/5 italic' : ''}`}>
                                     <td className="p-4 whitespace-nowrap text-text-secondary">{formatDate(t.date)}</td>
-                                    <td className="p-4 font-bold">{t.description}<div className="text-xs text-text-secondary font-normal">{t.clientSupplier}</div></td>
+                                    <td className="p-4 font-bold">{t.description}{isVirtual && <span className="ml-2 text-[10px] bg-primary/20 text-primary px-1 rounded not-italic">PROJEÇÃO</span>}<div className="text-xs text-text-secondary font-normal">{t.clientSupplier}</div></td>
                                     <td className="p-4"><span className="px-3 py-1 rounded-full bg-border-color/50 border border-border-color text-[10px] uppercase font-bold">{t.category}</span></td>
                                     <td className={`p-4 text-right font-bold ${t.type === TransactionType.INCOME ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(t.amount)}</td>
                                     {activeTab === TransactionType.EXPENSE && (
@@ -1450,16 +1384,19 @@ const TransactionsView: FC<{
                                         </td>
                                     )}
                                     <td className="p-4 text-right">
-                                        <div className="flex justify-end gap-2">
-                                            {t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PENDING && (
-                                                <Button variant="success" className="py-1 px-2 rounded-lg" onClick={() => onSetPaid(t.id)} title="Marcar como Pago"><CheckCircleIcon className="w-4 h-4"/></Button>
-                                            )}
-                                            <Button variant="ghost" className="py-1 px-2 rounded-lg hover:bg-surface" onClick={() => handleEdit(t)}><EditIcon className="w-4 h-4 opacity-70"/></Button>
-                                            <Button variant="ghostDanger" className="py-1 px-2 rounded-lg" onClick={() => onDelete(t.id)}><TrashIcon className="w-4 h-4"/></Button>
-                                        </div>
+                                        {!isVirtual && (
+                                            <div className="flex justify-end gap-2">
+                                                {t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PENDING && (
+                                                    <Button variant="success" className="py-1 px-2 rounded-lg" onClick={() => onSetPaid(t.id)} title="Marcar como Pago"><CheckCircleIcon className="w-4 h-4"/></Button>
+                                                )}
+                                                <Button variant="ghost" className="py-1 px-2 rounded-lg hover:bg-surface" onClick={() => handleEdit(t)}><EditIcon className="w-4 h-4 opacity-70"/></Button>
+                                                <Button variant="ghostDanger" className="py-1 px-2 rounded-lg" onClick={() => onDelete(t.id)}><TrashIcon className="w-4 h-4"/></Button>
+                                            </div>
+                                        )}
                                     </td>
                                 </tr>
-                            ))}
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
@@ -1623,7 +1560,7 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
     }, [transactions, importedRevenues]);
 
     const [selectedYear, setSelectedYear] = useState<number | 'all'>(new Date().getFullYear());
-    const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all');
+    const [selectedMonth, setSelectedMonth] = useState<number | 'all'>(new Date().getMonth());
 
     const filterFn = (dateStr: string) => {
         const d = new Date(dateStr);
@@ -1645,7 +1582,6 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
         
         const result = Number(totalRevenue) - Number(totalExpense);
 
-        // --- CÁLCULO: Caixa da Empresa (Saldo PJ até o fim do período filtrado) ---
         let limitDate = new Date();
         if (selectedYear !== 'all') {
             if (selectedMonth !== 'all') {
@@ -1670,7 +1606,6 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
     const valuationMonthlyData = useMemo(() => {
         const monthlyMap: Record<string, { revenue: number; expense: number; pjBalanceInMonth: number }> = {};
         
-        // Coletar movimentação mensal
         transactions.forEach(t => {
             if (!filterFn(t.date)) return;
             const key = t.date.substring(0, 7); // YYYY-MM
@@ -1695,7 +1630,6 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
                 const [year, month] = monthKey.split('-').map(Number);
                 const lastDayOfMonth = new Date(year, month, 0, 23, 59, 59);
                 
-                // Saldo PJ no fim daquele mês específico
                 const caixaNoMes = transactions.reduce((acc, t) => {
                     if (t.costCenter === 'conta-pj' && new Date(t.date) <= lastDayOfMonth) {
                         return acc + (t.type === TransactionType.INCOME ? t.amount : -t.amount);
@@ -1767,8 +1701,6 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
                         <span className="font-bold text-lg text-text-primary">RESULTADO DO PERÍODO</span>
                         <span className={`font-bold text-lg ${dreData.result >= 0 ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(dreData.result)}</span>
                     </div>
-                    
-                    {/* NOVA LINHA OBRIGATÓRIA */}
                     <div className="flex justify-between items-center py-3 border-t border-border-color/50 bg-primary/10 px-2 rounded mt-1">
                         <span className="font-bold text-lg text-primary">LUCRO LÍQUIDO AJUSTADO</span>
                         <span className={`font-bold text-lg ${dreData.lucroLiquidoAjustado >= 0 ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(dreData.lucroLiquidoAjustado)}</span>
@@ -1850,8 +1782,8 @@ interface DashboardViewProps {
 }
 
 const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid, onEdit, incomeCategories, expenseCategories, paymentMethods, costCenters, advisors, globalTaxRate, importedRevenues }) => {
-    const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
-    const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all');
+    const [selectedYear, setSelectedYear] = useState<number | 'all'>(new Date().getFullYear());
+    const [selectedMonth, setSelectedMonth] = useState<number | 'all'>(new Date().getMonth());
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
     const availableYears = useMemo(() => Array.from(new Set(transactions.map(t => new Date(t.date).getFullYear()))).sort((a,b)=>b-a), [transactions]);
@@ -2006,6 +1938,98 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
     );
 };
 
+const SettingsView: FC<{
+    incomeCategories: string[]; setIncomeCategories: (v: string[]) => void;
+    expenseCategories: ExpenseCategory[]; setExpenseCategories: (v: ExpenseCategory[]) => void;
+    paymentMethods: string[]; setPaymentMethods: (v: string[]) => void;
+    costCenters: CostCenter[]; setCostCenters: (v: CostCenter[]) => void;
+    advisors: Advisor[]; setAdvisors: (v: Advisor[]) => void;
+    globalTaxRate: number; setGlobalTaxRate: (v: number) => void;
+}> = (props) => {
+    const [activeTab, setActiveTab] = useState('categories');
+    const [newItem, setnewItem] = useState('');
+    const [newAdvisorName, setNewAdvisorName] = useState('');
+    const [newAdvisorRate, setNewAdvisorRate] = useState('30');
+
+    const addItem = (list: string[], setList: (v: string[]) => void) => { if(newItem && !list.includes(newItem)) { setList([...list, newItem]); setnewItem(''); } };
+    const removeItem = (list: string[], setList: (v: string[]) => void, item: string) => setList(list.filter(i => i !== item));
+    
+    const [newExpCatName, setNewExpCatName] = useState('');
+    const [newExpCatType, setNewExpCatType] = useState<ExpenseType>(ExpenseType.EXPENSE);
+    const addExpenseCat = () => { if(newExpCatName) { props.setExpenseCategories([...props.expenseCategories, { name: newExpCatName, type: newExpCatType }]); setNewExpCatName(''); } };
+    
+    const [newCCName, setNewCCName] = useState('');
+    const addCC = () => { if(newCCName) { props.setCostCenters([...props.costCenters, { id: newCCName.toLowerCase().replace(/\s/g, '-'), name: newCCName }]); setNewCCName(''); } };
+
+    const addAdvisor = () => { 
+        if(newAdvisorName) { 
+            props.setAdvisors([...props.advisors, { id: crypto.randomUUID(), name: newAdvisorName, commissionRate: parseFloat(newAdvisorRate) || 30, costs: [] }]); 
+            setNewAdvisorName(''); 
+        } 
+    };
+
+    const updateAdvisor = (updated: Advisor) => {
+        const newAdvisors = props.advisors.map(adv => adv.id === updated.id ? updated : adv);
+        props.setAdvisors(newAdvisors);
+    };
+
+    return (
+        <div className="space-y-6 animate-fade-in">
+             <div><h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Configurações</h2><p className="text-text-secondary">Personalize as categorias e opções do sistema.</p></div>
+            <div className="flex border-b border-border-color overflow-x-auto">
+                <button onClick={() => setActiveTab('categories')} className={`px-4 py-2 text-sm font-medium whitespace-nowrap ${activeTab === 'categories' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}>Categorias</button>
+                <button onClick={() => setActiveTab('payment')} className={`px-4 py-2 text-sm font-medium whitespace-nowrap ${activeTab === 'payment' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}>Pagamentos</button>
+                <button onClick={() => setActiveTab('advisors')} className={`px-4 py-2 text-sm font-medium whitespace-nowrap ${activeTab === 'advisors' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}>Assessores & Taxas</button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {activeTab === 'categories' && (
+                    <>
+                        <Card><h3 className="font-bold mb-4 text-green-400">Categorias de Receita</h3><div className="flex gap-2 mb-4"><input type="text" value={newItem} onChange={(e) => setnewItem(e.target.value)} placeholder="Nova categoria..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" /><Button onClick={() => addItem(props.incomeCategories, props.setIncomeCategories)} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button></div><ul className="space-y-2 max-h-60 overflow-y-auto">{props.incomeCategories.map((cat: string, i: number) => (<li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm"><span>{cat}</span><button onClick={() => removeItem(props.incomeCategories, props.setIncomeCategories, cat)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button></li>))}</ul></Card>
+                         <Card>
+                            <h3 className="font-bold mb-4 text-danger">Categorias de Despesa</h3>
+                            <div className="flex flex-col gap-2 mb-4">
+                                <input type="text" value={newExpCatName} onChange={(e) => setNewExpCatName(e.target.value)} placeholder="Nova categoria..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" />
+                                <div className="flex gap-2">
+                                    <select value={newExpCatType} onChange={(e) => setNewExpCatType(e.target.value as ExpenseType)} className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm">
+                                        <option value={ExpenseType.COST}>Custo</option>
+                                        <option value={ExpenseType.EXPENSE}>Despesa</option>
+                                    </select>
+                                    <Button onClick={addExpenseCat} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button>
+                                </div>
+                            </div>
+                            <ul className="space-y-2 max-h-60 overflow-y-auto">{props.expenseCategories.map((cat: ExpenseCategory, i: number) => (<li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm"><span>{cat.name} <span className="text-[10px] uppercase bg-background px-1 rounded ml-1 text-text-secondary">{cat.type}</span></span><button onClick={() => props.setExpenseCategories(props.expenseCategories.filter((_, idx) => idx !== i))} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button></li>))}</ul>
+                        </Card>
+                    </>
+                )}
+                {activeTab === 'payment' && (
+                    <>
+                        <Card><h3 className="font-bold mb-4">Formas de Pagamento</h3><div className="flex gap-2 mb-4"><input type="text" value={newItem} onChange={(e) => setnewItem(e.target.value)} placeholder="Nova método..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" /><Button onClick={() => addItem(props.paymentMethods, props.setPaymentMethods)} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button></div><ul className="space-y-2 max-h-60 overflow-y-auto">{props.paymentMethods.map((pm: string, i: number) => (<li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm"><span>{pm}</span><button onClick={() => removeItem(props.paymentMethods, props.setPaymentMethods, pm)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button></li>))}</ul></Card>
+                        <Card><h3 className="font-bold mb-4">Centros de Custo</h3><div className="flex gap-2 mb-4"><input type="text" value={newCCName} onChange={(e) => setNewCCName(e.target.value)} placeholder="Novo centro..." className="flex-1 bg-background border border-border-color rounded-md px-3 py-2 text-sm" /><Button onClick={addCC} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button></div><ul className="space-y-2 max-h-60 overflow-y-auto">{props.costCenters.map((cc: CostCenter, i: number) => (<li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm"><span>{cc.name}</span>{!cc.isDefault && <button onClick={() => props.setCostCenters(props.costCenters.filter(c => c.id !== cc.id))} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>}</li>))}</ul></Card>
+                    </>
+                )}
+                {activeTab === 'advisors' && (
+                    <>
+                         <Card className="md:col-span-2">
+                            <h3 className="font-bold mb-4">Gerenciar Assessores</h3>
+                            <div className="flex flex-wrap gap-2 mb-4 items-end">
+                                <div className="flex-1 min-w-[200px]"><label className="text-xs text-text-secondary block mb-1">Nome</label><input type="text" value={newAdvisorName} onChange={(e) => setNewAdvisorName(e.target.value)} placeholder="Nome do Assessor..." className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm" /></div>
+                                <div className="w-24"><label className="text-xs text-text-secondary block mb-1">Comissão (%)</label><input type="number" value={newAdvisorRate} onChange={(e) => setNewAdvisorRate(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm" /></div>
+                                <Button onClick={addAdvisor} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button>
+                            </div>
+                            <ul className="space-y-2 max-h-96 overflow-y-auto">
+                                {props.advisors.map((adv: Advisor, i: number) => (
+                                    <AdvisorSettingsItem key={adv.id} advisor={adv} onUpdate={updateAdvisor} onDelete={() => props.setAdvisors(props.advisors.filter((_, idx) => idx !== i))} />
+                                ))}
+                            </ul>
+                        </Card>
+                        <Card className="md:col-span-2"><h3 className="font-bold mb-4">Taxas Globais</h3><div className="space-y-4"><div><label className="block text-sm text-text-secondary mb-1">Imposto Padrão (%)</label><input type="number" step="0.01" value={props.globalTaxRate} onChange={(e) => props.setGlobalTaxRate(parseFloat(e.target.value) || 0)} className="w-full md:w-1/3 bg-background border border-border-color rounded-md px-3 py-2 text-sm"/><p className="text-xs text-text-secondary mt-1">Este valor será usado para calcular o imposto sobre receitas automaticamente.</p></div></div></Card>
+                    </>
+                )}
+            </div>
+        </div>
+    );
+};
+
 const App: FC = () => {
     const [user, setUser] = useState<User | null>(null);
     const [loadingAuth, setLoadingAuth] = useState(true);
@@ -2034,7 +2058,22 @@ const App: FC = () => {
             setLoadingData(true);
             Promise.all([getTransactions(), getImportedRevenues(), getPartnership()]).then(([transSnap, revSnap, partSnap]) => {
                 if (transSnap && transSnap.docs) {
-                    const transData = transSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Transaction));
+                    let transData = transSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Transaction));
+                    
+                    const now = new Date();
+                    const firstDayNextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+                    
+                    const legacyFutureFixed = transData.filter(t => 
+                        t.type === TransactionType.EXPENSE && 
+                        t.nature === ExpenseNature.FIXED && 
+                        new Date(t.date) >= firstDayNextMonth
+                    );
+
+                    if (legacyFutureFixed.length > 0) {
+                        legacyFutureFixed.forEach(t => deleteTransactionFromDb(t.id));
+                        transData = transData.filter(t => !legacyFutureFixed.some(l => l.id === t.id));
+                    }
+
                     setTransactions(transData);
                 }
                 
