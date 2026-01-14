@@ -999,9 +999,13 @@ const AdvisorSettingsItem: FC<{
     advisor: Advisor; 
     onDelete: () => void; 
     onUpdate: (updated: Advisor) => void; 
-}> = ({ advisor, onDelete, onUpdate }) => {
+    onMove?: (direction: 'up' | 'down') => void;
+}> = ({ advisor, onDelete, onUpdate, onMove }) => {
     const [newCostDesc, setNewCostDesc] = useState('');
     const [newCostVal, setNewCostVal] = useState('');
+    const [isEditingBase, setIsEditingBase] = useState(false);
+    const [editName, setEditName] = useState(advisor.name);
+    const [editRate, setEditRate] = useState(advisor.commissionRate.toString());
 
     const totalCost = (advisor.costs || []).reduce((acc, c) => acc + c.value, 0);
 
@@ -1025,15 +1029,43 @@ const AdvisorSettingsItem: FC<{
         onUpdate({ ...advisor, costs: newCosts });
     };
 
+    const saveBaseInfo = () => {
+        onUpdate({ ...advisor, name: editName, commissionRate: parseFloat(editRate) || 0 });
+        setIsEditingBase(false);
+    };
+
     return (
         <li className="flex flex-col bg-background/50 p-3 rounded text-sm gap-2">
             <div className="flex justify-between items-center">
-                <div className="flex items-center gap-4">
-                    <span className="font-semibold">{advisor.name}</span>
-                    <span className="text-xs text-text-secondary bg-background px-2 py-1 rounded">Comissão: {advisor.commissionRate}%</span>
-                    <span className="text-xs text-danger bg-background px-2 py-1 rounded" title="Soma dos custos">Custos: {formatCurrency(totalCost)}</span>
+                <div className="flex items-center gap-2">
+                    {onMove && (
+                        <div className="flex flex-col gap-0.5 mr-1">
+                            <button onClick={() => onMove('up')} className="text-text-secondary hover:text-primary transition-colors"><ArrowUpIcon className="w-3 h-3" /></button>
+                            <button onClick={() => onMove('down')} className="text-text-secondary hover:text-primary transition-colors"><ArrowDownIcon className="w-3 h-3" /></button>
+                        </div>
+                    )}
+                    {isEditingBase ? (
+                        <div className="flex gap-2 items-center">
+                            <input type="text" value={editName} onChange={e => setEditName(e.target.value)} className="bg-background border border-border-color rounded px-2 py-1 text-xs w-32" />
+                            <div className="relative">
+                                <input type="number" value={editRate} onChange={e => setEditRate(e.target.value)} className="bg-background border border-border-color rounded px-2 py-1 text-xs w-16" />
+                                <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-text-secondary">%</span>
+                            </div>
+                            <Button onClick={saveBaseInfo} className="py-1 px-2 text-[10px]">OK</Button>
+                            <Button variant="ghost" onClick={() => setIsEditingBase(false)} className="py-1 px-2 text-[10px]">X</Button>
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-4">
+                            <span className="font-semibold">{advisor.name}</span>
+                            <span className="text-xs text-text-secondary bg-background px-2 py-1 rounded">Comissão: {advisor.commissionRate}%</span>
+                            <span className="text-xs text-danger bg-background px-2 py-1 rounded" title="Soma dos custos">Custos: {formatCurrency(totalCost)}</span>
+                        </div>
+                    )}
                 </div>
-                <button onClick={onDelete} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>
+                <div className="flex gap-2">
+                    {!isEditingBase && <button onClick={() => setIsEditingBase(true)} className="text-text-secondary hover:text-primary"><EditIcon className="w-4 h-4"/></button>}
+                    <button onClick={onDelete} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>
+                </div>
             </div>
             
             <div className="pl-4 border-l-2 border-border-color ml-2 space-y-2">
@@ -1087,17 +1119,80 @@ const SettingsView: FC<SettingsViewProps> = ({
     const [newAdvisorName, setNewAdvisorName] = useState('');
     const [newAdvisorRate, setNewAdvisorRate] = useState('30');
 
+    // States for editing items
+    const [editingIncomeIdx, setEditingIncomeIdx] = useState<number | null>(null);
+    const [tempIncomeVal, setTempIncomeVal] = useState('');
+
+    const [editingExpenseIdx, setEditingExpenseIdx] = useState<number | null>(null);
+    const [tempExpenseName, setTempExpenseName] = useState('');
+    const [tempExpenseType, setTempExpenseType] = useState<ExpenseType>(ExpenseType.EXPENSE);
+
+    const [editingPaymentIdx, setEditingPaymentIdx] = useState<number | null>(null);
+    const [tempPaymentVal, setTempPaymentVal] = useState('');
+
+    const [editingCostCenterIdx, setEditingCostCenterIdx] = useState<number | null>(null);
+    const [tempCostCenterName, setTempCostCenterName] = useState('');
+
+    // Reorder Helpers
+    const moveItem = <T,>(arr: T[], setArr: React.Dispatch<React.SetStateAction<T[]>>, idx: number, direction: 'up' | 'down') => {
+        const newArr = [...arr];
+        const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+        if (targetIdx < 0 || targetIdx >= newArr.length) return;
+        [newArr[idx], newArr[targetIdx]] = [newArr[targetIdx], newArr[idx]];
+        setArr(newArr);
+    };
+
+    // Income Handlers
     const addIncomeCategory = () => { if (newIncomeCat && !incomeCategories.includes(newIncomeCat)) { setIncomeCategories([...incomeCategories, newIncomeCat]); setNewIncomeCat(''); } };
     const removeIncomeCategory = (cat: string) => setIncomeCategories(incomeCategories.filter(c => c !== cat));
+    const startEditIncome = (idx: number) => { setEditingIncomeIdx(idx); setTempIncomeVal(incomeCategories[idx]); };
+    const saveEditIncome = () => {
+        if (!tempIncomeVal.trim()) return;
+        const newList = [...incomeCategories];
+        newList[editingIncomeIdx!] = tempIncomeVal.trim();
+        setIncomeCategories(newList);
+        setEditingIncomeIdx(null);
+    };
 
+    // Expense Handlers
     const addExpenseCategory = () => { if (newExpenseCatName && !expenseCategories.find(c => c.name === newExpenseCatName)) { setExpenseCategories([...expenseCategories, { name: newExpenseCatName, type: newExpenseCatType }]); setNewExpenseCatName(''); } };
     const removeExpenseCategory = (name: string) => setExpenseCategories(expenseCategories.filter(c => c.name !== name));
+    const startEditExpense = (idx: number) => { 
+        setEditingExpenseIdx(idx); 
+        setTempExpenseName(expenseCategories[idx].name); 
+        setTempExpenseType(expenseCategories[idx].type);
+    };
+    const saveEditExpense = () => {
+        if (!tempExpenseName.trim()) return;
+        const newList = [...expenseCategories];
+        newList[editingExpenseIdx!] = { name: tempExpenseName.trim(), type: tempExpenseType };
+        setExpenseCategories(newList);
+        setEditingExpenseIdx(null);
+    };
 
+    // Payment Handlers
     const addPaymentMethod = () => { if (newPaymentMethod && !paymentMethods.includes(newPaymentMethod)) { setPaymentMethods([...paymentMethods, newPaymentMethod]); setNewPaymentMethod(''); } };
     const removePaymentMethod = (pm: string) => setPaymentMethods(paymentMethods.filter(p => p !== pm));
+    const startEditPayment = (idx: number) => { setEditingPaymentIdx(idx); setTempPaymentVal(paymentMethods[idx]); };
+    const saveEditPayment = () => {
+        if (!tempPaymentVal.trim()) return;
+        const newList = [...paymentMethods];
+        newList[editingPaymentIdx!] = tempPaymentVal.trim();
+        setPaymentMethods(newList);
+        setEditingPaymentIdx(null);
+    };
 
+    // Cost Center Handlers
     const addCostCenter = () => { if (newCostCenterName && !costCenters.find(c => c.name === newCostCenterName)) { setCostCenters([...costCenters, { id: crypto.randomUUID(), name: newCostCenterName }]); setNewCostCenterName(''); } };
     const removeCostCenter = (id: string) => setCostCenters(costCenters.filter(c => c.id !== id));
+    const startEditCostCenter = (idx: number) => { setEditingCostCenterIdx(idx); setTempCostCenterName(costCenters[idx].name); };
+    const saveEditCostCenter = () => {
+        if (!tempCostCenterName.trim()) return;
+        const newList = [...costCenters];
+        newList[editingCostCenterIdx!] = { ...newList[editingCostCenterIdx!], name: tempCostCenterName.trim() };
+        setCostCenters(newList);
+        setEditingCostCenterIdx(null);
+    };
 
     const addAdvisor = () => { if (newAdvisorName) { setAdvisors([...advisors, { id: crypto.randomUUID(), name: newAdvisorName, commissionRate: parseFloat(newAdvisorRate) || 30, costs: [] }]); setNewAdvisorName(''); setNewAdvisorRate('30'); } };
     const removeAdvisor = (id: string) => setAdvisors(advisors.filter(a => a.id !== id));
@@ -1107,6 +1202,7 @@ const SettingsView: FC<SettingsViewProps> = ({
         <div className="space-y-6 animate-fade-in">
             <h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Configurações</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* CATEGORIAS DE RECEITA */}
                 <Card>
                     <h3 className="font-bold mb-4 text-primary text-sm uppercase">Categorias de Receita</h3>
                     <div className="flex gap-2 mb-4">
@@ -1114,15 +1210,32 @@ const SettingsView: FC<SettingsViewProps> = ({
                         <Button onClick={addIncomeCategory} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button>
                     </div>
                     <ul className="space-y-2">
-                        {incomeCategories.map(cat => (
-                            <li key={cat} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm">
-                                <span>{cat}</span>
-                                <button onClick={() => removeIncomeCategory(cat)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>
+                        {incomeCategories.map((cat, idx) => (
+                            <li key={idx} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm group">
+                                <div className="flex items-center gap-2">
+                                    <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button onClick={() => moveItem(incomeCategories, setIncomeCategories, idx, 'up')} className="text-text-secondary hover:text-primary"><ArrowUpIcon className="w-3 h-3" /></button>
+                                        <button onClick={() => moveItem(incomeCategories, setIncomeCategories, idx, 'down')} className="text-text-secondary hover:text-primary"><ArrowDownIcon className="w-3 h-3" /></button>
+                                    </div>
+                                    {editingIncomeIdx === idx ? (
+                                        <div className="flex gap-1 items-center">
+                                            <input type="text" value={tempIncomeVal} onChange={e => setTempIncomeVal(e.target.value)} className="bg-background border border-border-color rounded px-2 py-0.5 text-xs w-32" />
+                                            <button onClick={saveEditIncome} className="text-green-400 hover:text-green-300 font-bold text-xs">OK</button>
+                                        </div>
+                                    ) : (
+                                        <span>{cat}</span>
+                                    )}
+                                </div>
+                                <div className="flex gap-2">
+                                    {editingIncomeIdx !== idx && <button onClick={() => startEditIncome(idx)} className="text-text-secondary hover:text-primary"><EditIcon className="w-4 h-4"/></button>}
+                                    <button onClick={() => removeIncomeCategory(cat)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>
+                                </div>
                             </li>
                         ))}
                     </ul>
                 </Card>
 
+                {/* CATEGORIAS DE DESPESA */}
                 <Card>
                     <h3 className="font-bold mb-4 text-primary text-sm uppercase">Categorias de Despesa</h3>
                     <div className="flex flex-col gap-2 mb-4">
@@ -1136,18 +1249,41 @@ const SettingsView: FC<SettingsViewProps> = ({
                         </div>
                     </div>
                     <ul className="space-y-2">
-                        {expenseCategories.map(cat => (
-                            <li key={cat.name} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm">
-                                <div>
-                                    <span className="font-medium">{cat.name}</span>
-                                    <span className="ml-2 text-[10px] text-text-secondary uppercase">({cat.type})</span>
+                        {expenseCategories.map((cat, idx) => (
+                            <li key={idx} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm group">
+                                <div className="flex items-center gap-2">
+                                    <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button onClick={() => moveItem(expenseCategories, setExpenseCategories, idx, 'up')} className="text-text-secondary hover:text-primary"><ArrowUpIcon className="w-3 h-3" /></button>
+                                        <button onClick={() => moveItem(expenseCategories, setExpenseCategories, idx, 'down')} className="text-text-secondary hover:text-primary"><ArrowDownIcon className="w-3 h-3" /></button>
+                                    </div>
+                                    {editingExpenseIdx === idx ? (
+                                        <div className="flex flex-col gap-1">
+                                            <input type="text" value={tempExpenseName} onChange={e => setTempExpenseName(e.target.value)} className="bg-background border border-border-color rounded px-2 py-0.5 text-xs w-32" />
+                                            <div className="flex gap-2 items-center">
+                                                <select value={tempExpenseType} onChange={e => setTempExpenseType(e.target.value as ExpenseType)} className="bg-background border border-border-color rounded px-1 py-0.5 text-[10px]">
+                                                    <option value={ExpenseType.COST}>Custo</option>
+                                                    <option value={ExpenseType.EXPENSE}>Despesa</option>
+                                                </select>
+                                                <button onClick={saveEditExpense} className="text-green-400 hover:text-green-300 font-bold text-xs">OK</button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div>
+                                            <span className="font-medium">{cat.name}</span>
+                                            <span className="ml-2 text-[10px] text-text-secondary uppercase">({cat.type})</span>
+                                        </div>
+                                    )}
                                 </div>
-                                <button onClick={() => removeExpenseCategory(cat.name)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>
+                                <div className="flex gap-2">
+                                    {editingExpenseIdx !== idx && <button onClick={() => startEditExpense(idx)} className="text-text-secondary hover:text-primary"><EditIcon className="w-4 h-4"/></button>}
+                                    <button onClick={() => removeExpenseCategory(cat.name)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>
+                                </div>
                             </li>
                         ))}
                     </ul>
                 </Card>
 
+                {/* FORMAS DE PAGAMENTO */}
                 <Card>
                     <h3 className="font-bold mb-4 text-primary text-sm uppercase">Formas de Pagamento</h3>
                     <div className="flex gap-2 mb-4">
@@ -1155,15 +1291,32 @@ const SettingsView: FC<SettingsViewProps> = ({
                         <Button onClick={addPaymentMethod} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button>
                     </div>
                     <ul className="space-y-2">
-                        {paymentMethods.map(pm => (
-                            <li key={pm} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm">
-                                <span>{pm}</span>
-                                <button onClick={() => removePaymentMethod(pm)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>
+                        {paymentMethods.map((pm, idx) => (
+                            <li key={idx} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm group">
+                                <div className="flex items-center gap-2">
+                                    <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button onClick={() => moveItem(paymentMethods, setPaymentMethods, idx, 'up')} className="text-text-secondary hover:text-primary"><ArrowUpIcon className="w-3 h-3" /></button>
+                                        <button onClick={() => moveItem(paymentMethods, setPaymentMethods, idx, 'down')} className="text-text-secondary hover:text-primary"><ArrowDownIcon className="w-3 h-3" /></button>
+                                    </div>
+                                    {editingPaymentIdx === idx ? (
+                                        <div className="flex gap-1 items-center">
+                                            <input type="text" value={tempPaymentVal} onChange={e => setTempPaymentVal(e.target.value)} className="bg-background border border-border-color rounded px-2 py-0.5 text-xs w-32" />
+                                            <button onClick={saveEditPayment} className="text-green-400 hover:text-green-300 font-bold text-xs">OK</button>
+                                        </div>
+                                    ) : (
+                                        <span>{pm}</span>
+                                    )}
+                                </div>
+                                <div className="flex gap-2">
+                                    {editingPaymentIdx !== idx && <button onClick={() => startEditPayment(idx)} className="text-text-secondary hover:text-primary"><EditIcon className="w-4 h-4"/></button>}
+                                    <button onClick={() => removePaymentMethod(pm)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>
+                                </div>
                             </li>
                         ))}
                     </ul>
                 </Card>
 
+                {/* ASSESSORES E COMISSÕES */}
                 <Card>
                     <h3 className="font-bold mb-4 text-primary text-sm uppercase">Assessores e Comissões</h3>
                     <div className="flex flex-col gap-2 mb-4">
@@ -1174,12 +1327,13 @@ const SettingsView: FC<SettingsViewProps> = ({
                         </div>
                     </div>
                     <ul className="space-y-4">
-                        {advisors.map(adv => (
-                            <AdvisorSettingsItem key={adv.id} advisor={adv} onDelete={() => removeAdvisor(adv.id)} onUpdate={updateAdvisor} />
+                        {advisors.map((adv, idx) => (
+                            <AdvisorSettingsItem key={adv.id} advisor={adv} onDelete={() => removeAdvisor(adv.id)} onUpdate={updateAdvisor} onMove={(dir) => moveItem(advisors, setAdvisors, idx, dir)} />
                         ))}
                     </ul>
                 </Card>
 
+                {/* IMPOSTOS E TAXAS */}
                 <Card>
                     <h3 className="font-bold mb-4 text-primary text-sm uppercase">Impostos e Taxas</h3>
                     <div>
@@ -1188,6 +1342,7 @@ const SettingsView: FC<SettingsViewProps> = ({
                     </div>
                 </Card>
 
+                {/* CENTROS DE CUSTO */}
                 <Card>
                     <h3 className="font-bold mb-4 text-primary text-sm uppercase">Centros de Custo</h3>
                     <div className="flex gap-2 mb-4">
@@ -1195,10 +1350,26 @@ const SettingsView: FC<SettingsViewProps> = ({
                         <Button onClick={addCostCenter} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button>
                     </div>
                     <ul className="space-y-2">
-                        {costCenters.map(cc => (
-                            <li key={cc.id} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm">
-                                <span>{cc.name}</span>
-                                {!cc.isDefault && <button onClick={() => removeCostCenter(cc.id)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>}
+                        {costCenters.map((cc, idx) => (
+                            <li key={cc.id} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm group">
+                                <div className="flex items-center gap-2">
+                                    <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button onClick={() => moveItem(costCenters, setCostCenters, idx, 'up')} className="text-text-secondary hover:text-primary"><ArrowUpIcon className="w-3 h-3" /></button>
+                                        <button onClick={() => moveItem(costCenters, setCostCenters, idx, 'down')} className="text-text-secondary hover:text-primary"><ArrowDownIcon className="w-3 h-3" /></button>
+                                    </div>
+                                    {editingCostCenterIdx === idx ? (
+                                        <div className="flex gap-1 items-center">
+                                            <input type="text" value={tempCostCenterName} onChange={e => setTempCostCenterName(e.target.value)} className="bg-background border border-border-color rounded px-2 py-0.5 text-xs w-32" />
+                                            <button onClick={saveEditCostCenter} className="text-green-400 hover:text-green-300 font-bold text-xs">OK</button>
+                                        </div>
+                                    ) : (
+                                        <span>{cc.name}</span>
+                                    )}
+                                </div>
+                                <div className="flex gap-2">
+                                    {editingCostCenterIdx !== idx && <button onClick={() => startEditCostCenter(idx)} className="text-text-secondary hover:text-primary"><EditIcon className="w-4 h-4"/></button>}
+                                    {!cc.isDefault && <button onClick={() => removeCostCenter(cc.id)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>}
+                                </div>
                             </li>
                         ))}
                     </ul>
