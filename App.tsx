@@ -1330,6 +1330,63 @@ const TransactionsView: FC<{
             return true;
         });
 
+        // LÓGICA DE PROJEÇÃO - Apenas para meses FUTUROS (estritamente > mês atual)
+        if (activeTab === TransactionType.EXPENSE && filterYear !== 'all' && filterMonth !== 'all' && !searchTerm && filterCategory === 'all') {
+            const selectedDate = new Date(Date.UTC(filterYear, filterMonth, 1));
+            const now = new Date();
+            const currentMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+            
+            // SOMENTE PARA MESES ESTRITAMENTE FUTUROS (M > Mês Atual)
+            if (selectedDate > currentMonthStart) {
+                const prevMonth = filterMonth === 0 ? 11 : filterMonth - 1;
+                const prevYear = filterMonth === 0 ? filterYear - 1 : filterYear;
+
+                // Tenta buscar do mês imediatamente anterior (chain logic)
+                let fixedSource = transactions.filter(t => {
+                    const d = new Date(t.date);
+                    return t.type === TransactionType.EXPENSE &&
+                           t.nature === ExpenseNature.FIXED &&
+                           d.getUTCFullYear() === prevYear &&
+                           d.getUTCMonth() === prevMonth;
+                });
+
+                // Se o mês anterior (que já pode ser futuro sem dados) não tem nada, 
+                // busca do MÊS ATUAL REAL (Fonte da Verdade) para garantir propagação automática
+                if (fixedSource.length === 0) {
+                     fixedSource = transactions.filter(t => {
+                        const d = new Date(t.date);
+                        return t.type === TransactionType.EXPENSE &&
+                               t.nature === ExpenseNature.FIXED &&
+                               d.getUTCFullYear() === now.getUTCFullYear() &&
+                               d.getUTCMonth() === now.getUTCMonth();
+                    });
+                }
+
+                fixedSource.forEach(f => {
+                    // Verifica se já existe um lançamento real com mesma descrição/categoria no mês filtrado
+                    const alreadyExists = items.some(item => 
+                        item.description === f.description && 
+                        item.category === f.category && 
+                        item.nature === ExpenseNature.FIXED
+                    );
+
+                    if (!alreadyExists) {
+                        const day = new Date(f.date).getUTCDate();
+                        const projectedDate = new Date(Date.UTC(filterYear, filterMonth, day)).toISOString();
+                        
+                        items.push({
+                            ...f,
+                            id: `proj-${f.id}-${filterYear}-${filterMonth}`,
+                            date: projectedDate,
+                            status: ExpenseStatus.PENDING,
+                            reconciled: false,
+                            isProjection: true // Flag interna para controle visual
+                        } as any);
+                    }
+                });
+            }
+        }
+
         if (sortConfig !== null) {
             items.sort((a, b) => {
                 const valA = a[sortConfig.key as keyof Transaction] as (string | number);
@@ -1483,13 +1540,12 @@ const TransactionsView: FC<{
                                 <th className="p-4 cursor-pointer hover:text-primary" onClick={() => requestSort('category')}>Categoria {getSortIndicator('category')}</th>
                                 <th className="p-4 text-right cursor-pointer hover:text-primary" onClick={() => requestSort('amount')}>Valor {getSortIndicator('amount')}</th>
                                 {activeTab === TransactionType.EXPENSE && <th className="p-4 text-center">Status</th>}
-                                <th className="p-4 text-center"><div className="flex justify-center" title="Conciliação Bancária"><BankIcon className="w-4 h-4"/></div></th>
-                                <th className="p-4 text-right">Ações</th>
+                                <th className="p-4 text-center">Ações</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border-color/30 text-sm font-medium">
                             {filtered.map(t => (
-                                <tr key={t.id} className={`hover:bg-background/50 transition-colors`}>
+                                <tr key={t.id} className={`hover:bg-background/50 transition-colors ${(t as any).isProjection ? 'opacity-50 grayscale-[0.5]' : ''}`}>
                                     <td className="p-4 whitespace-nowrap text-text-secondary">{formatDate(t.date)}</td>
                                     <td className="p-4 font-bold">{t.description}<div className="text-xs text-text-secondary font-normal">{t.clientSupplier}</div></td>
                                     <td className="p-4"><span className="px-3 py-1 rounded-full bg-border-color/50 border border-border-color text-[10px] uppercase font-bold">{t.category}</span></td>
@@ -1502,28 +1558,37 @@ const TransactionsView: FC<{
                                         </td>
                                     )}
                                     <td className="p-4 text-center">
-                                        <div className="flex justify-center">
-                                            <input 
-                                                type="checkbox" 
-                                                checked={!!t.reconciled} 
-                                                onChange={() => onToggleReconciliation(t.id, !!t.reconciled)}
-                                                disabled={t.type === TransactionType.EXPENSE && t.status !== ExpenseStatus.PAID}
-                                                title={t.type === TransactionType.EXPENSE && t.status !== ExpenseStatus.PAID ? "Apenas despesas pagas podem ser conciliadas" : "Marcar como conciliado"}
-                                                className="w-4 h-4 rounded border-border-color text-primary focus:ring-primary bg-background disabled:opacity-30 disabled:cursor-not-allowed"
-                                            />
-                                        </div>
-                                    </td>
-                                    <td className="p-4 text-right">
-                                        <div className="flex justify-end gap-2">
-                                            {t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PENDING && (
-                                                <Button variant="success" className="py-1 px-2 rounded-lg" onClick={() => onSetPaid(t.id)} title="Marcar como Pago"><CheckCircleIcon className="w-4 h-4"/></Button>
+                                        <div className="flex justify-center gap-3 items-center">
+                                            {!(t as any).isProjection ? (
+                                                <>
+                                                    <label className="flex items-center gap-1 cursor-pointer select-none" title={t.type === TransactionType.EXPENSE && t.status !== ExpenseStatus.PAID ? "Apenas despesas pagas podem ser conciliadas" : "Conciliação Bancária (CB)"}>
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={!!t.reconciled} 
+                                                            onChange={() => onToggleReconciliation(t.id, !!t.reconciled)}
+                                                            disabled={t.type === TransactionType.EXPENSE && t.status !== ExpenseStatus.PAID}
+                                                            className="w-4 h-4 rounded border-border-color text-primary focus:ring-primary bg-background disabled:opacity-30 disabled:cursor-not-allowed"
+                                                        />
+                                                        <span className="text-[10px] font-bold text-text-secondary">CB</span>
+                                                    </label>
+                                                    {t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PENDING && (
+                                                        <Button variant="success" className="py-1 px-2 rounded-lg" onClick={() => onSetPaid(t.id)} title="Marcar como Pago"><CheckCircleIcon className="w-4 h-4"/></Button>
+                                                    )}
+                                                    <Button variant="ghost" className="py-1 px-2 rounded-lg hover:bg-surface" onClick={() => handleEdit(t)}><EditIcon className="w-4 h-4 opacity-70"/></Button>
+                                                    <Button variant="ghostDanger" className="py-1 px-2 rounded-lg" onClick={() => onDelete(t.id)}><TrashIcon className="w-4 h-4"/></Button>
+                                                </>
+                                            ) : (
+                                                <span className="text-[10px] uppercase font-black text-primary px-2 py-1 bg-primary/10 rounded">Projetado</span>
                                             )}
-                                            <Button variant="ghost" className="py-1 px-2 rounded-lg hover:bg-surface" onClick={() => handleEdit(t)}><EditIcon className="w-4 h-4 opacity-70"/></Button>
-                                            <Button variant="ghostDanger" className="py-1 px-2 rounded-lg" onClick={() => onDelete(t.id)}><TrashIcon className="w-4 h-4"/></Button>
                                         </div>
                                     </td>
                                 </tr>
                             ))}
+                            {filtered.length === 0 && (
+                                <tr>
+                                    <td colSpan={activeTab === TransactionType.EXPENSE ? 6 : 5} className="p-8 text-center text-text-secondary text-sm">Nenhuma transação encontrada.</td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
                 </div>
