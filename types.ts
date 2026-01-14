@@ -1,4 +1,3 @@
-
 export enum TransactionType {
   INCOME = 'income',
   EXPENSE = 'expense',
@@ -33,6 +32,7 @@ export interface Transaction {
   recurringId?: string; // Para agrupar transações
   attachment?: string; 
   costCenter?: string;
+  reconciled?: boolean; // Novo campo para conciliação bancária
   
   // Fields for Income Logic (Gross/Net/Commission)
   taxAmount?: number;
