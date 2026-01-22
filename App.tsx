@@ -263,15 +263,25 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
 
     const gross: number = parseFloat(formData.grossAmount) || 0;
 
+    // --- LOGICA FINANCEIRA (ORDEM FINAL) ---
+    // 1) Entrada de Caixa = Receita Bruta - Soma de todos os CRM (Custos Adicionais)
+    const totalCRM = useMemo(() => 
+        round(splits.reduce((acc, s) => acc + (Number(s.additionalCost) || 0), 0))
+    , [splits]);
+
+    const entradaCaixaPJ = round(Number(gross) - totalCRM);
+    const effectiveTaxRate = applyTax ? (parseFloat(taxRateInput) || 0) : 0;
+    
+    // 2) Provisão de Impostos = Entrada de Caixa * Alíquota (impostos ficam reservados)
+    const totalTaxAmount = round(entradaCaixaPJ * (effectiveTaxRate / 100));
+
     useEffect(() => {
         if (initialData && initialData.type === TransactionType.INCOME) {
-            const iGross = initialData.grossAmount ?? initialData.amount ?? 0;
             const iTax = initialData.taxAmount ?? 0;
             const storedRate = (initialData as any).taxRate;
-
             if (iTax > 0 || (storedRate !== undefined && storedRate > 0)) {
                 setApplyTax(true);
-                const rateStr = storedRate !== undefined ? storedRate.toString() : (iGross > 0 ? ((iTax / iGross) * 100).toFixed(2) : globalTaxRate.toString());
+                const rateStr = storedRate !== undefined ? storedRate.toString() : (entradaCaixaPJ > 0 ? ((iTax / entradaCaixaPJ) * 100).toFixed(2) : globalTaxRate.toString());
                 setTaxRateInput(rateStr);
                 setTaxValueCents(Math.round(round(iTax) * 100));
             } else {
@@ -282,24 +292,21 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         } else if (!initialData) {
             setApplyTax(true);
             setTaxRateInput(globalTaxRate.toString());
-            const val = round(gross * (globalTaxRate / 100));
-            setTaxValueCents(Math.round(val * 100));
         }
         setTimeout(() => { isInitializing.current = false; }, 0);
-    }, [initialData, globalTaxRate, gross]);
+        // CORREÇÃO 1: Removendo entradaCaixaPJ e totalTaxAmount da lista de dependências para destravar edição manual.
+    }, [initialData, globalTaxRate]);
 
     useEffect(() => {
         if (!isInitializing.current && applyTax && !isEditing) {
-            const rate = parseFloat(taxRateInput) || 0;
-            const val = round(gross * (rate / 100));
-            setTaxValueCents(Math.round(val * 100));
+            setTaxValueCents(Math.round(totalTaxAmount * 100));
         }
-    }, [gross, applyTax, taxRateInput, isEditing]); 
+    }, [entradaCaixaPJ, applyTax, effectiveTaxRate, isEditing, totalTaxAmount]);
 
     const handleRateInputChange = (val: string) => {
         setTaxRateInput(val);
         const rate = parseFloat(val) || 0;
-        const valR = round(gross * (rate / 100));
+        const valR = round(entradaCaixaPJ * (rate / 100));
         setTaxValueCents(Math.round(valR * 100));
     };
 
@@ -308,8 +315,8 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         const cents = raw ? parseInt(raw, 10) : 0;
         setTaxValueCents(cents);
         const valR = cents / 100;
-        if (gross > 0) {
-            const rate = (valR / gross) * 100;
+        if (entradaCaixaPJ > 0) {
+            const rate = (valR / entradaCaixaPJ) * 100;
             setTaxRateInput(rate.toFixed(2).replace(/\.00$/, ''));
         }
     };
@@ -319,14 +326,43 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         setApplyTax(checked);
         if (checked) {
             const rate = parseFloat(taxRateInput) || globalTaxRate;
-            const val = round(gross * (rate / 100));
+            const val = round(entradaCaixaPJ * (rate / 100));
             setTaxValueCents(Math.round(val * 100));
         }
     };
 
-    const effectiveTaxAmount: number = applyTax ? (taxValueCents / 100) : 0;
-    const basePostTax: number = round(Number(gross) - Number(effectiveTaxAmount));
     const formattedTaxValue = (taxValueCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+    // 3) Repasse do Assessor: Criado somente com valor líquido (descontado o imposto retido na provisão)
+    const splitsDetails = useMemo(() => {
+        return splits.map(split => {
+            const revenueAmount = Number(split.revenueAmount) || 0;
+            const percentage = Number(split.percentage) || 0;
+            const additionalCost = Number(split.additionalCost) || 0;
+            
+            // CORREÇÃO 2: Se assessor sem receita, repasse = 0
+            if (revenueAmount <= 0) {
+                return { ...split, grossPayout: 0, taxAmount: 0, netPayout: 0, additionalCost };
+            }
+
+            // Payout bruto baseado na receita individual
+            const grossPayout = round(revenueAmount * (percentage / 100));
+            // Provisão de imposto sobre esse repasse
+            const advisorTax = round(grossPayout * (effectiveTaxRate / 100));
+            
+            // CORREÇÃO 2: Repasse líquido = comissão - imposto - CRM (additionalCost) integral do próprio assessor
+            const netPayout = Math.max(0, round(grossPayout - advisorTax - additionalCost));
+            
+            return { ...split, grossPayout, taxAmount: advisorTax, netPayout, additionalCost };
+        });
+    }, [splits, effectiveTaxRate]);
+
+    const totalNetPayouts = useMemo(() => 
+        round(splitsDetails.reduce((acc, s) => acc + (Number(s.netPayout) || 0), 0))
+    , [splitsDetails]);
+
+    // 4) Resultado do Escritório = Entrada de Caixa - Soma dos Repasses Líquidos - Provisão de Impostos
+    const officeResult = round(entradaCaixaPJ - totalNetPayouts - (taxValueCents / 100));
 
     useEffect(() => {
         const newCats = type === TransactionType.INCOME ? incomeCategories : expenseCategories.map(c => c.name);
@@ -338,10 +374,12 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     
     useEffect(() => {
         if (!isInitializing.current && !isCommissionManual && type === TransactionType.INCOME && advisorId && splits.length === 0 && !isEditing) {
-             const comm = round(basePostTax * 0.30);
-             setCommissionAmount(comm > 0 ? comm : 0);
+             const grossComm = round(entradaCaixaPJ * 0.30);
+             const commTax = round(grossComm * (effectiveTaxRate / 100));
+             const netComm = Math.max(0, round(grossComm - commTax));
+             setCommissionAmount(netComm);
         }
-    }, [formData.grossAmount, advisorId, splits.length, type, basePostTax, isCommissionManual, isEditing]);
+    }, [entradaCaixaPJ, advisorId, splits.length, type, effectiveTaxRate, isCommissionManual, isEditing]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -418,32 +456,6 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         }
     };
 
-    const splitsDetails = useMemo(() => {
-        return splits.map(split => {
-            if (isEditing && split.netPayout !== undefined) {
-                return split;
-            }
-            const revenueAmount = Number(split.revenueAmount) || 0;
-            const percentage = Number(split.percentage) || 0;
-            const additionalCost = Number(split.additionalCost) || 0;
-            const effectiveTaxRate = applyTax ? (parseFloat(taxRateInput) || 0) : 0;
-            const grossPayout = round(revenueAmount * (percentage / 100));
-            const taxAmount = round(grossPayout * (effectiveTaxRate / 100));
-            const netPayout = round(grossPayout - taxAmount - additionalCost);
-            return { ...split, grossPayout, taxAmount, netPayout };
-        });
-    }, [splits, taxRateInput, applyTax, isEditing]);
-
-    const totalNetPayouts = useMemo(() => 
-        round(splitsDetails.reduce((acc, s) => acc + (Number(s.netPayout) || 0), 0))
-    , [splitsDetails]);
-
-    const officeShare = useMemo(() => {
-        const totalTax = applyTax ? round(gross * ((parseFloat(taxRateInput) || 0) / 100)) : 0;
-        const totalAdditionalCosts = round(splitsDetails.reduce((acc, s) => acc + (Number(s.additionalCost) || 0), 0));
-        return round(gross - totalNetPayouts - totalTax - totalAdditionalCosts);
-    }, [gross, totalNetPayouts, taxRateInput, applyTax, splitsDetails]);
-
     const totalSplitRevenue: number = round(splits.reduce((acc: number, s: any) => acc + (Number(s.revenueAmount) || 0), 0));
     const splitRevenueDifference: number = round(Number(gross) - Number(totalSplitRevenue));
 
@@ -477,13 +489,10 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             }
         }
         
-        const officeNetAmount = round(type === TransactionType.INCOME 
-            ? (splits.length > 0 ? officeShare : (basePostTax - (advisorId ? commissionAmount : 0)))
-            : parsedGrossAmount);
-
+        // Entrada de Caixa = Bruto - CRM (conforme ORDEM FINAL)
         const submissionData: TransactionFormValues = {
             description,
-            amount: officeNetAmount, 
+            amount: entradaCaixaPJ, 
             date: new Date(date).toISOString(),
             type,
             category,
@@ -493,7 +502,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         };
         
         if (type === TransactionType.INCOME) {
-            submissionData.taxAmount = round(effectiveTaxAmount);
+            submissionData.taxAmount = round(taxValueCents / 100);
             submissionData.grossAmount = parsedGrossAmount;
             submissionData.taxRate = parseFloat(taxRateInput) || 0;
 
@@ -591,7 +600,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                                 <div className="col-span-3">Assessor</div>
                                 <div className="col-span-3">Receita Individual</div>
                                 <div className="col-span-1 text-center">%</div>
-                                <div className="col-span-2 text-center">Custo Adicional</div>
+                                <div className="col-span-2 text-center">CRM (Custos)</div>
                                 <div className="col-span-2 text-right">Repasse (Liq)</div>
                                 <div className="col-span-1"></div>
                              </div>
@@ -644,35 +653,35 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                  <div className="bg-background p-3 rounded-lg border border-border-color">
                     <div className="flex justify-end mb-2">
                         <label className="flex items-center gap-2 cursor-pointer select-none">
-                             <span className="text-xs text-text-secondary">Aplicar imposto</span>
+                             <span className="text-xs text-text-secondary">Aplicar imposto sobre Entrada</span>
                              <input type="checkbox" checked={applyTax} onChange={handleApplyTaxCheckboxChange} className="rounded text-primary focus:ring-primary h-4 w-4 bg-surface border-border-color" />
                         </label>
                      </div>
 
-                    <div className="grid grid-cols-3 gap-4 text-center mb-2">
+                    <div className="grid grid-cols-4 gap-4 text-center mb-2">
                         <div>
-                            <p className="text-xs text-text-secondary">Receita Total</p>
-                            <p className="font-semibold">{formatCurrency(gross)}</p>
+                            <p className="text-xs text-text-secondary">Entrada (Caixa)</p>
+                            <p className="font-semibold text-primary">{formatCurrency(entradaCaixaPJ)}</p>
                         </div>
                         <div className="border-l border-r border-border-color px-2 py-1">
                             <div className="flex items-center justify-center gap-1 mb-1">
                                 <p className="text-xs text-text-secondary">(-) Imposto</p>
-                                {!applyTax && <span className="text-xs text-text-secondary">(0%)</span>}
                             </div>
-                            
                             <div className={`flex flex-col gap-1 ${!applyTax ? 'opacity-50 pointer-events-none' : ''}`}>
                                 <div className="relative">
                                     <input type="number" step="0.01" value={taxRateInput} onChange={(e) => handleRateInputChange(e.target.value)} className="w-full bg-surface border border-border-color rounded px-2 py-1 text-xs text-center focus:ring-primary focus:border-primary" placeholder="0" disabled={!applyTax} />
                                     <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-text-secondary">%</span>
                                 </div>
-                                <div className="relative">
-                                    <input type="text" value={formattedTaxValue} onChange={handleValueInputChange} className="w-full bg-surface border border-border-color rounded px-2 py-1 text-xs text-center font-bold text-danger focus:ring-primary focus:border-primary" placeholder="R$ 0,00" disabled={!applyTax} />
-                                </div>
+                                <div className="text-xs font-bold text-danger">{formattedTaxValue}</div>
                             </div>
                         </div>
                         <div>
-                            <p className="text-xs text-text-secondary">(=) Base Pós-Imposto</p>
-                            <p className="font-bold text-green-400">{formatCurrency(basePostTax)}</p>
+                            <p className="text-xs text-text-secondary">(-) Repasses Líq</p>
+                            <p className="font-bold text-danger">{formatCurrency(totalNetPayouts)}</p>
+                        </div>
+                        <div className="border-l border-border-color">
+                            <p className="text-xs text-text-secondary">(=) Resultado Esc.</p>
+                            <p className={`font-bold ${officeResult >= 0 ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(officeResult)}</p>
                         </div>
                     </div>
                 </div>
@@ -1175,7 +1184,7 @@ const SettingsView: FC<SettingsViewProps> = ({
     const saveEditExpense = () => {
         if (!tempExpenseName.trim()) return;
         const newList = [...expenseCategories];
-        newList[editingExpenseIdx!] = { name: tempExpenseName.trim(), type: tempExpenseType };
+        newList[editingIncomeIdx!] = { name: tempExpenseName.trim(), type: tempExpenseType };
         setExpenseCategories(newList);
         setEditingExpenseIdx(null);
     };
@@ -1511,18 +1520,15 @@ const TransactionsView: FC<{
             return true;
         });
 
-        // LÓGICA DE PROJEÇÃO - Apenas para meses FUTUROS (estritamente > mês atual)
         if (activeTab === TransactionType.EXPENSE && filterYear !== 'all' && filterMonth !== 'all' && !searchTerm && filterCategory === 'all') {
             const selectedDate = new Date(Date.UTC(filterYear, filterMonth, 1));
             const now = new Date();
             const currentMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
             
-            // SOMENTE PARA MESES ESTRITAMENTE FUTUROS (M > Mês Atual)
             if (selectedDate > currentMonthStart) {
                 const prevMonth = filterMonth === 0 ? 11 : filterMonth - 1;
                 const prevYear = filterMonth === 0 ? filterYear - 1 : filterYear;
 
-                // Tenta buscar do mês imediatamente anterior (chain logic)
                 let fixedSource = transactions.filter(t => {
                     const d = new Date(t.date);
                     return t.type === TransactionType.EXPENSE &&
@@ -1531,8 +1537,6 @@ const TransactionsView: FC<{
                            d.getUTCMonth() === prevMonth;
                 });
 
-                // Se o mês anterior (que já pode ser futuro sem dados) não tem nada, 
-                // busca do MÊS ATUAL REAL (Fonte da Verdade) para garantir propagação automática
                 if (fixedSource.length === 0) {
                      fixedSource = transactions.filter(t => {
                         const d = new Date(t.date);
@@ -1544,7 +1548,6 @@ const TransactionsView: FC<{
                 }
 
                 fixedSource.forEach(f => {
-                    // Verifica se já existe um lançamento real com mesma descrição/categoria no mês filtrado
                     const alreadyExists = items.some(item => 
                         item.description === f.description && 
                         item.category === f.category && 
@@ -1561,7 +1564,7 @@ const TransactionsView: FC<{
                             date: projectedDate,
                             status: ExpenseStatus.PENDING,
                             reconciled: false,
-                            isProjection: true // Flag interna para controle visual
+                            isProjection: true
                         } as any);
                     }
                 });
@@ -1981,7 +1984,7 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
         
         transactions.forEach(t => {
             if (!filterFn(t.date)) return;
-            const key = t.date.substring(0, 7); // YYYY-MM
+            const key = t.date.substring(0, 7);
             if (!monthlyMap[key]) monthlyMap[key] = { revenue: 0, expense: 0, pjBalanceInMonth: 0 };
             if (t.type === TransactionType.INCOME) monthlyMap[key].revenue = round(monthlyMap[key].revenue + t.amount);
             else monthlyMap[key].expense = round(monthlyMap[key].expense + t.amount);
@@ -2437,6 +2440,7 @@ const App: FC = () => {
             const splitsToProcess = data.splits || [];
             if (splitsToProcess.length > 0) {
                 for (const split of splitsToProcess) {
+                    // 3) Repasse do Assessor: Criar despesa somente com valor líquido (conforme ORDEM FINAL)
                     const netPayout = round(Number(split.netPayout));
                     if (netPayout > 0) {
                         try {
@@ -2446,7 +2450,7 @@ const App: FC = () => {
                                 type: TransactionType.EXPENSE,
                                 category: "Remuneração de Assessores",
                                 clientSupplier: split.advisorName,
-                                description: `Comissão: ${split.advisorName} - ${data.description}`,
+                                description: `Repasse Líquido: ${split.advisorName} - ${data.description}`,
                                 costCenter: data.costCenter || "conta-pj",
                                 tipoInterno: "transacao",
                                 criadoPor: user.uid,
@@ -2456,7 +2460,7 @@ const App: FC = () => {
                                 originTransactionId: docRef.id
                             });
                         } catch (err) {
-                            console.error("Erro ao gerar despesa de comissão:", err);
+                            console.error("Erro ao gerar despesa de repasse:", err);
                         }
                     }
                 }
@@ -2470,7 +2474,7 @@ const App: FC = () => {
                         type: TransactionType.EXPENSE,
                         category: "Remuneração de Assessores",
                         clientSupplier: advisorObj?.name || "Assessor",
-                        description: `Comissão: ${advisorObj?.name || "Assessor"} - ${data.description}`,
+                        description: `Repasse Líquido: ${advisorObj?.name || "Assessor"} - ${data.description}`,
                         costCenter: data.costCenter || "conta-pj",
                         tipoInterno: "transacao",
                         criadoPor: user.uid,
@@ -2480,7 +2484,7 @@ const App: FC = () => {
                         originTransactionId: docRef.id
                     });
                 } catch (err) {
-                    console.error("Erro ao gerar despesa de comissão simples:", err);
+                    console.error("Erro ao gerar despesa de repasse simples:", err);
                 }
             }
         }
