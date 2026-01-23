@@ -1212,7 +1212,7 @@ const SettingsView: FC<SettingsViewProps> = ({
         const newList = [...expenseCategories];
         newList[editingExpenseIdx!] = { name: tempExpenseName.trim(), type: tempExpenseType };
         setExpenseCategories(newList);
-        setEditingExpenseIdx(null);
+        setEditingIncomeIdx(null);
     };
 
     // Payment Handlers
@@ -2207,7 +2207,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
 
     const { totalIncome, totalExpense, netProfit } = useMemo(() => {
         const income = round(filteredTransactions.filter(t => t.type === TransactionType.INCOME).reduce<number>((acc, t) => acc + t.amount, 0));
-        const expense = round(filteredTransactions.filter(t => t.type === TransactionType.EXPENSE).reduce<number>((acc, t) => acc + t.amount, 0));
+        const expense = round(filteredTransactions.filter(t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PAID).reduce<number>((acc, t) => acc + t.amount, 0));
         return { totalIncome: income, totalExpense: expense, netProfit: round(Number(income) - Number(expense)) };
     }, [filteredTransactions]);
 
@@ -2217,8 +2217,10 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         if (txDate <= now) {
             if (t.type === TransactionType.INCOME) {
                 const tax = t.taxAmount || 0;
+                // available balance net of earmarked tax
                 return acc + (Number(t.amount) - Number(tax));
-            } else {
+            } else if (t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PAID) {
+                // subtract from available balance only if NOT a tax payment (to avoid double discount)
                 if (t.costCenter !== 'provisao-impostos') {
                     return acc - Number(t.amount);
                 }
@@ -2233,7 +2235,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         if (txDate <= now) {
             if (t.type === TransactionType.INCOME) {
                 return acc + Number(t.taxAmount || 0);
-            } else {
+            } else if (t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PAID) {
                 if (t.costCenter === 'provisao-impostos') {
                     return acc - Number(t.amount);
                 }
@@ -2256,7 +2258,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
     }, [transactions]);
 
     const expenseSubcategoryData = useMemo(() => {
-        const expenses = filteredTransactions.filter(t => t.type === TransactionType.EXPENSE);
+        const expenses = filteredTransactions.filter(t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PAID);
         const total = round(expenses.reduce((sum, t) => sum + t.amount, 0));
         if (total === 0) return [];
         const data = expenses.reduce((acc, t) => { acc[t.nature === ExpenseNature.FIXED ? 0 : 1].amount = round(acc[t.nature === ExpenseNature.FIXED ? 0 : 1].amount + t.amount); return acc; }, [{ name: 'Fixo', amount: 0 }, { name: 'Variável', amount: 0 }]);
@@ -2271,10 +2273,14 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
             .filter(t => new Date(t.date) <= endOfCurrentMonth)
             .sort((a, b) => (new Date(a.date).getTime()) - (new Date(b.date).getTime()));
         
-        let balance = 0;
+        let bankBalance = 0;
         const history = realInScope.map(t => { 
-            balance = round(balance + (t.type === TransactionType.INCOME ? t.amount : -t.amount)); 
-            return { date: formatDate(t.date), balance, isProjection: false }; 
+            if (t.type === TransactionType.INCOME) {
+                bankBalance = round(bankBalance + t.amount); 
+            } else if (t.status === ExpenseStatus.PAID) {
+                bankBalance = round(bankBalance - t.amount);
+            }
+            return { date: formatDate(t.date), balance: bankBalance, isProjection: false }; 
         }).reduce((acc: any[], item) => {
             if (acc.length && acc[acc.length-1].date === item.date) acc[acc.length-1].balance = item.balance; else acc.push(item); return acc;
         }, []);
@@ -2292,7 +2298,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         });
         const monthlyFixedTotal = round(fixedInCurrent.reduce((sum, t) => sum + t.amount, 0));
 
-        let projectedBalance = balance;
+        let projectedBalance = bankBalance;
         const projectionPoints = [];
         for (let i = 1; i <= 12; i++) {
             const projDate = new Date(Date.UTC(curY, curM + i + 1, 0));
