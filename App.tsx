@@ -294,7 +294,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             setTaxRateInput(globalTaxRate.toString());
         }
         setTimeout(() => { isInitializing.current = false; }, 0);
-    }, [initialData, globalTaxRate]);
+    }, [initialData, globalTaxRate, entradaCaixaPJ]);
 
     useEffect(() => {
         if (!isInitializing.current && applyTax && !isEditing) {
@@ -332,59 +332,39 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
 
     const formattedTaxValue = (taxValueCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-    // 3) Repasse do Assessor: Criado somente com valor líquido (descontado o imposto retido na provisão)
+    // CORREÇÃO ÚNICA – HIERARQUIA CORRETA DO REPASSE DO ASSESSOR
     const splitsDetails = useMemo(() => {
-        // CORREÇÃO ÚNICA: Identifica participantes com receita positiva para rateio do imposto
-        const participants = splits.filter(s => (Number(s.revenueAmount) || 0) > 0);
-        
-        // Base de cálculo individual para rateio é (Receita - CRM)
-        // Somamos as bases individuais para distribuição proporcional do imposto provisionado total
-        const totalBase = participants.reduce((acc, s) => acc + Math.max(0, (Number(s.revenueAmount) - (Number(s.additionalCost) || 0))), 0);
-        
-        let accumulatedTax = 0;
-        let processedParticipants = 0;
-
-        return splits.map((split) => {
+        return splits.map(split => {
             const revenueAmount = Number(split.revenueAmount) || 0;
             const percentage = Number(split.percentage) || 0;
             const additionalCost = Number(split.additionalCost) || 0;
-
-            // Assessores sem receita: não participam do cálculo, não geram imposto
+            
+            // ETAPA 1: Se não teve receita, encerra cálculo
             if (revenueAmount <= 0) {
                 return { ...split, grossPayout: 0, taxAmount: 0, netPayout: 0, additionalCost };
             }
 
-            const commission = round(revenueAmount * (percentage / 100));
+            // ETAPA 2: base do assessor = receita individual − CRM do próprio assessor
+            const baseIndividual = Math.max(0, round(revenueAmount - additionalCost));
             
-            // Participante atual
-            processedParticipants++;
-            const isLastParticipant = processedParticipants === participants.length;
+            // ETAPA 3: Aplicar percentual de comissão sobre a base líquida do CRM
+            const grossPayout = round(baseIndividual * (percentage / 100));
             
-            let advisorTax = 0;
-            if (totalBase > 0) {
-                const individualBase = Math.max(0, revenueAmount - additionalCost);
-                if (isLastParticipant) {
-                    // Ajuste de centavos no último participante para garantir que a soma bata com totalTaxAmount
-                    advisorTax = round(totalTaxAmount - accumulatedTax);
-                } else {
-                    // Distribuição proporcional baseada na contribuição líquida individual
-                    advisorTax = round(totalTaxAmount * (individualBase / totalBase));
-                    accumulatedTax = round(accumulatedTax + advisorTax);
-                }
-            }
+            // ETAPA 4: Calcular o imposto proporcional do assessor (baseado na comissão bruta dele)
+            const advisorTax = round(grossPayout * (effectiveTaxRate / 100));
             
-            // Repasse líquido = comissão - imposto - CRM
-            const netPayout = Math.max(0, round(commission - advisorTax - additionalCost));
+            // ETAPA 5: Repasse líquido = comissão do assessor − imposto retido do assessor
+            const netPayout = Math.max(0, round(grossPayout - advisorTax));
             
-            return { ...split, grossPayout: commission, taxAmount: advisorTax, netPayout, additionalCost };
+            return { ...split, grossPayout, taxAmount: advisorTax, netPayout, additionalCost };
         });
-    }, [splits, effectiveTaxRate, totalTaxAmount]);
+    }, [splits, effectiveTaxRate]);
 
     const totalNetPayouts = useMemo(() => 
         round(splitsDetails.reduce((acc, s) => acc + (Number(s.netPayout) || 0), 0))
     , [splitsDetails]);
 
-    // 4) Resultado do Escritório = Entrada de Caixa - Soma dos Repasses Líquidos - Provisão de Impostos
+    // CORREÇÃO 2: Resultado do Escritório = entrada de caixa − repasses líquidos pagos − provisão de impostos
     const officeResult = round(entradaCaixaPJ - totalNetPayouts - (taxValueCents / 100));
 
     useEffect(() => {
@@ -512,7 +492,6 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             }
         }
         
-        // Entrada de Caixa = Bruto - CRM (conforme ORDEM FINAL)
         const submissionData: TransactionFormValues = {
             description,
             amount: entradaCaixaPJ, 
@@ -533,10 +512,10 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                 submissionData.splits = splitsDetails.map(s => ({
                   ...s,
                   revenueAmount: round(Number(s.revenueAmount)),
-                  grossPayout: round(Number(s.grossPayout)),
-                  taxAmount: round(Number(s.taxAmount)),
-                  netPayout: round(Number(s.netPayout)),
-                  additionalCost: round(Number(s.additionalCost))
+                  grossPayout: round(Number(s.grossPayout || 0)),
+                  taxAmount: round(Number(s.taxAmount || 0)),
+                  netPayout: round(Number(s.netPayout || 0)),
+                  additionalCost: round(Number(s.additionalCost || 0))
                 }));
             } else {
                 submissionData.commissionAmount = round(commissionAmount);
@@ -894,7 +873,6 @@ const PartnershipView: FC<{ partners: Partner[], onSave: (partners: Partner[]) =
         setNewName(partner.name);
         setNewPercentage(partner.percentage.toString());
         setNewQuotas((partner.quotas || 0).toString());
-        // Scroll para o formulário de edição para melhor UX
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
@@ -1207,7 +1185,7 @@ const SettingsView: FC<SettingsViewProps> = ({
     const saveEditExpense = () => {
         if (!tempExpenseName.trim()) return;
         const newList = [...expenseCategories];
-        newList[editingIncomeIdx!] = { name: tempExpenseName.trim(), type: tempExpenseType };
+        newList[editingExpenseIdx!] = { name: tempExpenseName.trim(), type: tempExpenseType };
         setExpenseCategories(newList);
         setEditingExpenseIdx(null);
     };
@@ -1544,13 +1522,13 @@ const TransactionsView: FC<{
         });
 
         if (activeTab === TransactionType.EXPENSE && filterYear !== 'all' && filterMonth !== 'all' && !searchTerm && filterCategory === 'all') {
-            const selectedDate = new Date(Date.UTC(filterYear, filterMonth, 1));
+            const selectedDate = new Date(Date.UTC(filterYear as number, filterMonth as number, 1));
             const now = new Date();
             const currentMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
             
             if (selectedDate > currentMonthStart) {
-                const prevMonth = filterMonth === 0 ? 11 : filterMonth - 1;
-                const prevYear = filterMonth === 0 ? filterYear - 1 : filterYear;
+                const prevMonth = (filterMonth as number) === 0 ? 11 : (filterMonth as number) - 1;
+                const prevYear = (filterMonth as number) === 0 ? (filterYear as number) - 1 : (filterYear as number);
 
                 let fixedSource = transactions.filter(t => {
                     const d = new Date(t.date);
@@ -1579,7 +1557,7 @@ const TransactionsView: FC<{
 
                     if (!alreadyExists) {
                         const day = new Date(f.date).getUTCDate();
-                        const projectedDate = new Date(Date.UTC(filterYear, filterMonth, day)).toISOString();
+                        const projectedDate = new Date(Date.UTC(filterYear as number, filterMonth as number, day)).toISOString();
                         
                         items.push({
                             ...f,
@@ -1871,7 +1849,7 @@ const ImportedRevenuesView: FC<{
                                         if (row['Classificação'] === 'CUSTOS') return null;
                                         let dateIso = new Date().toISOString();
                                         if (typeof row['Data'] === 'number') {
-                                            const jsDate = new Date((row['Data'] - 25569) * 86400 * 1000);
+                                            const jsDate = new Date((row['Data'] - 25569) * 86400 * 1000); 
                                             jsDate.setHours(12, 0, 0); 
                                             dateIso = jsDate.toISOString();
                                         } else if (row['Data']) dateIso = new Date(row['Data']).toISOString();
@@ -1984,9 +1962,9 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
         let limitDate = new Date();
         if (selectedYear !== 'all') {
             if (selectedMonth !== 'all') {
-                limitDate = new Date(selectedYear, selectedMonth + 1, 0, 23, 59, 59);
+                limitDate = new Date(selectedYear, (selectedMonth as number) + 1, 0, 23, 59, 59);
             } else {
-                limitDate = new Date(selectedYear, 12, 0, 23, 59, 59);
+                limitDate = new Date(selectedYear as number, 12, 0, 23, 59, 59);
             }
         }
         
@@ -2084,7 +2062,7 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
                 <div className="border-b border-border-color pb-4 mb-4">
                     <h3 className="text-xl font-bold text-text-primary text-center uppercase tracking-tight">Demonstrativo do Resultado (DRE)</h3>
                     <p className="text-center text-text-secondary text-sm">
-                        {selectedMonth !== 'all' ? ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][selectedMonth] + ' ' : ''}
+                        {selectedMonth !== 'all' ? ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][selectedMonth as number] + ' ' : ''}
                         {selectedYear === 'all' ? 'Todo o Período' : selectedYear}
                     </p>
                 </div>
@@ -2208,17 +2186,14 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         return { totalIncome: income, totalExpense: expense, netProfit: round(Number(income) - Number(expense)) };
     }, [filteredTransactions]);
 
-    // CORREÇÃO: Saldo Hoje (Saldo Livre/Disponível)
     const saldoHoje = useMemo(() => round(transactions.reduce((acc: number, t: Transaction) => {
         const txDate = new Date(t.date).getTime();
         const now = new Date().getTime();
         if (txDate <= now) {
             if (t.type === TransactionType.INCOME) {
-                // Do valor recebido, a provisão de imposto fica reservada e não compõe o saldo livre
                 const tax = t.taxAmount || 0;
                 return acc + (Number(t.amount) - Number(tax));
             } else {
-                // Apenas despesas que NÃO são de provisão reduzem o saldo livre
                 if (t.costCenter !== 'provisao-impostos') {
                     return acc - Number(t.amount);
                 }
@@ -2227,16 +2202,13 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         return acc;
     }, 0)), [transactions]);
 
-    // CORREÇÃO: Saldo Provisão (Acumulado)
     const saldoProvisaoHoje = useMemo(() => round(transactions.reduce((acc: number, t: Transaction) => {
         const txDate = new Date(t.date).getTime();
         const now = new Date().getTime();
         if (txDate <= now) {
             if (t.type === TransactionType.INCOME) {
-                // Impostos retidos das receitas alimentam a provisão
                 return acc + Number(t.taxAmount || 0);
             } else {
-                // Apenas pagamentos de impostos (centro de provisão) consomem este saldo
                 if (t.costCenter === 'provisao-impostos') {
                     return acc - Number(t.amount);
                 }
@@ -2245,7 +2217,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         return acc;
     }, 0)), [transactions]);
 
-    const achievedGoals = useMemo(() => goals.filter(g => g.currentAmount >= g.targetAmount).length, [goals]);
+    const achievedGoals = useMemo(() => goals.filter(g => (Number(g.currentAmount) || 0) >= g.targetAmount).length, [goals]);
     
     const upcomingBills = useMemo(() => {
         const fiveDaysFromNow = new Date();
@@ -2397,8 +2369,44 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
             )}
 
              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <Card className="lg:col-span-2 h-[400px] flex flex-col"><h3 className="text-lg font-bold mb-4 uppercase tracking-tight">Fluxo de Caixa {showProjection && <span className="text-xs text-primary ml-2">(com projeção 12m)</span>}</h3><div className="flex-grow"><ResponsiveContainer><AreaChart data={cashFlowData}><defs><linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#D1822A" stopOpacity={0.8}/><stop offset="95%" stopColor="#D1822A" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2D376A" opacity={0.5} /><XAxis dataKey="date" stroke="#A0AEC0" tick={{fontSize:11}} tickLine={false} axisLine={false} /><YAxis stroke="#A0AEC0" tickFormatter={v => `R$${(Number(v) as number)/1000}k`} tick={{fontSize:11}} width={60} tickLine={false} axisLine={false} /><Tooltip contentStyle={{backgroundColor:'#1A214A',border:'none',borderRadius:'8px'}} itemStyle={{color:'#D1822A'}} formatter={v => [formatCurrency(Number(v)), 'Saldo']}/><Area type="monotone" dataKey="balance" stroke="#D1822A" strokeWidth={3} fillOpacity={1} fill="url(#colorBalance)" /></AreaChart></ResponsiveContainer></div></Card>
-                <Card className="h-[400px] flex flex-col"><h3 className="text-lg font-bold mb-4 uppercase tracking-tight">Natureza das Despesas</h3><div className="flex-grow">{expenseSubcategoryData.length > 0 ? <ResponsiveContainer><PieChart><Pie data={expenseSubcategoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={100} fill="#8884d8" paddingAngle={5} stroke="none">{expenseSubcategoryData.map((e,i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip />} /><Legend verticalAlign="bottom" height={36} iconType="circle" formatter={v => <span className="text-text-secondary ml-1">{v}</span>} /></PieChart></ResponsiveContainer> : <div className="flex items-center justify-center h-full text-text-secondary"><p>Sem dados.</p></div>}</div></Card>
+                <Card className="lg:col-span-2 h-[400px] flex flex-col">
+                  <h3 className="text-lg font-bold mb-4 uppercase tracking-tight">Fluxo de Caixa {showProjection && <span className="text-xs text-primary ml-2">(com projeção 12m)</span>}</h3>
+                  <div className="flex-grow">
+                    <ResponsiveContainer>
+                      <AreaChart data={cashFlowData}>
+                        <defs>
+                          <linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#D1822A" stopOpacity={0.8}/>
+                            <stop offset="95%" stopColor="#D1822A" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2D376A" opacity={0.5} />
+                        <XAxis dataKey="date" stroke="#A0AEC0" tick={{fontSize:11}} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#A0AEC0" tickFormatter={v => `R$${(Number(v) as number)/1000}k`} tick={{fontSize:11}} width={60} tickLine={false} axisLine={false} />
+                        <Tooltip contentStyle={{backgroundColor:'#1A214A',border:'none',borderRadius:'8px'}} itemStyle={{color:'#D1822A'}} formatter={v => [formatCurrency(Number(v)), 'Saldo']}/>
+                        <Area type="monotone" dataKey="balance" stroke="#D1822A" strokeWidth={3} fillOpacity={1} fill="url(#colorBalance)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </Card>
+                <Card className="h-[400px] flex flex-col">
+                  <h3 className="text-lg font-bold mb-4 uppercase tracking-tight">Natureza das Despesas</h3>
+                  <div className="flex-grow">
+                    {expenseSubcategoryData.length > 0 ? (
+                      <ResponsiveContainer>
+                        <PieChart>
+                          <Pie data={expenseSubcategoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={100} fill="#8884d8" paddingAngle={5} stroke="none">
+                            {expenseSubcategoryData.map((e,i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                          </Pie>
+                          <Tooltip content={<CustomPieTooltip />} />
+                          <Legend verticalAlign="bottom" height={36} iconType="circle" formatter={v => <span className="text-text-secondary ml-1">{v}</span>} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-text-secondary"><p>Sem dados.</p></div>
+                    )}
+                  </div>
+                </Card>
             </div>
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Confirmar Pagamento / Ajustar Valor">
                 <TransactionForm onSubmit={handleFormSubmit} onClose={() => setIsModalOpen(false)} initialData={editingTransaction} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} globalTaxRate={globalTaxRate} transactions={transactions} importedRevenues={importedRevenues} />
@@ -2426,10 +2434,12 @@ const App: FC = () => {
     const [importedRevenues, setImportedRevenues] = useState<ImportedRevenue[]>([]);
 
     const [loadingData, setLoadingData] = useState(false);
+    
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (currentUser) => { setUser(currentUser); setLoadingAuth(false); });
         return () => unsubscribe();
     }, []);
+
     useEffect(() => {
         if (user) {
             setLoadingData(true);
@@ -2476,7 +2486,6 @@ const App: FC = () => {
             const splitsToProcess = data.splits || [];
             if (splitsToProcess.length > 0) {
                 for (const split of splitsToProcess) {
-                    // 3) Repasse do Assessor: Criar despesa somente com valor líquido (conforme ORDEM FINAL)
                     const netPayout = round(Number(split.netPayout));
                     if (netPayout > 0) {
                         try {
@@ -2532,22 +2541,26 @@ const App: FC = () => {
         await updateTransaction(id, data);
         setTransactions(transactions.map(t => t.id === id ? { ...t, ...data } as unknown as Transaction : t));
     };
+
     const handleDeleteTransaction = async (id: string) => {
          if (!user || !window.confirm("Excluir?")) return;
          await deleteTransactionFromDb(id);
          setTransactions(transactions.filter(t => t.id !== id));
     };
+
     const handleSetPaid = async (id: string) => {
         if (!user) return;
         await updateTransaction(id, { status: ExpenseStatus.PAID });
         setTransactions(transactions.map(t => t.id === id ? { ...t, status: ExpenseStatus.PAID } : t));
     };
+
     const handleToggleReconciliation = async (id: string, current: boolean) => {
         if (!user) return;
         const newValue = !current;
         await updateTransaction(id, { reconciled: newValue });
         setTransactions(transactions.map(t => t.id === id ? { ...t, reconciled: newValue } : t));
     };
+
     const handleImportTransactions = (data: any[]) => {
         if (!user) return;
         Promise.all(data.map(item => {
@@ -2555,6 +2568,7 @@ const App: FC = () => {
              return saveTransaction(rest, user.uid).then(docRef => ({ id: docRef.id, ...rest } as Transaction));
         })).then(newItems => setTransactions([...newItems, ...transactions]));
     };
+
     const handleImportRevenues = (data: any[]) => {
          if (!user) return;
          const importPromises = data.map(item => saveImportedRevenue(item, user.uid).then(docRef => ({ id: docRef.id, ...item } as ImportedRevenue)).catch(() => null));
@@ -2563,6 +2577,7 @@ const App: FC = () => {
              setImportedRevenues([...newRevenues, ...importedRevenues]);
          });
     };
+
     const handleDeleteRevenue = async (id: string) => {
         if (!user || !window.confirm("Excluir?")) return;
         await deleteImportedRevenue(id);
@@ -2576,6 +2591,7 @@ const App: FC = () => {
 
     if (loadingAuth) return <div className="min-h-screen flex items-center justify-center bg-background text-text-primary">Carregando...</div>;
     if (!user) return <Login />;
+
     return (
         <div className="flex h-screen bg-background text-text-primary overflow-hidden font-sans">
              <Sidebar activeView={activeView} setActiveView={(v) => { setActiveView(v); setIsSidebarOpen(false); }} isSidebarOpen={isSidebarOpen} user={user} />
@@ -2598,4 +2614,5 @@ const App: FC = () => {
         </div>
     );
 };
+
 export default App;
