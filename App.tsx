@@ -265,23 +265,19 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     const gross: number = parseFloat(formData.grossAmount) || 0;
 
     // --- LOGICA FINANCEIRA (DEFINITIVE VERSION) ---
-    // Regra 2: CRM deduzido integralmente independentemente de ter receita.
     const totalCRM = useMemo(() => 
         round(splits.reduce((acc, s) => acc + (Number(s.additionalCost) || 0), 0))
     , [splits]);
 
-    // Step 3: Base Econômica Total = Receita - CRM (Impacto de caixa líquido da PJ)
     const entradaCaixaPJ = round(Number(gross) - totalCRM);
     const effectiveTaxRate = applyTax ? (parseFloat(taxRateInput) || 0) : 0;
 
-    // ETAPA CRÍTICA: RATEIO CONFORME HIERARQUIA OBRIGATÓRIA
     const splitsDetails = useMemo(() => {
         return splits.map(split => {
             const revenueAmount = Number(split.revenueAmount) || 0;
             const percentage = Number(split.percentage) || 0;
             const additionalCost = Number(split.additionalCost) || 0;
             
-            // Regra 5: Somente assessores com receita participam do rateio de imposto e split.
             if (revenueAmount <= 0) {
                 return { 
                     ...split, 
@@ -295,18 +291,11 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                 };
             }
 
-            // Step 3: Base Econômica Pós-CRM Individual
             const baseIndividual = round(revenueAmount - additionalCost);
-            
-            // Step 4: Split de Comissão sobre a base pós-CRM
             const grossPayout = round(baseIndividual * (percentage / 100));
             const officeGrossPart = round(baseIndividual * (1 - (percentage / 100)));
-            
-            // Step 5: Imposto incidindo após CRM e após split
             const advisorTax = round(grossPayout * (effectiveTaxRate / 100));
             const officeTax = round(officeGrossPart * (effectiveTaxRate / 100));
-            
-            // Step 6: Repasse Líquido do Assessor
             const netPayout = round(grossPayout - advisorTax);
             
             return { 
@@ -322,7 +311,6 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         });
     }, [splits, effectiveTaxRate]);
 
-    // Totalizadores para cálculo do Resultado do Escritório (Step 7)
     const totalAdvisorTax = useMemo(() => 
         round(splitsDetails.reduce((acc, s) => acc + (Number(s.taxAmount) || 0), 0))
     , [splitsDetails]);
@@ -335,15 +323,11 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         round(splitsDetails.reduce((acc, s) => acc + (Number((s as any).officeGrossPart) || 0), 0))
     , [splitsDetails]);
 
-    // Regra 2: CRM dos assessores sem receita gera prejuízo direto
     const crmNonRevenueAdvisors = useMemo(() => 
         round(splits.filter(s => (Number(s.revenueAmount) || 0) <= 0).reduce((acc, s) => acc + (Number(s.additionalCost) || 0), 0))
     , [splits]);
 
-    // Total de Imposto Provisionado para a transação
     const calculatedTotalTax = round(totalAdvisorTax + totalOfficeTaxFromRevenue);
-
-    // Step 7: Resultado do Escritório = soma partes escritório − imposto escritório − CRM sem receita
     const officeResult = round(totalOfficeGrossFromRevenue - totalOfficeTaxFromRevenue - crmNonRevenueAdvisors);
 
     useEffect(() => {
@@ -369,7 +353,6 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
 
     useEffect(() => {
         if (!isInitializing.current && applyTax && !isEditing) {
-            // Sincroniza o valor total do imposto com a soma calculada proporcionalmente
             setTaxValueCents(Math.round(calculatedTotalTax * 100));
         }
     }, [entradaCaixaPJ, applyTax, effectiveTaxRate, isEditing, calculatedTotalTax]);
@@ -377,20 +360,20 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     const handleRateInputChange = (val: string) => {
         setTaxRateInput(val);
         const rate = parseFloat(val) || 0;
-        // Ao mudar a taxa, recalcula o imposto total proporcional conforme lógica definitiva
-        // O valor exibido como "Imposto Total" é a soma das partes do rateio proporcional
-        setTaxValueCents(Math.round(calculatedTotalTax * 100));
+        const newVal = round(entradaCaixaPJ * (rate / 100));
+        setTaxValueCents(Math.round(newVal * 100));
     };
 
-    const handleApplyTaxCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const checked = e.target.checked;
-        setApplyTax(checked);
-        if (checked) {
-            setTaxValueCents(Math.round(calculatedTotalTax * 100));
+    const handleValueInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const raw = e.target.value.replace(/\D/g, '');
+        const cents = raw ? parseInt(raw, 10) : 0;
+        setTaxValueCents(cents);
+        const valR = cents / 100;
+        if (entradaCaixaPJ > 0) {
+            const rate = (valR / entradaCaixaPJ) * 100;
+            setTaxRateInput(rate.toFixed(2).replace(/\.00$/, ''));
         }
     };
-
-    const formattedTaxValue = (taxValueCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
     useEffect(() => {
         const newCats = type === TransactionType.INCOME ? incomeCategories : expenseCategories.map(c => c.name);
@@ -681,7 +664,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                     <div className="flex justify-end mb-2">
                         <label className="flex items-center gap-2 cursor-pointer select-none">
                              <span className="text-xs text-text-secondary">Aplicar imposto proporcional</span>
-                             <input type="checkbox" checked={applyTax} onChange={handleApplyTaxCheckboxChange} className="rounded text-primary focus:ring-primary h-4 w-4 bg-surface border-border-color" />
+                             <input type="checkbox" checked={applyTax} onChange={(e) => setApplyTax(e.target.checked)} className="rounded text-primary focus:ring-primary h-4 w-4 bg-surface border-border-color" />
                         </label>
                      </div>
 
@@ -699,7 +682,13 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                                     <input type="number" step="0.01" value={taxRateInput} onChange={(e) => handleRateInputChange(e.target.value)} className="w-full bg-surface border border-border-color rounded px-2 py-1 text-xs text-center focus:ring-primary focus:border-primary" placeholder="0" disabled={!applyTax} />
                                     <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-text-secondary">%</span>
                                 </div>
-                                <div className="text-xs font-bold text-danger">{formattedTaxValue}</div>
+                                <input 
+                                    type="text" 
+                                    value={(taxValueCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} 
+                                    onChange={handleValueInputChange}
+                                    className="w-full bg-surface border border-border-color rounded px-1 py-0.5 text-[10px] text-center font-bold text-danger focus:ring-primary focus:border-primary outline-none"
+                                    disabled={!applyTax}
+                                />
                             </div>
                         </div>
                         <div>
@@ -1212,7 +1201,7 @@ const SettingsView: FC<SettingsViewProps> = ({
         const newList = [...expenseCategories];
         newList[editingExpenseIdx!] = { name: tempExpenseName.trim(), type: tempExpenseType };
         setExpenseCategories(newList);
-        setEditingIncomeIdx(null);
+        setEditingExpenseIdx(null);
     };
 
     // Payment Handlers
@@ -2217,10 +2206,8 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         if (txDate <= now) {
             if (t.type === TransactionType.INCOME) {
                 const tax = t.taxAmount || 0;
-                // available balance net of earmarked tax
                 return acc + (Number(t.amount) - Number(tax));
             } else if (t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PAID) {
-                // subtract from available balance only if NOT a tax payment (to avoid double discount)
                 if (t.costCenter !== 'provisao-impostos') {
                     return acc - Number(t.amount);
                 }
