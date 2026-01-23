@@ -90,7 +90,7 @@ const parseOFX = (content: string): ImportableTransaction[] => {
         const amountMatch = block.match(/<TRNAMT>([\d.-]+)/);
         const dateMatch = block.match(/<DTPOSTED>\s*(\d{8})/);
         const memoMatch = block.match(/<MEMO>(.*?)(\n|<)/);
-        const nameMatch = block.match(/<NAME>(.*?)(\n|<)/);
+        const nameMatch = block.match(/<MEMO>(.*?)(\n|<)/) || block.match(/<NAME>(.*?)(\n|<)/);
 
         if (dateMatch && amountMatch) {
             const rawDate = dateMatch[1];
@@ -294,7 +294,6 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             setTaxRateInput(globalTaxRate.toString());
         }
         setTimeout(() => { isInitializing.current = false; }, 0);
-        // CORREÇÃO 1: Removendo entradaCaixaPJ e totalTaxAmount da lista de dependências para destravar edição manual.
     }, [initialData, globalTaxRate]);
 
     useEffect(() => {
@@ -335,27 +334,51 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
 
     // 3) Repasse do Assessor: Criado somente com valor líquido (descontado o imposto retido na provisão)
     const splitsDetails = useMemo(() => {
-        return splits.map(split => {
+        // CORREÇÃO ÚNICA: Identifica participantes com receita positiva para rateio do imposto
+        const participants = splits.filter(s => (Number(s.revenueAmount) || 0) > 0);
+        
+        // Base de cálculo individual para rateio é (Receita - CRM)
+        // Somamos as bases individuais para distribuição proporcional do imposto provisionado total
+        const totalBase = participants.reduce((acc, s) => acc + Math.max(0, (Number(s.revenueAmount) - (Number(s.additionalCost) || 0))), 0);
+        
+        let accumulatedTax = 0;
+        let processedParticipants = 0;
+
+        return splits.map((split) => {
             const revenueAmount = Number(split.revenueAmount) || 0;
             const percentage = Number(split.percentage) || 0;
             const additionalCost = Number(split.additionalCost) || 0;
-            
-            // CORREÇÃO 2: Se assessor sem receita, repasse = 0
+
+            // Assessores sem receita: não participam do cálculo, não geram imposto
             if (revenueAmount <= 0) {
                 return { ...split, grossPayout: 0, taxAmount: 0, netPayout: 0, additionalCost };
             }
 
-            // Payout bruto baseado na receita individual
-            const grossPayout = round(revenueAmount * (percentage / 100));
-            // Provisão de imposto sobre esse repasse
-            const advisorTax = round(grossPayout * (effectiveTaxRate / 100));
+            const commission = round(revenueAmount * (percentage / 100));
             
-            // CORREÇÃO 2: Repasse líquido = comissão - imposto - CRM (additionalCost) integral do próprio assessor
-            const netPayout = Math.max(0, round(grossPayout - advisorTax - additionalCost));
+            // Participante atual
+            processedParticipants++;
+            const isLastParticipant = processedParticipants === participants.length;
             
-            return { ...split, grossPayout, taxAmount: advisorTax, netPayout, additionalCost };
+            let advisorTax = 0;
+            if (totalBase > 0) {
+                const individualBase = Math.max(0, revenueAmount - additionalCost);
+                if (isLastParticipant) {
+                    // Ajuste de centavos no último participante para garantir que a soma bata com totalTaxAmount
+                    advisorTax = round(totalTaxAmount - accumulatedTax);
+                } else {
+                    // Distribuição proporcional baseada na contribuição líquida individual
+                    advisorTax = round(totalTaxAmount * (individualBase / totalBase));
+                    accumulatedTax = round(accumulatedTax + advisorTax);
+                }
+            }
+            
+            // Repasse líquido = comissão - imposto - CRM
+            const netPayout = Math.max(0, round(commission - advisorTax - additionalCost));
+            
+            return { ...split, grossPayout: commission, taxAmount: advisorTax, netPayout, additionalCost };
         });
-    }, [splits, effectiveTaxRate]);
+    }, [splits, effectiveTaxRate, totalTaxAmount]);
 
     const totalNetPayouts = useMemo(() => 
         round(splitsDetails.reduce((acc, s) => acc + (Number(s.netPayout) || 0), 0))
@@ -2185,26 +2208,39 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         return { totalIncome: income, totalExpense: expense, netProfit: round(Number(income) - Number(expense)) };
     }, [filteredTransactions]);
 
+    // CORREÇÃO: Saldo Hoje (Saldo Livre/Disponível)
     const saldoHoje = useMemo(() => round(transactions.reduce((acc: number, t: Transaction) => {
         const txDate = new Date(t.date).getTime();
         const now = new Date().getTime();
         if (txDate <= now) {
-            const value = t.type === TransactionType.INCOME 
-                ? Number(t.amount) 
-                : -Number(t.amount);
-            return acc + value;
+            if (t.type === TransactionType.INCOME) {
+                // Do valor recebido, a provisão de imposto fica reservada e não compõe o saldo livre
+                const tax = t.taxAmount || 0;
+                return acc + (Number(t.amount) - Number(tax));
+            } else {
+                // Apenas despesas que NÃO são de provisão reduzem o saldo livre
+                if (t.costCenter !== 'provisao-impostos') {
+                    return acc - Number(t.amount);
+                }
+            }
         }
         return acc;
     }, 0)), [transactions]);
 
+    // CORREÇÃO: Saldo Provisão (Acumulado)
     const saldoProvisaoHoje = useMemo(() => round(transactions.reduce((acc: number, t: Transaction) => {
         const txDate = new Date(t.date).getTime();
         const now = new Date().getTime();
         if (txDate <= now) {
-            const value = t.type === TransactionType.INCOME 
-                ? Number(t.taxAmount || 0) 
-                : (t.costCenter === 'provisao-impostos' ? -Number(t.amount) : 0);
-            return acc + value;
+            if (t.type === TransactionType.INCOME) {
+                // Impostos retidos das receitas alimentam a provisão
+                return acc + Number(t.taxAmount || 0);
+            } else {
+                // Apenas pagamentos de impostos (centro de provisão) consomem este saldo
+                if (t.costCenter === 'provisao-impostos') {
+                    return acc - Number(t.amount);
+                }
+            }
         }
         return acc;
     }, 0)), [transactions]);
