@@ -2178,8 +2178,8 @@ interface DashboardViewProps {
 }
 
 const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid, onEdit, incomeCategories, expenseCategories, paymentMethods, costCenters, advisors, globalTaxRate, importedRevenues }) => {
-    const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
-    const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all');
+    const [selectedYear, setSelectedYear] = useState<number | 'all'>(new Date().getFullYear());
+    const [selectedMonth, setSelectedMonth] = useState<number | 'all'>(new Date().getMonth());
     const [showProjection, setShowProjection] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -2503,16 +2503,22 @@ const App: FC = () => {
 
     const handleAddTransaction = async (data: TransactionFormValues) => {
         if (!user) return;
-        const docRef = await saveTransaction(data as any, user.uid);
         
+        // 1. Salva a transação original (Receita ou Despesa Manual)
+        const docRef = await saveTransaction(data as any, user.uid);
+        let newTransactionsList = [{ id: docRef.id, ...data } as unknown as Transaction];
+
+        // 2. Lógica Automática de Geração de Despesa de Comissão (Repasse Líquido)
         if (data.type === TransactionType.INCOME) {
             const splitsToProcess = data.splits || [];
+            
+            // Caso 1: Composição por Splits
             if (splitsToProcess.length > 0) {
                 for (const split of splitsToProcess) {
                     const netPayout = round(Number(split.netPayout));
                     if (netPayout > 0) {
                         try {
-                            await addDoc(collection(db, "transacoes"), {
+                            const expenseData = {
                                 amount: netPayout,
                                 date: data.date,
                                 type: TransactionType.EXPENSE,
@@ -2522,21 +2528,29 @@ const App: FC = () => {
                                 costCenter: data.costCenter || "conta-pj",
                                 tipoInterno: "transacao",
                                 criadoPor: user.uid,
-                                criadoEm: serverTimestamp(),
                                 advisorId: split.advisorId,
-                                status: ExpenseStatus.PENDING,
+                                status: ExpenseStatus.PENDING, // Regra obrigatória: Inicia como PENDENTE
                                 originTransactionId: docRef.id
+                            };
+                            
+                            const expDocRef = await addDoc(collection(db, "transacoes"), {
+                                ...expenseData,
+                                criadoEm: serverTimestamp()
                             });
+                            
+                            // Adiciona ao estado local para atualização imediata
+                            newTransactionsList.push({ id: expDocRef.id, ...expenseData } as unknown as Transaction);
                         } catch (err) {
                             console.error("Erro ao gerar despesa de repasse:", err);
                         }
                     }
                 }
             } 
+            // Caso 2: Assessor Único (Simples)
             else if (data.advisorId && data.commissionAmount && data.commissionAmount > 0) {
                 const advisorObj = advisors.find(a => a.id === data.advisorId);
                 try {
-                    await addDoc(collection(db, "transacoes"), {
+                    const expenseData = {
                         amount: round(data.commissionAmount),
                         date: data.date,
                         type: TransactionType.EXPENSE,
@@ -2546,17 +2560,25 @@ const App: FC = () => {
                         costCenter: data.costCenter || "conta-pj",
                         tipoInterno: "transacao",
                         criadoPor: user.uid,
-                        criadoEm: serverTimestamp(),
                         advisorId: data.advisorId,
-                        status: ExpenseStatus.PENDING,
+                        status: ExpenseStatus.PENDING, // Regra obrigatória: Inicia como PENDENTE
                         originTransactionId: docRef.id
+                    };
+                    
+                    const expDocRef = await addDoc(collection(db, "transacoes"), {
+                        ...expenseData,
+                        criadoEm: serverTimestamp()
                     });
+                    
+                    newTransactionsList.push({ id: expDocRef.id, ...expenseData } as unknown as Transaction);
                 } catch (err) {
                     console.error("Erro ao gerar despesa de repasse simples:", err);
                 }
             }
         }
-        setTransactions([{ id: docRef.id, ...data } as unknown as Transaction, ...transactions]);
+        
+        // Atualiza a lista local com a(s) nova(s) transação(ões)
+        setTransactions([...newTransactionsList, ...transactions]);
     };
 
     const handleEditTransaction = async (id: string, data: TransactionFormValues) => {
