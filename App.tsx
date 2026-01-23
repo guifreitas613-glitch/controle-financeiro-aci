@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, FC, ReactNode, useEffect, useRef } from 'react';
 import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType, AdvisorSplit, ImportedRevenue, AdvisorCost, Partner } from './types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area } from 'recharts';
@@ -1206,7 +1205,7 @@ const SettingsView: FC<SettingsViewProps> = ({
         const newList = [...expenseCategories];
         newList[editingExpenseIdx!] = { name: tempExpenseName.trim(), type: tempExpenseType };
         setExpenseCategories(newList);
-        setEditingIncomeIdx(null);
+        setEditingExpenseIdx(null);
     };
 
     // Payment Handlers
@@ -1749,7 +1748,7 @@ const TransactionsView: FC<{
                         </thead>
                         <tbody className="divide-y divide-border-color/30 text-sm font-medium">
                             {filtered.map(t => (
-                                <tr key={t.id} className={`hover:bg-background/50 transition-colors ${(t as any).isProjection ? 'opacity-50 grayscale-[0.5]' : ''}`}>
+                                <tr key={t.id} className={`hover:bg-background/50 transition-colors ${t.isProjection ? 'opacity-50 grayscale-[0.5]' : ''}`}>
                                     <td className="p-4 whitespace-nowrap text-text-secondary">{formatDate(t.date)}</td>
                                     <td className="p-4 font-bold">{t.description}<div className="text-xs text-text-secondary font-normal">{t.clientSupplier}</div></td>
                                     <td className="p-4"><span className="px-3 py-1 rounded-full bg-border-color/50 border border-border-color text-[10px] uppercase font-bold">{t.category}</span></td>
@@ -1763,7 +1762,7 @@ const TransactionsView: FC<{
                                     )}
                                     <td className="p-4 text-center">
                                         <div className="flex justify-center gap-3 items-center">
-                                            {!(t as any).isProjection ? (
+                                            {!t.isProjection ? (
                                                 <>
                                                     <label className="flex items-center gap-1 cursor-pointer select-none" title={t.type === TransactionType.EXPENSE && t.status !== ExpenseStatus.PAID ? "Apenas despesas pagas podem ser conciliadas" : "Conciliação Bancária (CB)"}>
                                                         <input 
@@ -2239,10 +2238,10 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
     const achievedGoals = useMemo(() => goals.filter(g => (Number(g.currentAmount) || 0) >= g.targetAmount).length, [goals]);
     
     const upcomingBills = useMemo(() => {
-        const fiveDaysFromNow = new Date();
-        fiveDaysFromNow.setHours(23, 59, 59, 999);
-        fiveDaysFromNow.setDate(fiveDaysFromNow.getDate() + 5);
-        const threshold = fiveDaysFromNow.getTime();
+        const thresholdDate = new Date();
+        thresholdDate.setHours(23, 59, 59, 999);
+        thresholdDate.setDate(thresholdDate.getDate() + 10);
+        const threshold = thresholdDate.getTime();
 
         return transactions
             .filter(t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PENDING && new Date(t.date).getTime() <= threshold)

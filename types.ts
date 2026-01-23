@@ -33,6 +33,8 @@ export interface Transaction {
   attachment?: string; 
   costCenter?: string;
   reconciled?: boolean; // Novo campo para conciliação bancária
+  // Field to identify projected transactions (e.g., predicted fixed expenses for future months)
+  isProjection?: boolean;
   
   // Fields for Income Logic (Gross/Net/Commission)
   taxAmount?: number;
