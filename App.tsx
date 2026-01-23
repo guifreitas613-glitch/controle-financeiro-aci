@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, FC, ReactNode, useEffect, useRef } from 'react';
 import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType, AdvisorSplit, ImportedRevenue, AdvisorCost, Partner } from './types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area } from 'recharts';
@@ -263,17 +264,87 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
 
     const gross: number = parseFloat(formData.grossAmount) || 0;
 
-    // --- LOGICA FINANCEIRA (ORDEM FINAL) ---
-    // 1) Entrada de Caixa = Receita Bruta - Soma de todos os CRM (Custos Adicionais)
+    // --- LOGICA FINANCEIRA (DEFINITIVE VERSION) ---
+    // Regra 2: CRM deduzido integralmente independentemente de ter receita.
     const totalCRM = useMemo(() => 
         round(splits.reduce((acc, s) => acc + (Number(s.additionalCost) || 0), 0))
     , [splits]);
 
+    // Step 3: Base Econômica Total = Receita - CRM (Impacto de caixa líquido da PJ)
     const entradaCaixaPJ = round(Number(gross) - totalCRM);
     const effectiveTaxRate = applyTax ? (parseFloat(taxRateInput) || 0) : 0;
-    
-    // 2) Provisão de Impostos = Entrada de Caixa * Alíquota (impostos ficam reservados)
-    const totalTaxAmount = round(entradaCaixaPJ * (effectiveTaxRate / 100));
+
+    // ETAPA CRÍTICA: RATEIO CONFORME HIERARQUIA OBRIGATÓRIA
+    const splitsDetails = useMemo(() => {
+        return splits.map(split => {
+            const revenueAmount = Number(split.revenueAmount) || 0;
+            const percentage = Number(split.percentage) || 0;
+            const additionalCost = Number(split.additionalCost) || 0;
+            
+            // Regra 5: Somente assessores com receita participam do rateio de imposto e split.
+            if (revenueAmount <= 0) {
+                return { 
+                    ...split, 
+                    grossPayout: 0, 
+                    taxAmount: 0, 
+                    netPayout: 0, 
+                    officeGrossPart: 0, 
+                    officeTax: 0, 
+                    additionalCost,
+                    isRevenueGenerator: false 
+                };
+            }
+
+            // Step 3: Base Econômica Pós-CRM Individual
+            const baseIndividual = round(revenueAmount - additionalCost);
+            
+            // Step 4: Split de Comissão sobre a base pós-CRM
+            const grossPayout = round(baseIndividual * (percentage / 100));
+            const officeGrossPart = round(baseIndividual * (1 - (percentage / 100)));
+            
+            // Step 5: Imposto incidindo após CRM e após split
+            const advisorTax = round(grossPayout * (effectiveTaxRate / 100));
+            const officeTax = round(officeGrossPart * (effectiveTaxRate / 100));
+            
+            // Step 6: Repasse Líquido do Assessor
+            const netPayout = round(grossPayout - advisorTax);
+            
+            return { 
+                ...split, 
+                grossPayout, 
+                taxAmount: advisorTax, 
+                officeTax,
+                officeGrossPart,
+                netPayout, 
+                additionalCost,
+                isRevenueGenerator: true 
+            };
+        });
+    }, [splits, effectiveTaxRate]);
+
+    // Totalizadores para cálculo do Resultado do Escritório (Step 7)
+    const totalAdvisorTax = useMemo(() => 
+        round(splitsDetails.reduce((acc, s) => acc + (Number(s.taxAmount) || 0), 0))
+    , [splitsDetails]);
+
+    const totalOfficeTaxFromRevenue = useMemo(() => 
+        round(splitsDetails.reduce((acc, s) => acc + (Number((s as any).officeTax) || 0), 0))
+    , [splitsDetails]);
+
+    const totalOfficeGrossFromRevenue = useMemo(() => 
+        round(splitsDetails.reduce((acc, s) => acc + (Number((s as any).officeGrossPart) || 0), 0))
+    , [splitsDetails]);
+
+    // Regra 2: CRM dos assessores sem receita gera prejuízo direto
+    const crmNonRevenueAdvisors = useMemo(() => 
+        round(splits.filter(s => (Number(s.revenueAmount) || 0) <= 0).reduce((acc, s) => acc + (Number(s.additionalCost) || 0), 0))
+    , [splits]);
+
+    // Total de Imposto Provisionado para a transação
+    const calculatedTotalTax = round(totalAdvisorTax + totalOfficeTaxFromRevenue);
+
+    // Step 7: Resultado do Escritório = soma partes escritório − imposto escritório − CRM sem receita
+    const officeResult = round(totalOfficeGrossFromRevenue - totalOfficeTaxFromRevenue - crmNonRevenueAdvisors);
 
     useEffect(() => {
         if (initialData && initialData.type === TransactionType.INCOME) {
@@ -298,74 +369,28 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
 
     useEffect(() => {
         if (!isInitializing.current && applyTax && !isEditing) {
-            setTaxValueCents(Math.round(totalTaxAmount * 100));
+            // Sincroniza o valor total do imposto com a soma calculada proporcionalmente
+            setTaxValueCents(Math.round(calculatedTotalTax * 100));
         }
-    }, [entradaCaixaPJ, applyTax, effectiveTaxRate, isEditing, totalTaxAmount]);
+    }, [entradaCaixaPJ, applyTax, effectiveTaxRate, isEditing, calculatedTotalTax]);
 
     const handleRateInputChange = (val: string) => {
         setTaxRateInput(val);
         const rate = parseFloat(val) || 0;
-        const valR = round(entradaCaixaPJ * (rate / 100));
-        setTaxValueCents(Math.round(valR * 100));
-    };
-
-    const handleValueInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const raw = e.target.value.replace(/\D/g, '');
-        const cents = raw ? parseInt(raw, 10) : 0;
-        setTaxValueCents(cents);
-        const valR = cents / 100;
-        if (entradaCaixaPJ > 0) {
-            const rate = (valR / entradaCaixaPJ) * 100;
-            setTaxRateInput(rate.toFixed(2).replace(/\.00$/, ''));
-        }
+        // Ao mudar a taxa, recalcula o imposto total proporcional conforme lógica definitiva
+        // O valor exibido como "Imposto Total" é a soma das partes do rateio proporcional
+        setTaxValueCents(Math.round(calculatedTotalTax * 100));
     };
 
     const handleApplyTaxCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const checked = e.target.checked;
         setApplyTax(checked);
         if (checked) {
-            const rate = parseFloat(taxRateInput) || globalTaxRate;
-            const val = round(entradaCaixaPJ * (rate / 100));
-            setTaxValueCents(Math.round(val * 100));
+            setTaxValueCents(Math.round(calculatedTotalTax * 100));
         }
     };
 
     const formattedTaxValue = (taxValueCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
-    // CORREÇÃO ÚNICA – HIERARQUIA CORRETA DO REPASSE DO ASSESSOR
-    const splitsDetails = useMemo(() => {
-        return splits.map(split => {
-            const revenueAmount = Number(split.revenueAmount) || 0;
-            const percentage = Number(split.percentage) || 0;
-            const additionalCost = Number(split.additionalCost) || 0;
-            
-            // ETAPA 1: Se não teve receita, encerra cálculo
-            if (revenueAmount <= 0) {
-                return { ...split, grossPayout: 0, taxAmount: 0, netPayout: 0, additionalCost };
-            }
-
-            // ETAPA 2: base do assessor = receita individual − CRM do próprio assessor
-            const baseIndividual = Math.max(0, round(revenueAmount - additionalCost));
-            
-            // ETAPA 3: Aplicar percentual de comissão sobre a base líquida do CRM
-            const grossPayout = round(baseIndividual * (percentage / 100));
-            
-            // ETAPA 4: Calcular o imposto proporcional do assessor (baseado na comissão bruta dele)
-            const advisorTax = round(grossPayout * (effectiveTaxRate / 100));
-            
-            // ETAPA 5: Repasse líquido = comissão do assessor − imposto retido do assessor
-            const netPayout = Math.max(0, round(grossPayout - advisorTax));
-            
-            return { ...split, grossPayout, taxAmount: advisorTax, netPayout, additionalCost };
-        });
-    }, [splits, effectiveTaxRate]);
-
-    const totalNetPayouts = useMemo(() => 
-        round(splitsDetails.reduce((acc, s) => acc + (Number(s.netPayout) || 0), 0))
-    , [splitsDetails]);
-
-    // CORREÇÃO 2: Resultado do Escritório = entrada de caixa − repasses líquidos pagos − provisão de impostos
-    const officeResult = round(entradaCaixaPJ - totalNetPayouts - (taxValueCents / 100));
 
     useEffect(() => {
         const newCats = type === TransactionType.INCOME ? incomeCategories : expenseCategories.map(c => c.name);
@@ -655,19 +680,19 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                  <div className="bg-background p-3 rounded-lg border border-border-color">
                     <div className="flex justify-end mb-2">
                         <label className="flex items-center gap-2 cursor-pointer select-none">
-                             <span className="text-xs text-text-secondary">Aplicar imposto sobre Entrada</span>
+                             <span className="text-xs text-text-secondary">Aplicar imposto proporcional</span>
                              <input type="checkbox" checked={applyTax} onChange={handleApplyTaxCheckboxChange} className="rounded text-primary focus:ring-primary h-4 w-4 bg-surface border-border-color" />
                         </label>
                      </div>
 
                     <div className="grid grid-cols-4 gap-4 text-center mb-2">
                         <div>
-                            <p className="text-xs text-text-secondary">Entrada (Caixa)</p>
+                            <p className="text-xs text-text-secondary">Receita Pós-CRM</p>
                             <p className="font-semibold text-primary">{formatCurrency(entradaCaixaPJ)}</p>
                         </div>
                         <div className="border-l border-r border-border-color px-2 py-1">
                             <div className="flex items-center justify-center gap-1 mb-1">
-                                <p className="text-xs text-text-secondary">(-) Imposto</p>
+                                <p className="text-xs text-text-secondary">(-) Imposto Total</p>
                             </div>
                             <div className={`flex flex-col gap-1 ${!applyTax ? 'opacity-50 pointer-events-none' : ''}`}>
                                 <div className="relative">
@@ -679,7 +704,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                         </div>
                         <div>
                             <p className="text-xs text-text-secondary">(-) Repasses Líq</p>
-                            <p className="font-bold text-danger">{formatCurrency(totalNetPayouts)}</p>
+                            <p className="font-bold text-danger">{formatCurrency(splitsDetails.reduce((acc, s) => acc + (Number(s.netPayout) || 0), 0))}</p>
                         </div>
                         <div className="border-l border-border-color">
                             <p className="text-xs text-text-secondary">(=) Resultado Esc.</p>
@@ -987,12 +1012,12 @@ const PartnershipView: FC<{ partners: Partner[], onSave: (partners: Partner[]) =
                                     <th className="p-3 text-right">Ações</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-border-color/30">
+                            <tbody className="divide-y divide-border-color/30 text-sm">
                                 {filteredAndSortedPartners.map(p => (
                                     <tr key={p.id} className={`hover:bg-background/50 transition-colors ${editingId === p.id ? 'bg-primary/10' : ''}`}>
-                                        <td className="p-3 font-bold text-text-primary text-sm">{p.name}</td>
-                                        <td className="p-3 font-mono text-primary font-bold text-center text-sm">{p.percentage}%</td>
-                                        <td className="p-3 text-text-secondary text-center text-sm">{p.quotas?.toLocaleString('pt-BR') || 0}</td>
+                                        <td className="p-3 font-bold text-text-primary">{p.name}</td>
+                                        <td className="p-3 font-mono text-primary font-bold text-center">{p.percentage}%</td>
+                                        <td className="p-3 text-text-secondary text-center">{p.quotas?.toLocaleString('pt-BR') || 0}</td>
                                         <td className="p-3 text-right">
                                             <div className="flex justify-end gap-1">
                                                 <button onClick={() => handleEdit(p)} className="p-2 text-text-secondary hover:text-primary hover:bg-surface rounded-lg transition-all" title="Editar Sócio"><EditIcon className="w-4 h-4"/></button>
@@ -2099,14 +2124,14 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
                                 <th className="p-3 text-right text-primary">Valuation (5x)</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-border-color/30 font-mono">
+                        <tbody className="divide-y divide-border-color/30 font-mono text-sm">
                             {valuationMonthlyData.map(item => (
                                 <tr key={item.key} className="hover:bg-background/50 transition-colors">
-                                    <td className="p-3 text-sm font-bold capitalize">{item.monthYear}</td>
-                                    <td className={`p-3 text-right text-sm ${item.lla >= 0 ? 'text-green-400' : 'text-danger'}`}>
+                                    <td className="p-3 font-bold capitalize">{item.monthYear}</td>
+                                    <td className={`p-3 text-right ${item.lla >= 0 ? 'text-green-400' : 'text-danger'}`}>
                                         {formatCurrency(item.lla)}
                                     </td>
-                                    <td className={`p-3 text-right text-sm font-bold ${item.valuation >= 0 ? 'text-primary' : 'text-danger'}`}>
+                                    <td className={`p-3 text-right font-bold ${item.valuation >= 0 ? 'text-primary' : 'text-danger'}`}>
                                         {formatCurrency(item.valuation)}
                                     </td>
                                 </tr>
