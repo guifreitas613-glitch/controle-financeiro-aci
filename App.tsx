@@ -1955,8 +1955,8 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
         return years.sort((a, b) => b - a);
     }, [transactions, importedRevenues]);
 
-    const [selectedYear, setSelectedYear] = useState<number | 'all'>(new Date().getFullYear());
-    const [selectedMonth, setSelectedMonth] = useState<number | 'all'>(new Date().getMonth());
+    const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
+    const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all');
 
     const filterFn = (dateStr: string) => {
         const d = new Date(dateStr);
@@ -2178,8 +2178,8 @@ interface DashboardViewProps {
 }
 
 const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid, onEdit, incomeCategories, expenseCategories, paymentMethods, costCenters, advisors, globalTaxRate, importedRevenues }) => {
-    const [selectedYear, setSelectedYear] = useState<number | 'all'>(new Date().getFullYear());
-    const [selectedMonth, setSelectedMonth] = useState<number | 'all'>(new Date().getMonth());
+    const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
+    const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all');
     const [showProjection, setShowProjection] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
