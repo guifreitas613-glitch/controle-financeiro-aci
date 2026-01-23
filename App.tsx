@@ -327,7 +327,6 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         round(splits.filter(s => (Number(s.revenueAmount) || 0) <= 0).reduce((acc, s) => acc + (Number(s.additionalCost) || 0), 0))
     , [splits]);
 
-    const calculatedTotalTax = round(totalAdvisorTax + totalOfficeTaxFromRevenue);
     const officeResult = round(totalOfficeGrossFromRevenue - totalOfficeTaxFromRevenue - crmNonRevenueAdvisors);
 
     useEffect(() => {
@@ -351,11 +350,14 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         setTimeout(() => { isInitializing.current = false; }, 0);
     }, [initialData, globalTaxRate, entradaCaixaPJ]);
 
+    // Sincroniza o valor monetário apenas se a base (caixa) mudar
     useEffect(() => {
-        if (!isInitializing.current && applyTax && !isEditing) {
-            setTaxValueCents(Math.round(calculatedTotalTax * 100));
+        if (!isInitializing.current && applyTax) {
+            const currentRate = parseFloat(taxRateInput) || 0;
+            const newVal = round(entradaCaixaPJ * (currentRate / 100));
+            setTaxValueCents(Math.round(newVal * 100));
         }
-    }, [entradaCaixaPJ, applyTax, effectiveTaxRate, isEditing, calculatedTotalTax]);
+    }, [entradaCaixaPJ, applyTax]);
 
     const handleRateInputChange = (val: string) => {
         setTaxRateInput(val);
@@ -366,12 +368,15 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
 
     const handleValueInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const raw = e.target.value.replace(/\D/g, '');
+        // Permite digitação ilimitada de dígitos para valores monetários completos
         const cents = raw ? parseInt(raw, 10) : 0;
         setTaxValueCents(cents);
-        const valR = cents / 100;
+        
         if (entradaCaixaPJ > 0) {
+            const valR = cents / 100;
             const rate = (valR / entradaCaixaPJ) * 100;
-            setTaxRateInput(rate.toFixed(2).replace(/\.00$/, ''));
+            // Atualiza a porcentagem com precisão dinâmica
+            setTaxRateInput(rate.toFixed(4).replace(/\.?0+$/, ''));
         }
     };
 
@@ -1201,7 +1206,7 @@ const SettingsView: FC<SettingsViewProps> = ({
         const newList = [...expenseCategories];
         newList[editingExpenseIdx!] = { name: tempExpenseName.trim(), type: tempExpenseType };
         setExpenseCategories(newList);
-        setEditingExpenseIdx(null);
+        setEditingIncomeIdx(null);
     };
 
     // Payment Handlers
