@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, FC, ReactNode, useEffect, useRef } from 'react';
 import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType, AdvisorSplit, ImportedRevenue, AdvisorCost, Partner } from './types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area } from 'recharts';
@@ -1539,35 +1540,32 @@ const TransactionsView: FC<{
             return true;
         });
 
+        // PROJEÇÃO AUTOMÁTICA DE GASTOS FIXOS (VISUAL APENAS)
         if (activeTab === TransactionType.EXPENSE && filterYear !== 'all' && filterMonth !== 'all' && !searchTerm && filterCategory === 'all') {
-            const selectedDate = new Date(Date.UTC(filterYear as number, filterMonth as number, 1));
             const now = new Date();
-            const currentMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+            const currentYear = now.getUTCFullYear();
+            const currentMonth = now.getUTCMonth();
+            const selectedYear = filterYear as number;
+            const selectedMonth = filterMonth as number;
             
-            if (selectedDate > currentMonthStart) {
-                const prevMonth = (filterMonth as number) === 0 ? 11 : (filterMonth as number) - 1;
-                const prevYear = (filterMonth as number) === 0 ? (filterYear as number) - 1 : (filterYear as number);
+            // Verifica se o período filtrado é no futuro em relação ao "agora"
+            const isFuture = (selectedYear > currentYear) || (selectedYear === currentYear && selectedMonth > currentMonth);
 
-                let fixedSource = transactions.filter(t => {
+            if (isFuture) {
+                // "O mês atual passa a ser a única referência"
+                // Busca todos os gastos fixos reais do mês atual
+                const baseFixedExpenses = transactions.filter(t => {
                     const d = new Date(t.date);
                     return t.type === TransactionType.EXPENSE &&
                            t.nature === ExpenseNature.FIXED &&
-                           d.getUTCFullYear() === prevYear &&
-                           d.getUTCMonth() === prevMonth;
+                           d.getUTCFullYear() === currentYear &&
+                           d.getUTCMonth() === currentMonth;
                 });
 
-                if (fixedSource.length === 0) {
-                     fixedSource = transactions.filter(t => {
-                        const d = new Date(t.date);
-                        return t.type === TransactionType.EXPENSE &&
-                               t.nature === ExpenseNature.FIXED &&
-                               d.getUTCFullYear() === now.getUTCFullYear() &&
-                               d.getUTCMonth() === now.getUTCMonth();
-                    });
-                }
-
-                fixedSource.forEach(f => {
+                baseFixedExpenses.forEach(f => {
+                    // Verifica se já existe um lançamento real (não projetado) para este gasto fixo no mês de destino
                     const alreadyExists = items.some(item => 
+                        !item.isProjection &&
                         item.description === f.description && 
                         item.category === f.category && 
                         item.nature === ExpenseNature.FIXED
@@ -1575,11 +1573,15 @@ const TransactionsView: FC<{
 
                     if (!alreadyExists) {
                         const day = new Date(f.date).getUTCDate();
-                        const projectedDate = new Date(Date.UTC(filterYear as number, filterMonth as number, day)).toISOString();
+                        // Ajusta o dia para não ultrapassar o último dia do mês de destino (ex: 31 Jan -> 28 Fev)
+                        const lastDayOfTarget = new Date(Date.UTC(selectedYear, selectedMonth + 1, 0)).getUTCDate();
+                        const targetDay = Math.min(day, lastDayOfTarget);
+                        
+                        const projectedDate = new Date(Date.UTC(selectedYear, selectedMonth, targetDay, 12, 0, 0)).toISOString();
                         
                         items.push({
                             ...f,
-                            id: `proj-${f.id}-${filterYear}-${filterMonth}`,
+                            id: `proj-${f.id}-${selectedYear}-${selectedMonth}`,
                             date: projectedDate,
                             status: ExpenseStatus.PENDING,
                             reconciled: false,
@@ -2069,9 +2071,8 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
                         className="bg-surface border border-border-color rounded-md px-3 py-1.5 text-xs text-text-primary focus:ring-primary outline-none"
                     >
                         <option value="all">Todos os Meses</option>
-                        {['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'].map((m, i) => (
-                            <option key={i} value={i}>{m}</option>
-                        ))}
+                        {['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][selectedMonth as number] + ' ' : ''}
+                        {selectedYear === 'all' ? 'Todo o Período' : selectedYear}
                     </select>
                 </div>
             </div>
