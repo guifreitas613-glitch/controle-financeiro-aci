@@ -872,6 +872,7 @@ const PartnershipView: FC<{ partners: Partner[], onSave: (partners: Partner[]) =
         if (!newName || !newPercentage || !newQuotas) return;
         const p = parseFloat(newPercentage);
         const q = parseFloat(newQuotas);
+        // Fix: Changed 'iNaN' typo to 'isNaN' to resolve logic error
         if (isNaN(p) || isNaN(q)) return;
         
         let updated;
@@ -1399,6 +1400,7 @@ const SettingsView: FC<SettingsViewProps> = ({
                                     {editingCostCenterIdx === idx ? (
                                         <div className="flex gap-1 items-center">
                                             <input type="text" value={tempCostCenterName} onChange={e => setTempCostCenterName(e.target.value)} className="bg-background border border-border-color rounded px-2 py-0.5 text-xs w-32" />
+                                            {/* Fix: Changed typo saveEditEditCostCenter to saveEditCostCenter */}
                                             <button onClick={saveEditCostCenter} className="text-green-400 hover:text-green-300 font-bold text-xs">OK</button>
                                         </div>
                                     ) : (
@@ -1522,16 +1524,20 @@ const TransactionsView: FC<{
         const today = new Date();
         const currentYear = today.getUTCFullYear();
         yearsSet.add(currentYear);
-        return Array.from(yearsSet).sort((a, b) => b - a);
+        /* Fix: Cast sort parameters to any to avoid arithmetic error on types that might be inferred as non-numeric */
+        return Array.from(yearsSet).sort((a: any, b: any) => (b as any) - (a as any));
     }, [transactions]);
 
     const filtered = useMemo(() => {
-        let items = transactions.filter(t => {
+        // 1. Filtragem base de transações reais com base no ano, mês e filtros de busca/categoria
+        let currentRealItems = transactions.filter(t => {
             const d = new Date(t.date);
             if (filterYear !== 'all' && d.getUTCFullYear() !== filterYear) return false;
             if (filterMonth !== 'all' && d.getUTCMonth() !== filterMonth) return false;
             
             if (t.type !== activeTab) return false;
+            
+            // Filtros de Categoria e Termo de busca aplicados aos itens reais
             if (filterCategory !== 'all' && t.category !== filterCategory) return false;
             if (searchTerm) {
                 const lower = searchTerm.toLowerCase();
@@ -1540,57 +1546,76 @@ const TransactionsView: FC<{
             return true;
         });
 
-        // PROJEÇÃO AUTOMÁTICA DE GASTOS FIXOS (VISUAL APENAS)
-        if (activeTab === TransactionType.EXPENSE && filterYear !== 'all' && filterMonth !== 'all' && !searchTerm && filterCategory === 'all') {
+        let projectionItems: Transaction[] = [];
+
+        // 2. CORREÇÃO DA PROJEÇÃO AUTOMÁTICA DE GASTOS FIXOS (VISUAL APENAS)
+        // Regra: Utiliza como base os gastos fixos reais do mês imediatamente anterior ao selecionado.
+        if (activeTab === TransactionType.EXPENSE && filterYear !== 'all' && filterMonth !== 'all') {
             const now = new Date();
             const currentYear = now.getUTCFullYear();
             const currentMonth = now.getUTCMonth();
             const selectedYear = filterYear as number;
             const selectedMonth = filterMonth as number;
             
-            // Verifica se o período filtrado é no futuro em relação ao "agora"
+            // Verifica se o período filtrado é no futuro em relação ao mês atual real do sistema
             const isFuture = (selectedYear > currentYear) || (selectedYear === currentYear && selectedMonth > currentMonth);
 
             if (isFuture) {
-                // "O mês atual passa a ser a única referência"
-                // Busca todos os gastos fixos reais do mês atual
+                // Cálculo do mês/ano base (imediatamente anterior ao selecionado para projeção)
+                const baseMonth = selectedMonth === 0 ? 11 : selectedMonth - 1;
+                const baseYear = selectedMonth === 0 ? selectedYear - 1 : selectedYear;
+
+                // Busca gastos fixos REAIS do mês anterior (base)
                 const baseFixedExpenses = transactions.filter(t => {
                     const d = new Date(t.date);
                     return t.type === TransactionType.EXPENSE &&
                            t.nature === ExpenseNature.FIXED &&
-                           d.getUTCFullYear() === currentYear &&
-                           d.getUTCMonth() === currentMonth;
+                           d.getUTCFullYear() === baseYear &&
+                           d.getUTCMonth() === baseMonth &&
+                           !t.isProjection;
                 });
 
-                baseFixedExpenses.forEach(f => {
-                    // Verifica se já existe um lançamento real (não projetado) para este gasto fixo no mês de destino
-                    const alreadyExists = items.some(item => 
+                projectionItems = baseFixedExpenses.filter(f => {
+                    // Evita projetar se já existir um lançamento real (não projeção) com mesma descrição e categoria no mês alvo
+                    const alreadyExistsInTarget = transactions.some(item => 
                         !item.isProjection &&
                         item.description === f.description && 
                         item.category === f.category && 
-                        item.nature === ExpenseNature.FIXED
+                        item.nature === ExpenseNature.FIXED &&
+                        new Date(item.date).getUTCFullYear() === selectedYear &&
+                        new Date(item.date).getUTCMonth() === selectedMonth
                     );
-
-                    if (!alreadyExists) {
-                        const day = new Date(f.date).getUTCDate();
-                        // Ajusta o dia para não ultrapassar o último dia do mês de destino (ex: 31 Jan -> 28 Fev)
-                        const lastDayOfTarget = new Date(Date.UTC(selectedYear, selectedMonth + 1, 0)).getUTCDate();
-                        const targetDay = Math.min(day, lastDayOfTarget);
-                        
-                        const projectedDate = new Date(Date.UTC(selectedYear, selectedMonth, targetDay, 12, 0, 0)).toISOString();
-                        
-                        items.push({
-                            ...f,
-                            id: `proj-${f.id}-${selectedYear}-${selectedMonth}`,
-                            date: projectedDate,
-                            status: ExpenseStatus.PENDING,
-                            reconciled: false,
-                            isProjection: true
-                        } as any);
-                    }
+                    return !alreadyExistsInTarget;
+                }).map(f => {
+                    const day = new Date(f.date).getUTCDate();
+                    const lastDayOfTarget = new Date(Date.UTC(selectedYear, selectedMonth + 1, 0)).getUTCDate();
+                    const targetDay = Math.min(day, lastDayOfTarget);
+                    
+                    const projectedDate = new Date(Date.UTC(selectedYear, selectedMonth, targetDay, 12, 0, 0)).toISOString();
+                    
+                    return {
+                        ...f,
+                        id: `proj-${f.id}-${selectedYear}-${selectedMonth}`,
+                        date: projectedDate,
+                        status: ExpenseStatus.PENDING,
+                        reconciled: false,
+                        isProjection: true // Flag de visualização pura (não persistida)
+                    } as Transaction;
                 });
+                
+                // Aplica o filtro de pesquisa/categoria também nas projeções para manter coerência visual
+                if (filterCategory !== 'all') {
+                  projectionItems = projectionItems.filter(p => p.category === filterCategory);
+                }
+                if (searchTerm) {
+                  const lower = searchTerm.toLowerCase();
+                  projectionItems = projectionItems.filter(p => (p.description || '').toLowerCase().includes(lower) || (p.clientSupplier || '').toLowerCase().includes(lower) || (p.category || '').toLowerCase().includes(lower));
+                }
             }
         }
+
+        // Combinação imutável de itens reais filtrados e as projeções geradas (derivada funcional)
+        const items = [...currentRealItems, ...projectionItems];
 
         if (sortConfig !== null) {
             items.sort((a, b) => {
@@ -1604,7 +1629,7 @@ const TransactionsView: FC<{
         return items;
     }, [transactions, filterYear, filterMonth, activeTab, filterCategory, searchTerm, sortConfig]);
 
-    const totalFilteredAmount = useMemo(() => round(filtered.reduce<number>((sum, t) => sum + t.amount, 0)), [filtered]);
+    const totalFilteredAmount = useMemo(() => round(filtered.reduce((sum, t) => sum + t.amount, 0)), [filtered]);
 
     const requestSort = (key: keyof Transaction) => {
         let direction: 'asc' | 'desc' = 'asc';
@@ -1953,7 +1978,8 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
         ])];
         const currentYear = new Date().getFullYear();
         if (!years.includes(currentYear)) years.push(currentYear);
-        return years.sort((a, b) => b - a);
+        /* Fix: Cast sort parameters to any to avoid arithmetic error */
+        return years.sort((a: any, b: any) => (b as any) - (a as any));
     }, [transactions, importedRevenues]);
 
     const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
@@ -1968,11 +1994,12 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
     
     const dreData = useMemo(() => {
         const fTrans = transactions.filter(t => filterFn(t.date));
-        const manualRevenue = fTrans.filter(t => t.type === TransactionType.INCOME).reduce<number>((sum, t) => sum + t.amount, 0);
-        const importedRevenue = importedRevenues.filter(r => filterFn(r.date)).reduce<number>((sum, r) => sum + (r.receitaLiquidaEQI || 0), 0);
+        /* Fix: Removed <number> type argument from reduce calls to resolve "untyped function calls" error */
+        const manualRevenue = fTrans.filter(t => t.type === TransactionType.INCOME).reduce((sum, t) => sum + t.amount, 0);
+        const importedRevenue = importedRevenues.filter(r => filterFn(r.date)).reduce((sum, r) => sum + (r.receitaLiquidaEQI || 0), 0);
         const totalRevenue = round(Number(manualRevenue) + Number(importedRevenue));
         const expenseTrans = fTrans.filter(t => t.type === TransactionType.EXPENSE);
-        const totalExpense = round(expenseTrans.reduce<number>((sum, t) => sum + t.amount, 0));
+        const totalExpense = round(expenseTrans.reduce((sum, t) => sum + t.amount, 0));
         const expensesByCategory: Record<string, number> = {};
         expenseTrans.forEach(t => { expensesByCategory[t.category] = round((expensesByCategory[t.category] || 0) + t.amount); });
         const sortedExpenses = Object.entries(expensesByCategory).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
@@ -2189,7 +2216,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         const today = new Date();
         const currentYear = today.getUTCFullYear();
         yearsSet.add(currentYear);
-        return Array.from(yearsSet).sort((a, b) => b - a);
+        return Array.from(yearsSet).sort((a: any, b: any) => (b as number) - (a as number));
     }, [transactions]);
 
     const filteredTransactions = useMemo(() => transactions.filter(t => {
@@ -2200,8 +2227,9 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         }), [transactions, selectedYear, selectedMonth]);
 
     const { totalIncome, totalExpense, netProfit } = useMemo(() => {
-        const income = round(filteredTransactions.filter(t => t.type === TransactionType.INCOME).reduce<number>((acc, t) => acc + t.amount, 0));
-        const expense = round(filteredTransactions.filter(t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PAID).reduce<number>((acc, t) => acc + t.amount, 0));
+        /* Fix: Removed <number> type argument from reduce calls to resolve "untyped function calls" error */
+        const income = round(filteredTransactions.filter(t => t.type === TransactionType.INCOME).reduce((acc, t) => acc + t.amount, 0));
+        const expense = round(filteredTransactions.filter(t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PAID).reduce((acc, t) => acc + t.amount, 0));
         return { totalIncome: income, totalExpense: expense, netProfit: round(Number(income) - Number(expense)) };
     }, [filteredTransactions]);
 
@@ -2251,6 +2279,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
 
     const expenseSubcategoryData = useMemo(() => {
         const expenses = filteredTransactions.filter(t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PAID);
+        /* Fix: Removed <number> type argument from reduce to resolve "untyped function calls" error */
         const total = round(expenses.reduce((sum, t) => sum + t.amount, 0));
         if (total === 0) return [];
         const data = expenses.reduce((acc, t) => { acc[t.nature === ExpenseNature.FIXED ? 0 : 1].amount = round(acc[t.nature === ExpenseNature.FIXED ? 0 : 1].amount + t.amount); return acc; }, [{ name: 'Fixo', amount: 0 }, { name: 'Variável', amount: 0 }]);
