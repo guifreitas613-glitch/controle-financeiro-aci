@@ -14,7 +14,7 @@ import {
   serverTimestamp,
   where
 } from "firebase/firestore";
-import { Transaction, Partner } from './types';
+import { Transaction, Partner, ImportedRevenue } from './types';
 
 type TransactionData = Omit<Transaction, 'id'>;
 
@@ -85,6 +85,11 @@ export function getImportedRevenues() {
 export function deleteImportedRevenue(id: string) {
     const docRef = doc(db, "transacoes", id);
     return deleteDoc(docRef);
+}
+
+export function updateImportedRevenue(id: string, data: Partial<ImportedRevenue>) {
+    const docRef = doc(db, "transacoes", id);
+    return updateDoc(docRef, data);
 }
 
 export function getRevenuesByPeriod(startIso: string, endIso: string) {

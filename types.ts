@@ -45,21 +45,60 @@ export interface Transaction {
   splits?: AdvisorSplit[];
 }
 
+export interface AdvisorParticipation {
+    advisorId: string;
+    advisorName: string;
+    percentage: number; // Participation % (must sum to 100)
+    comissaoBruta: number; // (Receita Bruta * 0.7) * (percentage / 100)
+    imposto: number; // comissaoBruta * taxRate
+}
+
+export enum CommissionStatus {
+    PENDING = 'pendente',
+    COMMISSION_LAUNCHED = 'comissao_lancada',
+    REVENUE_LAUNCHED = 'receita_lancada',
+    TAX_PROVISIONED = 'imposto_provisionado',
+    COMPLETED = 'completo'
+}
+
 export interface ImportedRevenue {
     id: string;
-    date: string; // ISO string (coluna Data) - Padronizado para 'date'
-    conta: string; // coluna Conta
-    cliente: string; // coluna Cliente
-    codAssessor: string; // coluna Cod Assessor
-    assessorPrincipal: string; // coluna Assessor Principal
-    classificacao: string; // coluna Classificação
-    produtoCategoria: string; // coluna Produto/Categoria
-    ativo: string; // coluna Ativo
-    tipoReceita: string; // coluna Tipo Receita
-    receitaLiquidaEQI: number; // coluna Receita Liquida EQI
-    percentualRepasse: number; // coluna % Repasse
-    comissaoLiquida: number; // coluna Comissão Líquida
-    tipo: string; // coluna Tipo
+    date: string; // ISO string
+    conta?: string; // Número da conta
+    cliente: string;
+    advisorId: string;
+    advisorName: string;
+    revenueAmount: number; // Receita gerada pelo assessor
+    crmCost: number; // CRM ou custo fixo
+    taxRate: number; // Percentual de imposto
+    observacao: string;
+    
+    // Indicação
+    referralAdvisorId?: string;
+    referralAdvisorName?: string;
+    referralPercentage?: number;
+
+    // Campos Calculados
+    advisorShare: number; // 70%
+    officeShare: number; // 30%
+    advisorTax: number;
+    officeTax: number;
+    advisorNetTotal: number; // Parcela Assessor - Imposto Assessor - CRM
+    referralAmount: number;
+    responsibleAdvisorNet: number;
+    officeNetRevenue: number;
+    totalTaxProvision: number; // Imposto Assessor + Imposto Escritório
+    
+    // Status e Rastreabilidade
+    status?: CommissionStatus;
+    transactionIds?: {
+        commission?: string;
+        revenue?: string;
+        tax?: string;
+        referral?: string;
+    };
+    // Deprecated
+    lancamentosRealizados?: boolean;
 }
 
 export interface AdvisorSplit {
@@ -98,6 +137,7 @@ export interface AdvisorCost {
 export interface Advisor {
     id: string;
     name: string;
+    code?: string; // Código do assessor (ex: 18931632)
     commissionRate: number; // Percentage
     costs?: AdvisorCost[]; // Lista de custos variáveis
     // Deprecated: crmCost?: number; 

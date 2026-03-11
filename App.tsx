@@ -1,12 +1,12 @@
 
 import React, { useState, useMemo, FC, ReactNode, useEffect, useRef } from 'react';
-import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType, AdvisorSplit, ImportedRevenue, AdvisorCost, Partner } from './types';
+import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType, AdvisorSplit, ImportedRevenue, AdvisorCost, Partner, AdvisorParticipation, CommissionStatus } from './types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area } from 'recharts';
 import Login from './Login';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { logoutUser } from './auth';
-import { getTransactions, saveTransaction, updateTransaction, deleteTransaction as deleteTransactionFromDb, getImportedRevenues, saveImportedRevenue, deleteImportedRevenue, getRevenuesByPeriod, deduplicateImportedRevenues, getPartnership, savePartnership } from './firestore';
+import { getTransactions, saveTransaction, updateTransaction, deleteTransaction as deleteTransactionFromDb, getImportedRevenues, saveImportedRevenue, deleteImportedRevenue, getRevenuesByPeriod, deduplicateImportedRevenues, getPartnership, savePartnership, updateImportedRevenue } from './firestore';
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
 // --- UTILITÁRIOS GLOBAIS ---
@@ -31,6 +31,7 @@ const SearchIcon: FC<{ className?: string }> = ({ className }) => (<svg classNam
 const LogoutIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>);
 const ArrowUpIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>);
 const ArrowDownIcon: FC<{ className?: string}> = ({className}) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>);
+const InfoIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>);
 const AlertCircleIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>);
 const CheckCircleIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>);
 const FileTextIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>);
@@ -231,7 +232,6 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     const [type, setType] = useState<TransactionType>(initialData?.type || defaultType || TransactionType.EXPENSE);
     const [nature, setNature] = useState<ExpenseNature>(initialData?.nature || ExpenseNature.VARIABLE);
     const [advisorId, setAdvisorId] = useState(initialData?.advisorId || '');
-    const [splits, setSplits] = useState<AdvisorSplit[]>(initialData?.splits || []);
 
     const isAddingFromTab = !!defaultType;
     const isEditing = !!initialData;
@@ -254,80 +254,13 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         costCenter: initialData?.costCenter || 'conta-pj',
     });
     
-    const [searchPeriod, setsearchPeriod] = useState({ start: '', end: '', show: false });
-    const [commissionAmount, setCommissionAmount] = useState(initialData?.commissionAmount || 0);
-    const [isCommissionManual, setIsCommissionManual] = useState(false);
-    
     const [applyTax, setApplyTax] = useState(true);
     const [taxRateInput, setTaxRateInput] = useState<string>(globalTaxRate.toString());
     const [taxValueCents, setTaxValueCents] = useState<number>(0);
 
     const gross: number = parseFloat(formData.grossAmount) || 0;
 
-    // --- LOGICA FINANCEIRA (DEFINITIVE VERSION) ---
-    const totalCRM = useMemo(() => 
-        round(splits.reduce((acc, s) => acc + (Number(s.additionalCost) || 0), 0))
-    , [splits]);
-
-    const entradaCaixaPJ = round(Number(gross) - totalCRM);
     const effectiveTaxRate = applyTax ? (parseFloat(taxRateInput) || 0) : 0;
-
-    const splitsDetails = useMemo(() => {
-        return splits.map(split => {
-            const revenueAmount = Number(split.revenueAmount) || 0;
-            const percentage = Number(split.percentage) || 0;
-            const additionalCost = Number(split.additionalCost) || 0;
-            
-            if (revenueAmount <= 0) {
-                return { 
-                    ...split, 
-                    grossPayout: 0, 
-                    taxAmount: 0, 
-                    netPayout: 0, 
-                    officeGrossPart: 0, 
-                    officeTax: 0, 
-                    additionalCost,
-                    isRevenueGenerator: false 
-                };
-            }
-
-            const baseIndividual = round(revenueAmount - additionalCost);
-            const grossPayout = round(baseIndividual * (percentage / 100));
-            const officeGrossPart = round(baseIndividual * (1 - (percentage / 100)));
-            const advisorTax = round(grossPayout * (effectiveTaxRate / 100));
-            const officeTax = round(officeGrossPart * (effectiveTaxRate / 100));
-            const netPayout = round(grossPayout - advisorTax);
-            
-            return { 
-                ...split, 
-                grossPayout, 
-                taxAmount: advisorTax, 
-                officeTax,
-                officeGrossPart,
-                netPayout, 
-                additionalCost,
-                isRevenueGenerator: true 
-            };
-        });
-    }, [splits, effectiveTaxRate]);
-
-    const totalAdvisorTax = useMemo(() => 
-        round(splitsDetails.reduce((acc, s) => acc + (Number(s.taxAmount) || 0), 0))
-    , [splitsDetails]);
-
-    const totalOfficeTaxFromRevenue = useMemo(() => 
-        round(splitsDetails.reduce((acc, s) => acc + (Number((s as any).officeTax) || 0), 0))
-    , [splitsDetails]);
-
-    const totalOfficeGrossFromRevenue = useMemo(() => 
-        round(splitsDetails.reduce((acc, s) => acc + (Number((s as any).officeGrossPart) || 0), 0))
-    , [splitsDetails]);
-
-    const crmNonRevenueAdvisors = useMemo(() => 
-        round(splits.filter(s => (Number(s.revenueAmount) || 0) <= 0).reduce((acc, s) => acc + (Number(s.additionalCost) || 0), 0))
-    , [splits]);
-
-    const officeResult = round(totalOfficeGrossFromRevenue - totalOfficeTaxFromRevenue - crmNonRevenueAdvisors);
 
     useEffect(() => {
         if (initialData && initialData.type === TransactionType.INCOME) {
@@ -335,7 +268,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             const storedRate = (initialData as any).taxRate;
             if (iTax > 0 || (storedRate !== undefined && storedRate > 0)) {
                 setApplyTax(true);
-                const rateStr = storedRate !== undefined ? storedRate.toString() : (entradaCaixaPJ > 0 ? ((iTax / entradaCaixaPJ) * 100).toFixed(2) : globalTaxRate.toString());
+                const rateStr = storedRate !== undefined ? storedRate.toString() : (gross > 0 ? ((iTax / gross) * 100).toFixed(2) : globalTaxRate.toString());
                 setTaxRateInput(rateStr);
                 setTaxValueCents(Math.round(round(iTax) * 100));
             } else {
@@ -348,21 +281,21 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             setTaxRateInput(globalTaxRate.toString());
         }
         setTimeout(() => { isInitializing.current = false; }, 0);
-    }, [initialData, globalTaxRate, entradaCaixaPJ]);
+    }, [initialData, globalTaxRate, gross]);
 
     // Sincroniza o valor monetário apenas se a base (caixa) mudar
     useEffect(() => {
         if (!isInitializing.current && applyTax) {
             const currentRate = parseFloat(taxRateInput) || 0;
-            const newVal = round(entradaCaixaPJ * (currentRate / 100));
+            const newVal = round(gross * (currentRate / 100));
             setTaxValueCents(Math.round(newVal * 100));
         }
-    }, [entradaCaixaPJ, applyTax]);
+    }, [gross, applyTax]);
 
     const handleRateInputChange = (val: string) => {
         setTaxRateInput(val);
         const rate = parseFloat(val) || 0;
-        const newVal = round(entradaCaixaPJ * (rate / 100));
+        const newVal = round(gross * (rate / 100));
         setTaxValueCents(Math.round(newVal * 100));
     };
 
@@ -372,9 +305,9 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         const cents = raw ? parseInt(raw, 10) : 0;
         setTaxValueCents(cents);
         
-        if (entradaCaixaPJ > 0) {
+        if (gross > 0) {
             const valR = cents / 100;
-            const rate = (valR / entradaCaixaPJ) * 100;
+            const rate = (valR / gross) * 100;
             // Atualiza a porcentagem com precisão dinâmica
             setTaxRateInput(rate.toFixed(4).replace(/\.?0+$/, ''));
         }
@@ -388,92 +321,10 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         }));
     }, [type, incomeCategories, expenseCategories]);
     
-    useEffect(() => {
-        if (!isInitializing.current && !isCommissionManual && type === TransactionType.INCOME && advisorId && splits.length === 0 && !isEditing) {
-             const grossComm = round(entradaCaixaPJ * 0.30);
-             const commTax = round(grossComm * (effectiveTaxRate / 100));
-             const netComm = Math.max(0, round(grossComm - commTax));
-             setCommissionAmount(netComm);
-        }
-    }, [entradaCaixaPJ, advisorId, splits.length, type, effectiveTaxRate, isCommissionManual, isEditing]);
-
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
     };
-
-    const addSplit = () => {
-        if (advisors.length === 0) {
-            alert("Cadastre assessores primeiro nas Configurações.");
-            return;
-        }
-        setSplits([...splits, { advisorId: advisors[0].id, advisorName: advisors[0].name, revenueAmount: 0, percentage: 30, additionalCost: 0 }]);
-    };
-
-    const removeSplit = (index: number) => {
-        setSplits(splits.filter((_, i) => i !== index));
-    };
-
-    const updateSplit = (index: number, field: keyof AdvisorSplit, value: any) => {
-        const newSplits = [...splits];
-        const split = { ...newSplits[index] };
-        if (field === 'advisorId') {
-            split.advisorId = value;
-            const advisor = advisors.find(a => a.id === value);
-            split.advisorName = advisor ? advisor.name : '';
-        } else if (field === 'revenueAmount' || field === 'percentage' || field === 'additionalCost') {
-            (split as any)[field] = parseFloat(value) || 0;
-        }
-        newSplits[index] = split;
-        setSplits(newSplits);
-    };
-
-    const confirmSearchPeriod = async () => {
-        if (!searchPeriod.start || !searchPeriod.end) {
-            alert("Selecione a data inicial e final.");
-            return;
-        }
-        const startDateIso = new Date(searchPeriod.start).toISOString();
-        const endDateIso = new Date(searchPeriod.end).toISOString();
-        try {
-            const snapshot = await getRevenuesByPeriod(startDateIso, endDateIso);
-            const periodRevenues = snapshot.docs.map(doc => doc.data() as ImportedRevenue);
-            if (periodRevenues.length === 0) {
-                alert("Nenhuma receita encontrada para o período.");
-                return;
-            }
-            const revenueByAdvisor: Record<string, number> = {};
-            let totalRevenueFound = 0;
-            periodRevenues.forEach(rev => {
-                if (rev.classificacao === 'CUSTOS') return;
-                const advisor = advisors.find(adv => adv.name.toLowerCase() === (rev.assessorPrincipal || '').toLowerCase());
-                if (advisor) {
-                    const val = round(rev.comissaoLiquida || 0);
-                    revenueByAdvisor[advisor.id] = round((revenueByAdvisor[advisor.id] || 0) + val);
-                    totalRevenueFound = round(totalRevenueFound + val);
-                }
-            });
-            const newSplits: AdvisorSplit[] = Object.keys(revenueByAdvisor).map(advId => {
-                const advisor = advisors.find(a => a.id === advId)!;
-                return {
-                    advisorId: advisor.id,
-                    advisorName: advisor.name,
-                    revenueAmount: round(revenueByAdvisor[advId]),
-                    percentage: advisor.commissionRate || 30,
-                    additionalCost: 0
-                };
-            });
-            setSplits(newSplits);
-            setFormData(prev => ({ ...prev, grossAmount: totalRevenueFound.toFixed(2) }));
-            setsearchPeriod({ ...searchPeriod, show: false });
-        } catch (error) {
-            console.error(error);
-            alert("Erro ao buscar receitas.");
-        }
-    };
-
-    const totalSplitRevenue: number = round(splits.reduce((acc: number, s: any) => acc + (Number(s.revenueAmount) || 0), 0));
-    const splitRevenueDifference: number = round(Number(gross) - Number(totalSplitRevenue));
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -497,17 +348,10 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
              alert("O valor inserido é inválido.");
             return;
         }
-
-        if (splits.length > 0) {
-            if (Math.abs(splitRevenueDifference) > 0.05) {
-                alert(`A soma das receitas individuais deve ser igual ao valor total.`);
-                return;
-            }
-        }
         
         const submissionData: TransactionFormValues = {
             description,
-            amount: entradaCaixaPJ, 
+            amount: parsedGrossAmount, 
             date: new Date(date).toISOString(),
             type,
             category,
@@ -520,20 +364,8 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             submissionData.taxAmount = round(taxValueCents / 100);
             submissionData.grossAmount = parsedGrossAmount;
             submissionData.taxRate = parseFloat(taxRateInput) || 0;
-
-            if (splits.length > 0) {
-                submissionData.splits = splitsDetails.map(s => ({
-                  ...s,
-                  revenueAmount: round(Number(s.revenueAmount)),
-                  grossPayout: round(Number(s.grossPayout || 0)),
-                  taxAmount: round(Number(s.taxAmount || 0)),
-                  netPayout: round(Number(s.netPayout || 0)),
-                  additionalCost: round(Number(s.additionalCost || 0))
-                }));
-            } else {
-                submissionData.commissionAmount = round(commissionAmount);
-                submissionData.advisorId = advisorId;
-            }
+            // Office income for general transactions is simply Gross - Tax
+            submissionData.amount = round(parsedGrossAmount - submissionData.taxAmount);
         }
 
         if (type === TransactionType.EXPENSE) {
@@ -579,134 +411,38 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                  <label className="block text-sm font-medium text-text-secondary">{type === TransactionType.INCOME ? 'Cliente' : 'Fornecedor (Opcional)'}</label>
                  <input type="text" name="clientSupplier" value={formData.clientSupplier} onChange={handleChange} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" required={type === TransactionType.INCOME} />
             </div>
-            
+
             {type === TransactionType.INCOME && (
-                <>
-                <div className="border border-border-color rounded-lg p-4 bg-background/50">
-                    <div className="flex flex-wrap gap-3 mb-3">
-                         {!searchPeriod.show ? (
-                             <Button type="button" onClick={() => setsearchPeriod({...searchPeriod, show: true})} variant="secondary" className="flex-1 sm:flex-none py-2 px-4 text-xs font-semibold border border-primary/30 whitespace-nowrap" title="Busca e agrupa receitas já lançadas para os assessores por período">
-                                 Buscar receitas do período
-                             </Button>
-                         ) : (
-                            <div className="flex flex-col sm:flex-row gap-2 items-end bg-surface p-2 rounded border border-border-color w-full sm:w-auto">
-                                <div>
-                                    <label className="block text-[10px] text-text-secondary">De</label>
-                                    <input type="date" value={searchPeriod.start} onChange={(e) => setsearchPeriod({...searchPeriod, start: e.target.value})} className="bg-background border border-border-color rounded px-2 py-1 text-xs min-w-[150px]" />
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] text-text-secondary">Até</label>
-                                    <input type="date" value={searchPeriod.end} onChange={(e) => setsearchPeriod({...searchPeriod, end: e.target.value})} className="bg-background border border-border-color rounded px-2 py-1 text-xs min-w-[150px]" />
-                                </div>
-                                <div className="flex gap-1">
-                                    <Button type="button" onClick={confirmSearchPeriod} className="py-1 px-3 text-xs min-w-[50px]">OK</Button>
-                                    <Button type="button" onClick={() => setsearchPeriod({...searchPeriod, show: false})} variant="ghost" className="py-1 px-2 text-xs">X</Button>
-                                </div>
-                            </div>
-                         )}
-                         <Button type="button" onClick={addSplit} variant="secondary" className="flex-1 sm:flex-none py-2 px-4 text-xs font-semibold whitespace-nowrap">
-                             <PlusIcon className="w-4 h-4" /> Adicionar Assessor
-                         </Button>
-                    </div>
-                    
-                    {splits.length > 0 && (
-                        <div className="space-y-3 mb-4">
-                             <div className="hidden sm:grid grid-cols-12 gap-2 text-xs text-text-secondary font-medium px-1">
-                                <div className="col-span-3">Assessor</div>
-                                <div className="col-span-3">Receita Individual</div>
-                                <div className="col-span-1 text-center">%</div>
-                                <div className="col-span-2 text-center">CRM (Custos)</div>
-                                <div className="col-span-2 text-right">Repasse (Liq)</div>
-                                <div className="col-span-1"></div>
-                             </div>
-                             {splitsDetails.map((split, index) => (
-                                     <div key={index} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center bg-surface p-2 rounded-md">
-                                        <div className="col-span-3">
-                                            <select value={split.advisorId} onChange={(e) => updateSplit(index, 'advisorId', e.target.value)} className="w-full bg-background border-border-color rounded-md text-sm py-1">
-                                                {advisors.map(adv => <option key={adv.id} value={adv.id}>{adv.name}</option>)}
-                                            </select>
-                                        </div>
-                                        <div className="col-span-3">
-                                            <input type="text" value={Number(split.revenueAmount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} onChange={(e) => {
-                                                    const rawValue = e.target.value.replace(/\D/g, '');
-                                                    updateSplit(index, 'revenueAmount', round(Number(rawValue) / 100));
-                                                }} placeholder="R$ 0,00" className="w-full bg-background border-border-color rounded-md text-sm py-1" />
-                                        </div>
-                                        <div className="col-span-1">
-                                            <input type="number" step="1" min="0" max="100" value={split.percentage} onChange={(e) => updateSplit(index, 'percentage', e.target.value)} className="w-full bg-background border-border-color rounded-md text-sm py-1 text-center" />
-                                        </div>
-                                        <div className="col-span-2">
-                                            <input type="text" value={Number(split.additionalCost || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} onChange={(e) => {
-                                                    const rawValue = e.target.value.replace(/\D/g, '');
-                                                    updateSplit(index, 'additionalCost', round(Number(rawValue) / 100));
-                                                }} placeholder="R$ 0,00" className="w-full bg-background border-border-color rounded-md text-sm py-1" />
-                                        </div>
-                                        <div className="col-span-2 text-right font-bold text-danger text-sm">
-                                            {Number(split.netPayout || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                                        </div>
-                                        <div className="col-span-1 text-right">
-                                            <button type="button" onClick={() => removeSplit(index)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>
-                                        </div>
-                                     </div>
-                                 ))}
-                        </div>
-                    )}
-
-                    {splits.length === 0 && (
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                             <div>
-                                <label className="block text-sm font-medium text-text-secondary">Assessor (Opcional - Simples)</label>
-                                 <select value={advisorId} onChange={(e) => { setAdvisorId(e.target.value); setIsCommissionManual(false); }} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary">
-                                    <option value="">Sem Assessor</option>
-                                    {advisors.map(adv => <option key={adv.id} value={adv.id}>{adv.name}</option>)}
-                                </select>
-                            </div>
-                        </div>
-                    )}
-                </div>
-
-                 <div className="bg-background p-3 rounded-lg border border-border-color">
-                    <div className="flex justify-end mb-2">
+                <div className="bg-background p-3 rounded-lg border border-border-color">
+                    <div className="flex justify-between items-center mb-2">
+                        <p className="text-xs font-bold text-text-secondary uppercase">Cálculo de Imposto</p>
                         <label className="flex items-center gap-2 cursor-pointer select-none">
-                             <span className="text-xs text-text-secondary">Aplicar imposto proporcional</span>
+                             <span className="text-xs text-text-secondary">Aplicar imposto</span>
                              <input type="checkbox" checked={applyTax} onChange={(e) => setApplyTax(e.target.checked)} className="rounded text-primary focus:ring-primary h-4 w-4 bg-surface border-border-color" />
                         </label>
                      </div>
 
-                    <div className="grid grid-cols-4 gap-4 text-center mb-2">
+                    <div className="grid grid-cols-3 gap-4 text-center">
                         <div>
-                            <p className="text-xs text-text-secondary">Receita Pós-CRM</p>
-                            <p className="font-semibold text-primary">{formatCurrency(entradaCaixaPJ)}</p>
+                            <p className="text-xs text-text-secondary">Valor Bruto</p>
+                            <p className="font-semibold text-primary">{formatCurrency(gross)}</p>
                         </div>
-                        <div className="border-l border-r border-border-color px-2 py-1">
-                            <div className="flex items-center justify-center gap-1 mb-1">
-                                <p className="text-xs text-text-secondary">(-) Imposto Total</p>
-                            </div>
-                            <div className={`flex flex-col gap-1 ${!applyTax ? 'opacity-50 pointer-events-none' : ''}`}>
-                                <div className="relative">
-                                    <input type="number" step="0.01" value={taxRateInput} onChange={(e) => handleRateInputChange(e.target.value)} className="w-full bg-surface border border-border-color rounded px-2 py-1 text-xs text-center focus:ring-primary focus:border-primary" placeholder="0" disabled={!applyTax} />
-                                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-text-secondary">%</span>
-                                </div>
-                                <input 
-                                    type="text" 
-                                    value={(taxValueCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} 
-                                    onChange={handleValueInputChange}
-                                    className="w-full bg-surface border border-border-color rounded px-1 py-0.5 text-[10px] text-center font-bold text-danger focus:ring-primary focus:border-primary outline-none"
-                                    disabled={!applyTax}
-                                />
-                            </div>
+                        <div className={`border-l border-r border-border-color px-2 ${!applyTax ? 'opacity-50 pointer-events-none' : ''}`}>
+                            <p className="text-xs text-text-secondary mb-1">(-) Imposto ({taxRateInput}%)</p>
+                            <input 
+                                type="text" 
+                                value={(taxValueCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} 
+                                onChange={handleValueInputChange}
+                                className="w-full bg-surface border border-border-color rounded px-1 py-0.5 text-xs text-center font-bold text-danger focus:ring-primary focus:border-primary outline-none"
+                                disabled={!applyTax}
+                            />
                         </div>
                         <div>
-                            <p className="text-xs text-text-secondary">(-) Repasses Líq</p>
-                            <p className="font-bold text-danger">{formatCurrency(splitsDetails.reduce((acc, s) => acc + (Number(s.netPayout) || 0), 0))}</p>
-                        </div>
-                        <div className="border-l border-border-color">
-                            <p className="text-xs text-text-secondary">(=) Resultado Esc.</p>
-                            <p className={`font-bold ${officeResult >= 0 ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(officeResult)}</p>
+                            <p className="text-xs text-text-secondary">(=) Valor Líquido</p>
+                            <p className="font-bold text-green-400">{formatCurrency(round(gross - (taxValueCents / 100)))}</p>
                         </div>
                     </div>
                 </div>
-                </>
             )}
             
             {type === TransactionType.EXPENSE && (
@@ -872,7 +608,6 @@ const PartnershipView: FC<{ partners: Partner[], onSave: (partners: Partner[]) =
         if (!newName || !newPercentage || !newQuotas) return;
         const p = parseFloat(newPercentage);
         const q = parseFloat(newQuotas);
-        // Fix: Changed 'iNaN' typo to 'isNaN' to resolve logic error
         if (isNaN(p) || isNaN(q)) return;
         
         let updated;
@@ -1045,6 +780,7 @@ const AdvisorSettingsItem: FC<{
     const [newCostVal, setNewCostVal] = useState('');
     const [isEditingBase, setIsEditingBase] = useState(false);
     const [editName, setEditName] = useState(advisor.name);
+    const [editCode, setEditCode] = useState(advisor.code || '');
     const [editRate, setEditRate] = useState(advisor.commissionRate.toString());
 
     const totalCost = (advisor.costs || []).reduce((acc, c) => acc + c.value, 0);
@@ -1070,7 +806,7 @@ const AdvisorSettingsItem: FC<{
     };
 
     const saveBaseInfo = () => {
-        onUpdate({ ...advisor, name: editName, commissionRate: round(parseFloat(editRate) || 0) });
+        onUpdate({ ...advisor, name: editName, code: editCode, commissionRate: round(parseFloat(editRate) || 0) });
         setIsEditingBase(false);
     };
 
@@ -1086,6 +822,7 @@ const AdvisorSettingsItem: FC<{
                     )}
                     {isEditingBase ? (
                         <div className="flex gap-2 items-center">
+                            <input type="text" value={editCode} onChange={e => setEditCode(e.target.value)} placeholder="Cód." className="bg-background border border-border-color rounded px-2 py-1 text-xs w-20" />
                             <input type="text" value={editName} onChange={e => setEditName(e.target.value)} className="bg-background border border-border-color rounded px-2 py-1 text-xs w-32" />
                             <div className="relative">
                                 <input type="number" value={editRate} onChange={e => setEditRate(e.target.value)} className="bg-background border border-border-color rounded px-2 py-1 text-xs w-16" />
@@ -1096,7 +833,10 @@ const AdvisorSettingsItem: FC<{
                         </div>
                     ) : (
                         <div className="flex items-center gap-4">
-                            <span className="font-semibold">{advisor.name}</span>
+                            <div className="flex flex-col">
+                                <span className="font-semibold">{advisor.name}</span>
+                                {advisor.code && <span className="text-[10px] text-text-secondary">Cód: {advisor.code}</span>}
+                            </div>
                             <span className="text-xs text-text-secondary bg-background px-2 py-1 rounded">Comissão: {advisor.commissionRate}%</span>
                             <span className="text-xs text-danger bg-background px-2 py-1 rounded" title="Soma dos custos">Custos: {formatCurrency(totalCost)}</span>
                         </div>
@@ -1157,6 +897,7 @@ const SettingsView: FC<SettingsViewProps> = ({
     const [newPaymentMethod, setNewPaymentMethod] = useState('');
     const [newCostCenterName, setNewCostCenterName] = useState('');
     const [newAdvisorName, setNewAdvisorName] = useState('');
+    const [newAdvisorCode, setNewAdvisorCode] = useState('');
     const [newAdvisorRate, setNewAdvisorRate] = useState('30');
 
     // States for editing items
@@ -1234,7 +975,7 @@ const SettingsView: FC<SettingsViewProps> = ({
         setEditingCostCenterIdx(null);
     };
 
-    const addAdvisor = () => { if (newAdvisorName) { setAdvisors([...advisors, { id: crypto.randomUUID(), name: newAdvisorName, commissionRate: round(parseFloat(newAdvisorRate) || 30), costs: [] }]); setNewAdvisorName(''); setNewAdvisorRate('30'); } };
+    const addAdvisor = () => { if (newAdvisorName) { setAdvisors([...advisors, { id: crypto.randomUUID(), name: newAdvisorName, code: newAdvisorCode, commissionRate: round(parseFloat(newAdvisorRate) || 30), costs: [] }]); setNewAdvisorName(''); setNewAdvisorCode(''); setNewAdvisorRate('30'); } };
     const removeAdvisor = (id: string) => setAdvisors(advisors.filter(a => a.id !== id));
     const updateAdvisor = (updated: Advisor) => setAdvisors(advisors.map(a => a.id === updated.id ? updated : a));
 
@@ -1360,7 +1101,10 @@ const SettingsView: FC<SettingsViewProps> = ({
                 <Card>
                     <h3 className="font-bold mb-4 text-primary text-sm uppercase">Assessores e Comissões</h3>
                     <div className="flex flex-col gap-2 mb-4">
-                        <input type="text" value={newAdvisorName} onChange={e => setNewAdvisorName(e.target.value)} className="bg-background border border-border-color rounded px-3 py-2 text-sm" placeholder="Nome do Assessor" />
+                        <div className="flex gap-2">
+                            <input type="text" value={newAdvisorCode} onChange={e => setNewAdvisorCode(e.target.value)} className="w-24 bg-background border border-border-color rounded px-3 py-2 text-sm" placeholder="Cód." />
+                            <input type="text" value={newAdvisorName} onChange={e => setNewAdvisorName(e.target.value)} className="flex-1 bg-background border border-border-color rounded px-3 py-2 text-sm" placeholder="Nome do Assessor" />
+                        </div>
                         <div className="flex gap-2">
                             <input type="number" value={newAdvisorRate} onChange={e => setNewAdvisorRate(e.target.value)} className="flex-1 bg-background border border-border-color rounded px-3 py-2 text-sm" placeholder="% Comissão" />
                             <Button onClick={addAdvisor} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button>
@@ -1400,7 +1144,6 @@ const SettingsView: FC<SettingsViewProps> = ({
                                     {editingCostCenterIdx === idx ? (
                                         <div className="flex gap-1 items-center">
                                             <input type="text" value={tempCostCenterName} onChange={e => setTempCostCenterName(e.target.value)} className="bg-background border border-border-color rounded px-2 py-0.5 text-xs w-32" />
-                                            {/* Fix: Changed typo saveEditEditCostCenter to saveEditCostCenter */}
                                             <button onClick={saveEditCostCenter} className="text-green-400 hover:text-green-300 font-bold text-xs">OK</button>
                                         </div>
                                     ) : (
@@ -1433,7 +1176,7 @@ const Sidebar: FC<{ activeView: View; setActiveView: (view: View) => void; isSid
     const allNavItems: { view: View; label: string; icon: ReactNode; }[] = [
         { view: 'dashboard', label: 'Dashboard', icon: <DashboardIcon className="w-6 h-6"/> },
         { view: 'transactions', label: 'Transações', icon: <TransactionsIcon className="w-6 h-6"/> },
-        { view: 'imported-revenues', label: 'Receitas Importadas', icon: <FileTextIcon className="w-6 h-6"/> },
+        { view: 'imported-revenues', label: 'Comissões', icon: <FileTextIcon className="w-6 h-6"/> },
         { view: 'reports', label: 'Relatórios', icon: <ReportsIcon className="w-6 h-6"/> },
         { view: 'goals', label: 'Metas', icon: <GoalsIcon className="w-6 h-6"/> },
         { view: 'partnership', label: 'Partnership ACI', icon: <PartnershipIcon className="w-6 h-6"/> },
@@ -1524,20 +1267,16 @@ const TransactionsView: FC<{
         const today = new Date();
         const currentYear = today.getUTCFullYear();
         yearsSet.add(currentYear);
-        /* Fix: Cast sort parameters to any to avoid arithmetic error on types that might be inferred as non-numeric */
-        return Array.from(yearsSet).sort((a: any, b: any) => (b as any) - (a as any));
+        return Array.from(yearsSet).sort((a: number, b: number) => b - a);
     }, [transactions]);
 
     const filtered = useMemo(() => {
-        // 1. Filtragem base de transações reais com base no ano, mês e filtros de busca/categoria
-        let currentRealItems = transactions.filter(t => {
+        let items = transactions.filter(t => {
             const d = new Date(t.date);
             if (filterYear !== 'all' && d.getUTCFullYear() !== filterYear) return false;
             if (filterMonth !== 'all' && d.getUTCMonth() !== filterMonth) return false;
             
             if (t.type !== activeTab) return false;
-            
-            // Filtros de Categoria e Termo de busca aplicados aos itens reais
             if (filterCategory !== 'all' && t.category !== filterCategory) return false;
             if (searchTerm) {
                 const lower = searchTerm.toLowerCase();
@@ -1546,76 +1285,61 @@ const TransactionsView: FC<{
             return true;
         });
 
-        let projectionItems: Transaction[] = [];
-
-        // 2. CORREÇÃO DA PROJEÇÃO AUTOMÁTICA DE GASTOS FIXOS (VISUAL APENAS)
-        // Regra: Utiliza como base os gastos fixos reais do mês imediatamente anterior ao selecionado.
-        if (activeTab === TransactionType.EXPENSE && filterYear !== 'all' && filterMonth !== 'all') {
+        // PROJEÇÃO AUTOMÁTICA DE GASTOS FIXOS (VISUAL APENAS)
+        if (activeTab === TransactionType.EXPENSE && filterYear !== 'all' && filterMonth !== 'all' && !searchTerm && filterCategory === 'all') {
             const now = new Date();
             const currentYear = now.getUTCFullYear();
             const currentMonth = now.getUTCMonth();
             const selectedYear = filterYear as number;
             const selectedMonth = filterMonth as number;
             
-            // Verifica se o período filtrado é no futuro em relação ao mês atual real do sistema
-            const isFuture = (selectedYear > currentYear) || (selectedYear === currentYear && selectedMonth > currentMonth);
+            // Verifica se o período filtrado é o atual ou futuro em relação ao "agora"
+            const isFutureOrCurrent = (selectedYear > currentYear) || (selectedYear === currentYear && selectedMonth >= currentMonth);
 
-            if (isFuture) {
-                // Cálculo do mês/ano base (imediatamente anterior ao selecionado para projeção)
-                const baseMonth = selectedMonth === 0 ? 11 : selectedMonth - 1;
-                const baseYear = selectedMonth === 0 ? selectedYear - 1 : selectedYear;
+            if (isFutureOrCurrent) {
+                // Busca todos os gastos fixos reais do mês anterior ao atual como referência
+                const refDate = new Date(Date.UTC(currentYear, currentMonth - 1, 1));
+                const refYear = refDate.getUTCFullYear();
+                const refMonth = refDate.getUTCMonth();
 
-                // Busca gastos fixos REAIS do mês anterior (base)
                 const baseFixedExpenses = transactions.filter(t => {
                     const d = new Date(t.date);
                     return t.type === TransactionType.EXPENSE &&
                            t.nature === ExpenseNature.FIXED &&
-                           d.getUTCFullYear() === baseYear &&
-                           d.getUTCMonth() === baseMonth &&
-                           !t.isProjection;
+                           d.getUTCFullYear() === refYear &&
+                           d.getUTCMonth() === refMonth;
                 });
 
-                projectionItems = baseFixedExpenses.filter(f => {
-                    // Evita projetar se já existir um lançamento real (não projeção) com mesma descrição e categoria no mês alvo
-                    const alreadyExistsInTarget = transactions.some(item => 
+                baseFixedExpenses.forEach(f => {
+                    // Verifica se já existe um lançamento real (não projetado) para este gasto fixo no mês de destino
+                    const alreadyExists = items.some(item => 
                         !item.isProjection &&
                         item.description === f.description && 
                         item.category === f.category && 
-                        item.nature === ExpenseNature.FIXED &&
-                        new Date(item.date).getUTCFullYear() === selectedYear &&
-                        new Date(item.date).getUTCMonth() === selectedMonth
+                        item.nature === ExpenseNature.FIXED
                     );
-                    return !alreadyExistsInTarget;
-                }).map(f => {
-                    const day = new Date(f.date).getUTCDate();
-                    const lastDayOfTarget = new Date(Date.UTC(selectedYear, selectedMonth + 1, 0)).getUTCDate();
-                    const targetDay = Math.min(day, lastDayOfTarget);
-                    
-                    const projectedDate = new Date(Date.UTC(selectedYear, selectedMonth, targetDay, 12, 0, 0)).toISOString();
-                    
-                    return {
-                        ...f,
-                        id: `proj-${f.id}-${selectedYear}-${selectedMonth}`,
-                        date: projectedDate,
-                        status: ExpenseStatus.PENDING,
-                        reconciled: false,
-                        isProjection: true // Flag de visualização pura (não persistida)
-                    } as Transaction;
+
+                    if (!alreadyExists) {
+                        const day = new Date(f.date).getUTCDate();
+                        // Ajusta o dia para não ultrapassar o último dia do mês de destino (ex: 31 Jan -> 28 Fev)
+                        const lastDayOfTarget = new Date(Date.UTC(selectedYear, selectedMonth + 1, 0)).getUTCDate();
+                        const targetDay = Math.min(day, lastDayOfTarget);
+                        
+                        const projectedDate = new Date(Date.UTC(selectedYear, selectedMonth, targetDay, 12, 0, 0)).toISOString();
+                        const isCurrentMonth = selectedYear === currentYear && selectedMonth === currentMonth;
+                        
+                        items.push({
+                            ...f,
+                            id: `proj-${f.id}-${selectedYear}-${selectedMonth}`,
+                            date: projectedDate,
+                            status: ExpenseStatus.PENDING,
+                            reconciled: false,
+                            isProjection: !isCurrentMonth
+                        } as any);
+                    }
                 });
-                
-                // Aplica o filtro de pesquisa/categoria também nas projeções para manter coerência visual
-                if (filterCategory !== 'all') {
-                  projectionItems = projectionItems.filter(p => p.category === filterCategory);
-                }
-                if (searchTerm) {
-                  const lower = searchTerm.toLowerCase();
-                  projectionItems = projectionItems.filter(p => (p.description || '').toLowerCase().includes(lower) || (p.clientSupplier || '').toLowerCase().includes(lower) || (p.category || '').toLowerCase().includes(lower));
-                }
             }
         }
-
-        // Combinação imutável de itens reais filtrados e as projeções geradas (derivada funcional)
-        const items = [...currentRealItems, ...projectionItems];
 
         if (sortConfig !== null) {
             items.sort((a, b) => {
@@ -1629,7 +1353,7 @@ const TransactionsView: FC<{
         return items;
     }, [transactions, filterYear, filterMonth, activeTab, filterCategory, searchTerm, sortConfig]);
 
-    const totalFilteredAmount = useMemo(() => round(filtered.reduce((sum, t) => sum + t.amount, 0)), [filtered]);
+    const totalFilteredAmount = useMemo(() => round(filtered.reduce<number>((sum, t) => sum + t.amount, 0)), [filtered]);
 
     const requestSort = (key: keyof Transaction) => {
         let direction: 'asc' | 'desc' = 'asc';
@@ -1725,6 +1449,13 @@ const TransactionsView: FC<{
                     </div>
                     <Button onClick={() => setIsModalOpen(true)} className="bg-primary hover:bg-opacity-90"><PlusIcon className="w-4 h-4"/> Nova Transação</Button>
                 </div>
+            </div>
+
+            <div className="bg-blue-500/10 border border-blue-500/20 p-3 rounded-lg flex items-start gap-3 mb-6">
+                <InfoIcon className="w-5 h-5 text-blue-400 mt-0.5" />
+                <p className="text-xs text-blue-200">
+                    <strong>Atenção:</strong> Receitas geradas por assessores e suas respectivas comissões devem ser registradas exclusivamente na aba <strong>Comissões</strong> para garantir o cálculo correto de divisões e impostos.
+                </p>
             </div>
 
             <Card className="p-4">
@@ -1831,117 +1562,579 @@ const TransactionsView: FC<{
     );
 };
 
+interface ImportedRevenueFormProps {
+    onSubmit: (data: Partial<ImportedRevenue>) => void;
+    onClose: () => void;
+    advisors: Advisor[];
+    initialData?: ImportedRevenue | null;
+    globalTaxRate: number;
+}
+
+const ImportedRevenueForm: FC<ImportedRevenueFormProps> = ({ onSubmit, onClose, advisors, initialData, globalTaxRate }) => {
+    const [date, setDate] = useState(initialData?.date ? formatDateForInput(initialData.date) : formatDateForInput(new Date().toISOString()));
+    const [conta, setConta] = useState(initialData?.conta || '');
+    const [cliente, setCliente] = useState(initialData?.cliente || '');
+    const [advisorId, setAdvisorId] = useState(initialData?.advisorId || (advisors.length > 0 ? advisors[0].id : ''));
+    const [revenueAmount, setRevenueAmount] = useState(initialData?.revenueAmount || 0);
+    const [crmCost, setCrmCost] = useState(initialData?.crmCost || 0);
+    const [taxRate, setTaxRate] = useState(initialData?.taxRate || globalTaxRate);
+    const [observacao, setObservacao] = useState(initialData?.observacao || '');
+    
+    // Indicação
+    const [hasReferral, setHasReferral] = useState(!!initialData?.referralAdvisorId);
+    const [referralAdvisorId, setReferralAdvisorId] = useState(initialData?.referralAdvisorId || '');
+    const [referralPercentage, setReferralPercentage] = useState(initialData?.referralPercentage || 0);
+
+    const calculations = useMemo(() => {
+        const advisorShare = round(revenueAmount * 0.7);
+        const officeShare = round(revenueAmount * 0.3);
+        
+        const advisorTax = round(advisorShare * (taxRate / 100));
+        const officeTax = round(officeShare * (taxRate / 100));
+        
+        const advisorNetTotal = round(advisorShare - advisorTax - crmCost);
+        
+        let referralAmount = 0;
+        if (hasReferral && referralPercentage > 0) {
+            referralAmount = round(advisorNetTotal * (referralPercentage / 100));
+        }
+        
+        const responsibleAdvisorNet = round(advisorNetTotal - referralAmount);
+        const officeNetRevenue = round(officeShare - officeTax);
+        const totalTaxProvision = round(advisorTax + officeTax);
+
+        return {
+            advisorShare,
+            officeShare,
+            advisorTax,
+            officeTax,
+            advisorNetTotal,
+            referralAmount,
+            responsibleAdvisorNet,
+            officeNetRevenue,
+            totalTaxProvision
+        };
+    }, [revenueAmount, taxRate, crmCost, hasReferral, referralPercentage]);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        const advisor = advisors.find(a => a.id === advisorId);
+        const referralAdvisor = advisors.find(a => a.id === referralAdvisorId);
+
+        onSubmit({
+            date: new Date(date).toISOString(),
+            conta,
+            cliente,
+            advisorId,
+            advisorName: advisor?.name || 'Desconhecido',
+            revenueAmount,
+            crmCost,
+            taxRate,
+            observacao,
+            referralAdvisorId: hasReferral ? referralAdvisorId : undefined,
+            referralAdvisorName: hasReferral ? referralAdvisor?.name : undefined,
+            referralPercentage: hasReferral ? referralPercentage : undefined,
+            ...calculations
+        });
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label className="block text-sm font-medium text-text-secondary">Data</label>
+                    <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" required />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-text-secondary">Conta</label>
+                    <input type="text" value={conta} onChange={(e) => setConta(e.target.value)} placeholder="00000000" className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-text-secondary">Referência / Cliente</label>
+                    <input type="text" value={cliente} onChange={(e) => setCliente(e.target.value)} placeholder="Ex: Receita Total Março ou Nome do Cliente" className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" required />
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label className="block text-sm font-medium text-text-secondary">Assessor Responsável</label>
+                    <select 
+                        value={advisorId} 
+                        onChange={(e) => {
+                            const id = e.target.value;
+                            setAdvisorId(id);
+                            const adv = advisors.find(a => a.id === id);
+                            if (adv) {
+                                setCrmCost(Math.abs((adv.costs || []).reduce((acc, c) => acc + c.value, 0)));
+                            }
+                        }}
+                        className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                        required
+                    >
+                        {advisors.map(adv => (
+                            <option key={adv.id} value={adv.id}>{adv.name}</option>
+                        ))}
+                    </select>
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-text-secondary">Receita Gerada pelo Assessor</label>
+                    <input type="number" step="0.01" value={revenueAmount} onChange={(e) => setRevenueAmount(parseFloat(e.target.value) || 0)} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" required />
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label className="block text-sm font-medium text-text-secondary">CRM ou Custo Fixo</label>
+                    <input type="number" step="0.01" value={crmCost} onChange={(e) => setCrmCost(parseFloat(e.target.value) || 0)} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-text-secondary">% Imposto</label>
+                    <input type="number" step="0.1" value={taxRate} onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" />
+                </div>
+            </div>
+
+            {/* Seção de Indicação */}
+            <div className="border-t border-border-color pt-4">
+                <div className="flex items-center gap-2 mb-4">
+                    <input 
+                        type="checkbox" 
+                        id="hasReferral" 
+                        checked={hasReferral} 
+                        onChange={(e) => setHasReferral(e.target.checked)}
+                        className="rounded text-primary focus:ring-primary h-4 w-4 bg-background border-border-color"
+                    />
+                    <label htmlFor="hasReferral" className="text-sm font-bold text-text-primary uppercase tracking-tight">Houve Indicação?</label>
+                </div>
+
+                {hasReferral && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fade-in">
+                        <div>
+                            <label className="block text-sm font-medium text-text-secondary">Assessor Indicador</label>
+                            <select 
+                                value={referralAdvisorId} 
+                                onChange={(e) => setReferralAdvisorId(e.target.value)}
+                                className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                                required={hasReferral}
+                            >
+                                <option value="">Selecione...</option>
+                                {advisors.filter(a => a.id !== advisorId).map(adv => (
+                                    <option key={adv.id} value={adv.id}>{adv.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-text-secondary">% da Indicação</label>
+                            <div className="relative">
+                                <input 
+                                    type="number" 
+                                    step="1" 
+                                    value={referralPercentage} 
+                                    onChange={(e) => setReferralPercentage(parseFloat(e.target.value) || 0)} 
+                                    className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary pr-8" 
+                                    required={hasReferral}
+                                />
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary">%</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Resumo dos Cálculos */}
+            <div className="bg-background/50 p-4 rounded-lg border border-border-color space-y-4">
+                <p className="text-xs font-bold text-text-secondary uppercase border-b border-border-color pb-2">Resumo da Comissão</p>
+                
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                        <p className="text-[10px] text-text-secondary uppercase">Parcela Assessor (70%)</p>
+                        <p className="font-bold text-text-primary">{formatCurrency(calculations.advisorShare)}</p>
+                    </div>
+                    <div>
+                        <p className="text-[10px] text-text-secondary uppercase">Parcela Escritório (30%)</p>
+                        <p className="font-bold text-text-primary">{formatCurrency(calculations.officeShare)}</p>
+                    </div>
+                    <div>
+                        <p className="text-[10px] text-text-secondary uppercase">Imposto Assessor</p>
+                        <p className="font-bold text-danger">{formatCurrency(calculations.advisorTax)}</p>
+                    </div>
+                    <div>
+                        <p className="text-[10px] text-text-secondary uppercase">Imposto Escritório</p>
+                        <p className="font-bold text-danger">{formatCurrency(calculations.officeTax)}</p>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-border-color pt-4">
+                    <div className="bg-primary/10 p-3 rounded-lg border border-primary/20">
+                        <p className="text-[10px] text-primary uppercase font-bold">Comissão Líquida Total</p>
+                        <p className="text-xl font-black text-primary">{formatCurrency(calculations.advisorNetTotal)}</p>
+                        <p className="text-[9px] text-text-secondary mt-1">(Antes da divisão de indicação)</p>
+                    </div>
+                    
+                    {hasReferral && (
+                        <>
+                            <div className="bg-surface p-3 rounded-lg border border-border-color">
+                                <p className="text-[10px] text-text-secondary uppercase font-bold">Repasse Indicador ({referralPercentage}%)</p>
+                                <p className="text-lg font-bold text-yellow-500">{formatCurrency(calculations.referralAmount)}</p>
+                            </div>
+                            <div className="bg-surface p-3 rounded-lg border border-border-color">
+                                <p className="text-[10px] text-text-secondary uppercase font-bold">Repasse Responsável ({100 - referralPercentage}%)</p>
+                                <p className="text-lg font-bold text-green-400">{formatCurrency(calculations.responsibleAdvisorNet)}</p>
+                            </div>
+                        </>
+                    )}
+
+                    {!hasReferral && (
+                        <div className="bg-surface p-3 rounded-lg border border-border-color md:col-span-2">
+                             <p className="text-[10px] text-text-secondary uppercase font-bold">Receita Líquida Escritório</p>
+                             <p className="text-lg font-bold text-green-400">{formatCurrency(calculations.officeNetRevenue)}</p>
+                        </div>
+                    )}
+                </div>
+
+                {hasReferral && (
+                    <div className="bg-surface p-3 rounded-lg border border-border-color">
+                        <p className="text-[10px] text-text-secondary uppercase font-bold">Receita Líquida Escritório</p>
+                        <p className="text-lg font-bold text-green-400">{formatCurrency(calculations.officeNetRevenue)}</p>
+                    </div>
+                )}
+            </div>
+
+            <div>
+                <label className="block text-sm font-medium text-text-secondary">Observação (Opcional)</label>
+                <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" rows={2}></textarea>
+            </div>
+
+            <div className="flex justify-end gap-4 pt-4">
+                <Button onClick={onClose} variant="secondary">Cancelar</Button>
+                <Button type="submit">Salvar Registro</Button>
+            </div>
+        </form>
+    );
+};
+
 const ImportedRevenuesView: FC<{
     importedRevenues: ImportedRevenue[];
     advisors: Advisor[];
-    onImport: (data: any[]) => void;
     onDelete: (id: string) => void;
+    onAdd: (data: Partial<ImportedRevenue>) => void;
+    onUpdate: (id: string, data: Partial<ImportedRevenue>) => void;
+    onRegisterFinancials: (revenue: ImportedRevenue) => void;
+    globalTaxRate: number;
     userId?: string;
-}> = ({ importedRevenues, advisors, onImport, onDelete, userId }) => {
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
-    const [selectedAdvisor, setSelectedAdvisor] = useState('');
-    const [selectedCategory, setSelectedCategory] = useState('');
+}> = ({ importedRevenues, advisors, onDelete, onAdd, onUpdate, onRegisterFinancials, globalTaxRate, userId }) => {
+    const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
+    const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all');
+    const [selectedAdvisorId, setSelectedAdvisorId] = useState<string>('all');
     const [clientSearch, setClientSearch] = useState('');
-    const [isDeduplicating, setIsDeduplicating] = useState(false);
+    const [isEntryModalOpen, setIsEntryModalOpen] = useState(false);
+    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+    const [importSummary, setImportSummary] = useState<{ records: any[], totalAmount: number } | null>(null);
+    const [editingRevenue, setEditingRevenue] = useState<ImportedRevenue | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const uniqueAdvisors = useMemo(() => Array.from(new Set(importedRevenues.map(r => r.assessorPrincipal).filter(Boolean))).sort(), [importedRevenues]);
-    const uniqueCategories = useMemo(() => Array.from(new Set(importedRevenues.map(r => r.produtoCategoria).filter(Boolean))).sort(), [importedRevenues]);
+    const availableYears = useMemo(() => {
+        const yearsSet = new Set(importedRevenues.map(r => new Date(r.date).getUTCFullYear()));
+        const currentYear = new Date().getUTCFullYear();
+        yearsSet.add(currentYear);
+        return Array.from(yearsSet).sort((a: number, b: number) => b - a);
+    }, [importedRevenues]);
+
+    const months = [
+        "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+    ];
 
     const filteredRevenues = useMemo(() => {
         return importedRevenues.filter(r => {
-            const rDate = new Date(r.date).toISOString().split('T')[0];
-            if (startDate && rDate < startDate) return false;
-            if (endDate && rDate > endDate) return false;
-            if (selectedAdvisor && r.assessorPrincipal !== selectedAdvisor) return false;
-            if (selectedCategory && r.produtoCategoria !== selectedCategory) return false;
-            if (clientSearch && (!r.cliente || !r.cliente.toLowerCase().includes(clientSearch.toLowerCase()))) return false;
-            return true;
+            const date = new Date(r.date);
+            const year = date.getUTCFullYear();
+            const month = date.getUTCMonth();
+            
+            const yearMatch = selectedYear === 'all' || year === selectedYear;
+            const monthMatch = selectedMonth === 'all' || month === selectedMonth;
+            const advisorMatch = selectedAdvisorId === 'all' || r.advisorId === selectedAdvisorId || r.referralAdvisorId === selectedAdvisorId;
+            const clientMatch = !clientSearch || 
+                (r.cliente && r.cliente.toLowerCase().includes(clientSearch.toLowerCase())) ||
+                (r.conta && r.conta.toLowerCase().includes(clientSearch.toLowerCase()));
+            
+            return yearMatch && monthMatch && advisorMatch && clientMatch;
         });
-    }, [importedRevenues, startDate, endDate, selectedAdvisor, selectedCategory, clientSearch]);
+    }, [importedRevenues, selectedYear, selectedMonth, selectedAdvisorId, clientSearch]);
 
-    const handleDeduplicate = async () => {
-        setIsDeduplicating(true);
-        try {
-            const result = await deduplicateImportedRevenues();
-            alert(`Limpeza concluída!\nRegistros atualizados: ${result.updatedCount}\nDuplicatas removidas: ${result.deletedCount}`);
-            window.location.reload(); 
-        } catch (error) {
-            console.error(error);
-            alert("Erro ao executar deduplicação.");
-        } finally {
-            setIsDeduplicating(false);
+    const totals = useMemo(() => {
+        return filteredRevenues.reduce((acc, r) => ({
+            revenueAmount: acc.revenueAmount + (r.revenueAmount || 0),
+            advisorNetTotal: acc.advisorNetTotal + (r.advisorNetTotal || 0),
+            officeNetRevenue: acc.officeNetRevenue + (r.officeNetRevenue || 0),
+            totalTaxProvision: acc.totalTaxProvision + (r.totalTaxProvision || 0),
+            referralAmount: acc.referralAmount + (r.referralAmount || 0)
+        }), { revenueAmount: 0, advisorNetTotal: 0, officeNetRevenue: 0, totalTaxProvision: 0, referralAmount: 0 });
+    }, [filteredRevenues]);
+
+    const advisorSummary = useMemo(() => {
+        if (selectedAdvisorId === 'all') return null;
+        const advisor = advisors.find(a => a.id === selectedAdvisorId);
+        if (!advisor) return null;
+
+        const generated = filteredRevenues.filter(r => r.advisorId === selectedAdvisorId);
+        const referrals = filteredRevenues.filter(r => r.referralAdvisorId === selectedAdvisorId);
+
+        return {
+            name: advisor.name,
+            generatedRevenue: generated.reduce((sum, r) => sum + r.revenueAmount, 0),
+            totalCommission: generated.reduce((sum, r) => sum + r.advisorNetTotal, 0),
+            referralsPaid: referrals.reduce((sum, r) => sum + r.referralAmount, 0)
+        };
+    }, [filteredRevenues, selectedAdvisorId, advisors]);
+
+    const getStatusLabel = (status?: CommissionStatus, lancamentosRealizados?: boolean) => {
+        if (status === CommissionStatus.COMPLETED || lancamentosRealizados) return { label: 'Lançamento Completo', color: 'text-green-400', bg: 'bg-green-400/10' };
+        if (status === CommissionStatus.COMMISSION_LAUNCHED) return { label: 'Comissão Lançada', color: 'text-blue-400', bg: 'bg-blue-400/10' };
+        if (status === CommissionStatus.REVENUE_LAUNCHED) return { label: 'Receita Lançada', color: 'text-indigo-400', bg: 'bg-indigo-400/10' };
+        if (status === CommissionStatus.TAX_PROVISIONED) return { label: 'Impostos Provisionados', color: 'text-orange-400', bg: 'bg-orange-400/10' };
+        return { label: 'Pendente de Lançamento', color: 'text-text-secondary', bg: 'bg-background' };
+    };
+
+    const handleEdit = (revenue: ImportedRevenue) => {
+        setEditingRevenue(revenue);
+        setIsEntryModalOpen(true);
+    };
+
+    const handleFormSubmit = (data: Partial<ImportedRevenue>) => {
+        if (editingRevenue) {
+            onUpdate(editingRevenue.id, data);
+        } else {
+            onAdd(data);
         }
+        setIsEntryModalOpen(false);
+        setEditingRevenue(null);
+    };
+
+    const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            try {
+                const bstr = evt.target?.result;
+                const wb = XLSX.read(bstr, { type: 'binary' });
+                const wsname = wb.SheetNames[0];
+                const ws = wb.Sheets[wsname];
+                const data = XLSX.utils.sheet_to_json(ws);
+
+                if (data.length === 0) {
+                    alert("O arquivo está vazio.");
+                    return;
+                }
+
+                // Agrupamento por (Conta + Cliente) + (Cod Assessor + Assessor Principal)
+                const groups: Record<string, any> = {};
+                
+                data.forEach((row: any) => {
+                    const contaRaw = row['Conta'] || '';
+                    const clienteRaw = row['Cliente'] || '';
+                    const codAssessorRaw = row['Cod Assessor'] || '';
+                    const assessorRaw = row['Assessor Principal'] || '';
+                    const receitaLiquida = parseFloat(String(row['Receita Liquida EQI']).replace(',', '.')) || 0;
+                    const dataRaw = row['Data'];
+
+                    if (!clienteRaw || !assessorRaw || receitaLiquida <= 0) return;
+
+                    const key = `${contaRaw}|${clienteRaw}|${codAssessorRaw}|${assessorRaw}`;
+                    if (!groups[key]) {
+                        groups[key] = {
+                            conta: contaRaw,
+                            cliente: clienteRaw,
+                            codAssessor: codAssessorRaw,
+                            assessorName: assessorRaw,
+                            totalRevenue: 0,
+                            date: dataRaw
+                        };
+                    }
+                    groups[key].totalRevenue = round(groups[key].totalRevenue + receitaLiquida);
+                });
+
+                const recordsToImport = Object.values(groups).map(group => {
+                    // Busca assessor por código primeiro, depois por nome
+                    const advisor = advisors.find(a => 
+                        (a.code && String(a.code) === String(group.codAssessor)) || 
+                        (a.name.toLowerCase() === group.assessorName.toLowerCase())
+                    );
+                    
+                    // Formata a data para extrair Mês/Ano
+                    let displayDate = group.date;
+                    let monthYear = "";
+                    try {
+                        const parts = String(group.date).split('/');
+                        if (parts.length === 3) {
+                            const d = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+                            monthYear = months[d.getUTCMonth()] + "/" + d.getUTCFullYear();
+                            displayDate = d.toISOString();
+                        } else {
+                            const d = new Date(group.date);
+                            if (!isNaN(d.getTime())) {
+                                monthYear = months[d.getUTCMonth()] + "/" + d.getUTCFullYear();
+                                displayDate = d.toISOString();
+                            }
+                        }
+                    } catch (e) {
+                        console.error("Erro ao processar data:", e);
+                    }
+
+                    return {
+                        date: displayDate,
+                        conta: String(group.conta),
+                        cliente: `${group.cliente} - ${monthYear}`,
+                        advisorId: advisor?.id || '',
+                        advisorName: advisor?.name || group.assessorName,
+                        revenueAmount: group.totalRevenue,
+                        crmCost: 0,
+                        taxRate: globalTaxRate,
+                        observacao: `Importação Automática. Assessor: ${group.codAssessor} ${group.assessorName}`
+                    };
+                });
+
+                if (recordsToImport.length === 0) {
+                    alert("Nenhum registro válido encontrado para importação.");
+                    return;
+                }
+
+                setImportSummary({
+                    records: recordsToImport,
+                    totalAmount: round(recordsToImport.reduce((sum, r) => sum + r.revenueAmount, 0))
+                });
+                setIsImportModalOpen(true);
+            } catch (err) {
+                console.error(err);
+                alert("Erro ao processar o arquivo. Verifique o formato.");
+            }
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        };
+        reader.readAsBinaryString(file);
+    };
+
+    const confirmImport = () => {
+        if (!importSummary) return;
+        
+        const missingAdvisors = importSummary.records.filter(r => !r.advisorId);
+        if (missingAdvisors.length > 0) {
+            const names = [...new Set(missingAdvisors.map(m => m.advisorName))].join(", ");
+            if (!confirm(`Os seguintes assessores não foram encontrados no sistema: ${names}. Deseja continuar mesmo assim? (Eles serão importados com o nome do relatório mas sem ID vinculado)`)) {
+                return;
+            }
+        }
+
+        importSummary.records.forEach(record => {
+            onAdd(record);
+        });
+
+        setIsImportModalOpen(false);
+        setImportSummary(null);
+        alert(`${importSummary.records.length} registros importados com sucesso!`);
     };
 
     return (
          <div className="space-y-6 animate-fade-in">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div><h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Receitas Importadas</h2><p className="text-text-secondary">Importe planilhas para calcular comissões.</p></div>
+                <div>
+                    <h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Comissões</h2>
+                    <p className="text-text-secondary">Controle de comissões e divisão de receitas.</p>
+                </div>
                 <div className="flex gap-2">
-                    <Button onClick={handleDeduplicate} variant="secondary" className="text-xs" disabled={isDeduplicating}>{isDeduplicating ? 'Processando...' : 'Limpar Duplicatas'}</Button>
-                    <label className="bg-primary hover:bg-opacity-90 text-white shadow-md px-4 py-2 rounded-lg cursor-pointer flex items-center gap-2 font-semibold transition-all">
-                        <UploadIcon className="w-4 h-4"/> Importar Relatório
-                        <input type="file" accept=".xlsx, .xls, .csv" className="hidden" onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                                const reader = new FileReader();
-                                reader.onload = (evt) => {
-                                    const bstr = evt.target?.result;
-                                    const wb = XLSX.read(bstr, { type: 'binary' });
-                                    const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-                                    const formatted = data.map((row: any) => {
-                                        if (row['Classificação'] === 'CUSTOS') return null;
-                                        let dateIso = new Date().toISOString();
-                                        if (typeof row['Data'] === 'number') {
-                                            const jsDate = new Date((row['Data'] - 25569) * 86400 * 1000); 
-                                            jsDate.setHours(12, 0, 0); 
-                                            dateIso = jsDate.toISOString();
-                                        } else if (row['Data']) dateIso = new Date(row['Data']).toISOString();
-                                        let rawRepasse = parseFloat(row['% Repasse']) || 0;
-                                        if (rawRepasse <= 1 && rawRepasse > 0) rawRepasse *= 100;
-                                        return {
-                                            date: dateIso,
-                                            conta: row['Conta'] || '',
-                                            cliente: row['Cliente'] || '',
-                                            codAssessor: row['Cod Assessor'] || '',
-                                            assessorPrincipal: row['Assessor Principal'] || '',
-                                            classificacao: row['Classificação'] || '',
-                                            produtoCategoria: row['Produto/Categoria'] || '',
-                                            ativo: row['Ativo'] || '',
-                                            tipoReceita: row['Tipo Receita'] || '',
-                                            receitaLiquidaEQI: round(parseFloat(row['Receita Liquida EQI']) || 0),
-                                            percentualRepasse: Math.round(rawRepasse),
-                                            comissaoLiquida: round(parseFloat(row['Comissão Líquida']) || 0),
-                                            tipo: row['Tipo'] || ''
-                                        };
-                                    }).filter((r: any) => r !== null);
-                                    onImport(formatted);
-                                };
-                                reader.readAsBinaryString(file);
-                            }
-                        }} />
-                    </label>
+                    <input type="file" ref={fileInputRef} onChange={handleImportFile} accept=".xlsx, .xls, .csv" className="hidden" />
+                    <Button onClick={() => fileInputRef.current?.click()} variant="secondary" className="text-sm">
+                        <UploadIcon className="w-4 h-4 mr-2"/> Importar Relatório
+                    </Button>
+                    <Button onClick={() => { setEditingRevenue(null); setIsEntryModalOpen(true); }} className="text-sm">
+                        <PlusIcon className="w-4 h-4 mr-2"/> Nova Receita
+                    </Button>
                 </div>
             </div>
             
             <Card className="p-4">
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                    <div><label className="block text-xs font-medium text-text-secondary mb-1">Data Inicial</label><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary" /></div>
-                    <div><label className="block text-xs font-medium text-text-secondary mb-1">Data Final</label><input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary" /></div>
-                    <div><label className="block text-xs font-medium text-text-secondary mb-1">Assessor (Principal)</label>
-                        <select value={selectedAdvisor} onChange={(e) => setSelectedAdvisor(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary">
-                            <option value="">Todos</option>
-                            {uniqueAdvisors.map(adv => <option key={adv} value={adv}>{adv}</option>)}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1 uppercase tracking-wider">Receita Total Assessores</label>
+                        <p className="text-xl font-bold text-text-primary">{formatCurrency(totals.revenueAmount)}</p>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1 uppercase tracking-wider">Comissões Pagas</label>
+                        <p className="text-xl font-bold text-primary">{formatCurrency(totals.advisorNetTotal)}</p>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1 uppercase tracking-wider">Receita Líquida Escritório</label>
+                        <p className="text-xl font-bold text-green-400">{formatCurrency(totals.officeNetRevenue)}</p>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1 uppercase tracking-wider">Impostos Provisionados</label>
+                        <p className="text-xl font-bold text-danger">{formatCurrency(totals.totalTaxProvision)}</p>
+                    </div>
+                </div>
+            </Card>
+
+            {advisorSummary && (
+                <Card className="p-4 border-l-4 border-primary bg-primary/5">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div>
+                            <h3 className="text-sm font-bold text-primary uppercase tracking-tight">Resumo: {advisorSummary.name}</h3>
+                            <p className="text-xs text-text-secondary">Consolidado do período selecionado</p>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 w-full md:w-auto">
+                            <div>
+                                <label className="block text-[10px] text-text-secondary uppercase">Receita Gerada</label>
+                                <p className="text-sm font-bold">{formatCurrency(advisorSummary.generatedRevenue)}</p>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] text-text-secondary uppercase">Comissão Total</label>
+                                <p className="text-sm font-bold text-primary">{formatCurrency(advisorSummary.totalCommission)}</p>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] text-text-secondary uppercase">Indicações Recebidas</label>
+                                <p className="text-sm font-bold text-green-400">{formatCurrency(advisorSummary.referralsPaid)}</p>
+                            </div>
+                        </div>
+                    </div>
+                </Card>
+            )}
+
+            <Card className="p-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1">Ano</label>
+                        <select 
+                            value={selectedYear} 
+                            onChange={(e) => setSelectedYear(e.target.value === 'all' ? 'all' : Number(e.target.value))} 
+                            className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary"
+                        >
+                            <option value="all">Todos os Anos</option>
+                            {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
                         </select>
                     </div>
-                    <div><label className="block text-xs font-medium text-text-secondary mb-1">Produto / Categoria</label>
-                        <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary">
-                            <option value="">Todas</option>
-                            {uniqueCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                    <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1">Mês</label>
+                        <select 
+                            value={selectedMonth} 
+                            onChange={(e) => setSelectedMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))} 
+                            className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary"
+                        >
+                            <option value="all">Todos os Meses</option>
+                            {months.map((m, idx) => <option key={idx} value={idx}>{m}</option>)}
                         </select>
                     </div>
-                    <div><label className="block text-xs font-medium text-text-secondary mb-1">Cliente</label>
+                    <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1">Assessor</label>
+                        <select 
+                            value={selectedAdvisorId} 
+                            onChange={(e) => setSelectedAdvisorId(e.target.value)} 
+                            className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary"
+                        >
+                            <option value="all">Todos os Assessores</option>
+                            {advisors.map(adv => <option key={adv.id} value={adv.id}>{adv.name}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1">Referência / Cliente</label>
                         <div className="relative">
                             <input type="text" value={clientSearch} onChange={(e) => setClientSearch(e.target.value)} placeholder="Buscar..." className="w-full bg-background border border-border-color rounded-md pl-8 pr-3 py-2 text-sm focus:ring-primary focus:border-primary" />
                             <SearchIcon className="w-4 h-4 text-text-secondary absolute left-2.5 top-2.5" />
@@ -1952,20 +2145,138 @@ const ImportedRevenuesView: FC<{
 
             <Card className="overflow-hidden p-0">
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left whitespace-nowrap text-xs">
+                    <table className="w-full text-left whitespace-nowrap text-[10px] sm:text-xs">
                         <thead className="bg-background/50 uppercase text-text-secondary">
-                            <tr><th className="p-4">Data</th><th className="p-4">Conta</th><th className="p-4">Cliente</th><th className="p-4">Cod Assessor</th><th className="p-4">Assessor Principal</th><th className="p-4">Classificação</th><th className="p-4">Produto/Categoria</th><th className="p-4">Ativo</th><th className="p-4">Tipo Receita</th><th className="p-4">Receita Liq EQI</th><th className="p-4">% Repasse</th><th className="p-4">Comissão Líquida</th><th className="p-4">Tipo</th><th className="p-4 text-right">Ações</th></tr>
+                            <tr>
+                                <th className="p-4">Data</th>
+                                <th className="p-4">Referência / Cliente</th>
+                                <th className="p-4">Assessor Resp.</th>
+                                <th className="p-4">Receita Gerada</th>
+                                <th className="p-4">CRM/Custo</th>
+                                <th className="p-4">Indicação</th>
+                                <th className="p-4">Comissão Líquida</th>
+                                <th className="p-4">Escritório Líquido</th>
+                                <th className="p-4">Provisão Imposto</th>
+                                <th className="p-4 text-center">Status Financeiro</th>
+                                <th className="p-4 text-right">Ações</th>
+                            </tr>
                         </thead>
                         <tbody className="divide-y divide-border-color/30">
                             {filteredRevenues.map(r => (
                                 <tr key={r.id} className="hover:bg-background/50">
-                                    <td className="p-4">{formatDate(r.date)}</td><td className="p-4">{r.conta}</td><td className="p-4 font-medium">{r.cliente}</td><td className="p-4">{r.codAssessor}</td><td className="p-4">{r.assessorPrincipal}</td><td className="p-4">{r.classificacao}</td><td className="p-4">{r.produtoCategoria}</td><td className="p-4">{r.ativo}</td><td className="p-4">{r.tipoReceita}</td><td className="p-4 font-bold text-green-400">{formatCurrency(r.receitaLiquidaEQI)}</td><td className="p-4">{Math.round(r.percentualRepasse)}%</td><td className="p-4 font-bold text-primary">{formatCurrency(r.comissaoLiquida)}</td><td className="p-4">{r.tipo}</td><td className="p-4 text-right"><Button variant="ghostDanger" onClick={() => onDelete(r.id)}><TrashIcon className="w-4 h-4"/></Button></td>
+                                    <td className="p-4">{formatDate(r.date)}</td>
+                                    <td className="p-4 font-medium max-w-[150px] truncate" title={`${r.conta ? '[' + r.conta + '] ' : ''}${r.cliente}`}>
+                                        {r.conta && <span className="text-text-secondary mr-1">[{r.conta}]</span>}
+                                        {r.cliente}
+                                    </td>
+                                    <td className="p-4">{r.advisorName}</td>
+                                    <td className="p-4 font-bold">{formatCurrency(r.revenueAmount || 0)}</td>
+                                    <td className="p-4 text-danger">{formatCurrency(r.crmCost || 0)}</td>
+                                    <td className="p-4">
+                                        {r.referralAdvisorId ? (
+                                            <div className="flex flex-col">
+                                                <span className="font-medium">{r.referralAdvisorName}</span>
+                                                <span className="text-[9px] text-text-secondary">{r.referralPercentage}% ({formatCurrency(r.referralAmount)})</span>
+                                            </div>
+                                        ) : (
+                                            <span className="text-text-secondary italic">Nenhuma</span>
+                                        )}
+                                    </td>
+                                    <td className="p-4 text-primary font-bold">
+                                        <div className="flex flex-col">
+                                            <span>{formatCurrency(r.advisorNetTotal || 0)}</span>
+                                            {r.referralAdvisorId && (
+                                                <span className="text-[9px] text-text-secondary font-normal">Resp: {formatCurrency(r.responsibleAdvisorNet)}</span>
+                                            )}
+                                        </div>
+                                    </td>
+                                    <td className="p-4 text-green-400 font-bold">{formatCurrency(r.officeNetRevenue || 0)}</td>
+                                    <td className="p-4 text-danger">{formatCurrency(r.totalTaxProvision || 0)}</td>
+                                    <td className="p-4 text-center">
+                                        <div className="flex flex-col items-center gap-1">
+                                            <div className={`px-2 py-1 rounded text-[9px] font-bold uppercase ${getStatusLabel(r.status, r.lancamentosRealizados).bg} ${getStatusLabel(r.status, r.lancamentosRealizados).color}`}>
+                                                {getStatusLabel(r.status, r.lancamentosRealizados).label}
+                                            </div>
+                                            {(r.status !== CommissionStatus.COMPLETED && !r.lancamentosRealizados) && (
+                                                <Button 
+                                                    variant="primary" 
+                                                    className="text-[9px] py-1 px-2 h-auto" 
+                                                    onClick={() => onRegisterFinancials(r)}
+                                                >
+                                                    Registrar Lançamentos
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </td>
+                                    <td className="p-4 text-right">
+                                        <div className="flex justify-end gap-1">
+                                            <Button variant="ghost" className="p-1" onClick={() => handleEdit(r)} disabled={r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados}><EditIcon className="w-3 h-3"/></Button>
+                                            <Button variant="ghostDanger" className="p-1" onClick={() => onDelete(r.id)}><TrashIcon className="w-3 h-3"/></Button>
+                                        </div>
+                                    </td>
                                 </tr>
                             ))}
+                            {filteredRevenues.length === 0 && (
+                                <tr>
+                                    <td colSpan={11} className="p-8 text-center text-text-secondary italic">Nenhum registro encontrado.</td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
                 </div>
             </Card>
+
+            <Modal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} title="Confirmar Importação">
+                <div className="space-y-4">
+                    <div className="bg-primary/10 p-4 rounded-lg border border-primary/20">
+                        <p className="text-sm text-text-primary">Resumo da Importação:</p>
+                        <ul className="mt-2 space-y-1 text-xs text-text-secondary">
+                            <li>Total de Registros Agrupados: <strong>{importSummary?.records.length}</strong></li>
+                            <li>Volume Total de Receita: <strong>{formatCurrency(importSummary?.totalAmount || 0)}</strong></li>
+                        </ul>
+                    </div>
+                    
+                    <div className="max-h-60 overflow-y-auto border border-border-color rounded-md">
+                        <table className="w-full text-left text-[10px]">
+                            <thead className="bg-background sticky top-0">
+                                <tr>
+                                    <th className="p-2 border-b border-border-color">Referência</th>
+                                    <th className="p-2 border-b border-border-color">Assessor</th>
+                                    <th className="p-2 border-b border-border-color text-right">Valor</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border-color/30">
+                                {importSummary?.records.map((r, i) => (
+                                    <tr key={i}>
+                                        <td className="p-2">{r.cliente}</td>
+                                        <td className="p-2">{r.advisorName}</td>
+                                        <td className="p-2 text-right font-bold">{formatCurrency(r.revenueAmount)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <p className="text-[10px] text-text-secondary italic">
+                        * As receitas foram agrupadas por Cliente + Assessor. Linhas com valores negativos ou zerados foram ignoradas.
+                    </p>
+
+                    <div className="flex justify-end gap-3 pt-4">
+                        <Button onClick={() => setIsImportModalOpen(false)} variant="secondary">Cancelar</Button>
+                        <Button onClick={confirmImport}>Confirmar e Lançar</Button>
+                    </div>
+                </div>
+            </Modal>
+
+            <Modal isOpen={isEntryModalOpen} onClose={() => setIsEntryModalOpen(false)} title={editingRevenue ? "Editar Registro de Receita" : "Novo Registro de Receita"}>
+                <ImportedRevenueForm 
+                    onSubmit={handleFormSubmit} 
+                    onClose={() => setIsEntryModalOpen(false)} 
+                    advisors={advisors} 
+                    initialData={editingRevenue} 
+                    globalTaxRate={globalTaxRate} 
+                />
+            </Modal>
          </div>
     )
 };
@@ -1978,8 +2289,7 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
         ])];
         const currentYear = new Date().getFullYear();
         if (!years.includes(currentYear)) years.push(currentYear);
-        /* Fix: Cast sort parameters to any to avoid arithmetic error */
-        return years.sort((a: any, b: any) => (b as any) - (a as any));
+        return years.sort((a, b) => b - a);
     }, [transactions, importedRevenues]);
 
     const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
@@ -1994,12 +2304,11 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
     
     const dreData = useMemo(() => {
         const fTrans = transactions.filter(t => filterFn(t.date));
-        /* Fix: Removed <number> type argument from reduce calls to resolve "untyped function calls" error */
-        const manualRevenue = fTrans.filter(t => t.type === TransactionType.INCOME).reduce((sum, t) => sum + t.amount, 0);
-        const importedRevenue = importedRevenues.filter(r => filterFn(r.date)).reduce((sum, r) => sum + (r.receitaLiquidaEQI || 0), 0);
+        const manualRevenue = fTrans.filter(t => t.type === TransactionType.INCOME).reduce((sum: number, t) => sum + t.amount, 0);
+        const importedRevenue = importedRevenues.filter(r => filterFn(r.date) && !r.lancamentosRealizados).reduce((sum: number, r) => sum + (r.officeNetRevenue || 0), 0);
         const totalRevenue = round(Number(manualRevenue) + Number(importedRevenue));
         const expenseTrans = fTrans.filter(t => t.type === TransactionType.EXPENSE);
-        const totalExpense = round(expenseTrans.reduce((sum, t) => sum + t.amount, 0));
+        const totalExpense = round(expenseTrans.reduce((sum: number, t) => sum + t.amount, 0));
         const expensesByCategory: Record<string, number> = {};
         expenseTrans.forEach(t => { expensesByCategory[t.category] = round((expensesByCategory[t.category] || 0) + t.amount); });
         const sortedExpenses = Object.entries(expensesByCategory).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
@@ -2098,8 +2407,7 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
                         className="bg-surface border border-border-color rounded-md px-3 py-1.5 text-xs text-text-primary focus:ring-primary outline-none"
                     >
                         <option value="all">Todos os Meses</option>
-                        {['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][selectedMonth as number] + ' ' : ''}
-                        {selectedYear === 'all' ? 'Todo o Período' : selectedYear}
+                        {['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'].map((m, i) => <option key={i} value={i}>{m}</option>)}
                     </select>
                 </div>
             </div>
@@ -2216,7 +2524,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         const today = new Date();
         const currentYear = today.getUTCFullYear();
         yearsSet.add(currentYear);
-        return Array.from(yearsSet).sort((a: any, b: any) => (b as number) - (a as number));
+        return Array.from(yearsSet).sort((a: number, b: number) => b - a);
     }, [transactions]);
 
     const filteredTransactions = useMemo(() => transactions.filter(t => {
@@ -2227,9 +2535,8 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         }), [transactions, selectedYear, selectedMonth]);
 
     const { totalIncome, totalExpense, netProfit } = useMemo(() => {
-        /* Fix: Removed <number> type argument from reduce calls to resolve "untyped function calls" error */
-        const income = round(filteredTransactions.filter(t => t.type === TransactionType.INCOME).reduce((acc, t) => acc + t.amount, 0));
-        const expense = round(filteredTransactions.filter(t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PAID).reduce((acc, t) => acc + t.amount, 0));
+        const income = round(filteredTransactions.filter(t => t.type === TransactionType.INCOME).reduce<number>((acc, t) => acc + t.amount, 0));
+        const expense = round(filteredTransactions.filter(t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PAID).reduce<number>((acc, t) => acc + t.amount, 0));
         return { totalIncome: income, totalExpense: expense, netProfit: round(Number(income) - Number(expense)) };
     }, [filteredTransactions]);
 
@@ -2279,7 +2586,6 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
 
     const expenseSubcategoryData = useMemo(() => {
         const expenses = filteredTransactions.filter(t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PAID);
-        /* Fix: Removed <number> type argument from reduce to resolve "untyped function calls" error */
         const total = round(expenses.reduce((sum, t) => sum + t.amount, 0));
         if (total === 0) return [];
         const data = expenses.reduce((acc, t) => { acc[t.nature === ExpenseNature.FIXED ? 0 : 1].amount = round(acc[t.nature === ExpenseNature.FIXED ? 0 : 1].amount + t.amount); return acc; }, [{ name: 'Fixo', amount: 0 }, { name: 'Variável', amount: 0 }]);
@@ -2310,12 +2616,18 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
 
         const curM = now.getUTCMonth();
         const curY = now.getUTCFullYear();
+        
+        // Busca gastos fixos do mês anterior como base para a projeção
+        const refDate = new Date(Date.UTC(curY, curM - 1, 1));
+        const refYear = refDate.getUTCFullYear();
+        const refMonth = refDate.getUTCMonth();
+
         const fixedInCurrent = transactions.filter(t => {
             const d = new Date(t.date);
             return t.type === TransactionType.EXPENSE &&
                    t.nature === ExpenseNature.FIXED &&
-                   d.getUTCFullYear() === curY &&
-                   d.getUTCMonth() === curM;
+                   d.getUTCFullYear() === refYear &&
+                   d.getUTCMonth() === refMonth;
         });
         const monthlyFixedTotal = round(fixedInCurrent.reduce((sum, t) => sum + t.amount, 0));
 
@@ -2384,14 +2696,14 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                         <div className="bg-danger/10 p-2 rounded-full"><AlertCircleIcon className="w-5 h-5 text-danger" /></div>
                         <div><h3 className="text-base font-bold uppercase tracking-tight">Contas a Pagar</h3></div>
                     </div>
-                    <table className="w-full text-left border-collapse text-xs sm:text-sm">
+                    <table className="w-full text-center border-collapse text-xs sm:text-sm">
                         <thead>
                             <tr className="text-text-secondary border-b border-border-color/30 uppercase text-[10px]">
                                 <th className="py-2">Vencimento</th>
                                 <th>Descrição</th>
                                 <th>Valor</th>
-                                <th className="text-center">Status</th>
-                                <th className="text-right">Ação</th>
+                                <th>Status</th>
+                                <th>Ação</th>
                             </tr>
                         </thead>
                         <tbody>{upcomingBills.map(bill => {
@@ -2403,13 +2715,13 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                                     <td className="py-2 text-text-secondary">{formatDate(bill.date)}</td>
                                     <td className="font-medium">{bill.description}</td>
                                     <td className="font-bold text-danger">{formatCurrency(bill.amount)}</td>
-                                    <td className="text-center">
+                                    <td>
                                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${isOverdue ? 'bg-danger/20 text-danger' : 'bg-yellow-500/20 text-yellow-500'}`}>
                                             {isOverdue ? 'VENCIDA' : 'PENDENTE'}
                                         </span>
                                     </td>
-                                    <td className="text-right">
-                                        <div className="flex justify-end">
+                                    <td>
+                                        <div className="flex justify-center">
                                             <Button onClick={() => handlePayClick(bill)} variant="success" className="py-1 px-3 text-[10px] w-fit shadow-none">Pagar</Button>
                                         </div>
                                     </td>
@@ -2513,6 +2825,61 @@ const App: FC = () => {
                         transData = transData.filter(t => !legacyFutureFixed.some(l => l.id === t.id));
                     }
 
+                    // Instanciação automática de gastos fixos para o mês atual
+                    const currentYear = now.getUTCFullYear();
+                    const currentMonth = now.getUTCMonth();
+                    
+                    const refDate = new Date(Date.UTC(currentYear, currentMonth - 1, 1));
+                    const refYear = refDate.getUTCFullYear();
+                    const refMonth = refDate.getUTCMonth();
+
+                    const baseFixedExpenses = transData.filter(t => {
+                        const d = new Date(t.date);
+                        return t.type === TransactionType.EXPENSE &&
+                               t.nature === ExpenseNature.FIXED &&
+                               d.getUTCFullYear() === refYear &&
+                               d.getUTCMonth() === refMonth;
+                    });
+
+                    const instantiateMissing = async () => {
+                        for (const f of baseFixedExpenses) {
+                            const alreadyExists = transData.some(item => 
+                                item.description === f.description && 
+                                item.category === f.category && 
+                                item.nature === ExpenseNature.FIXED &&
+                                new Date(item.date).getUTCFullYear() === currentYear &&
+                                new Date(item.date).getUTCMonth() === currentMonth
+                            );
+
+                            if (!alreadyExists) {
+                                const day = new Date(f.date).getUTCDate();
+                                const lastDayOfTarget = new Date(Date.UTC(currentYear, currentMonth + 1, 0)).getUTCDate();
+                                const targetDay = Math.min(day, lastDayOfTarget);
+                                const projectedDate = new Date(Date.UTC(currentYear, currentMonth, targetDay, 12, 0, 0)).toISOString();
+                                
+                                const newData = {
+                                    ...f,
+                                    date: projectedDate,
+                                    status: ExpenseStatus.PENDING,
+                                    reconciled: false,
+                                    isProjection: false
+                                };
+                                delete (newData as any).id;
+                                
+                                try {
+                                    const docRef = await saveTransaction(newData as any, user.uid);
+                                    setTransactions(prev => {
+                                        if (prev.some(t => t.id === docRef.id)) return prev;
+                                        return [...prev, { id: docRef.id, ...newData } as Transaction];
+                                    });
+                                } catch (e) {
+                                    console.error("Erro ao instanciar gasto fixo:", e);
+                                }
+                            }
+                        }
+                    };
+
+                    instantiateMissing();
                     setTransactions(transData);
                 }
                 
@@ -2544,21 +2911,21 @@ const App: FC = () => {
             // Caso 1: Composição por Splits
             if (splitsToProcess.length > 0) {
                 for (const split of splitsToProcess) {
-                    const netPayout = round(Number(split.netPayout));
-                    if (netPayout > 0) {
+                    const grossPayout = round(Number(split.grossPayout));
+                    if (grossPayout > 0) {
                         try {
                             const expenseData = {
-                                amount: netPayout,
+                                amount: grossPayout,
                                 date: data.date,
                                 type: TransactionType.EXPENSE,
                                 category: "Remuneração de Assessores",
                                 clientSupplier: split.advisorName,
-                                description: `Repasse Líquido: ${split.advisorName} - ${data.description}`,
+                                description: `Comissão Assessor: ${split.advisorName} - ${data.description}`,
                                 costCenter: data.costCenter || "conta-pj",
                                 tipoInterno: "transacao",
                                 criadoPor: user.uid,
                                 advisorId: split.advisorId,
-                                status: ExpenseStatus.PENDING, // Regra obrigatória: Inicia como PENDENTE
+                                status: ExpenseStatus.PENDING,
                                 originTransactionId: docRef.id
                             };
                             
@@ -2585,12 +2952,12 @@ const App: FC = () => {
                         type: TransactionType.EXPENSE,
                         category: "Remuneração de Assessores",
                         clientSupplier: advisorObj?.name || "Assessor",
-                        description: `Repasse Líquido: ${advisorObj?.name || "Assessor"} - ${data.description}`,
+                        description: `Comissão Assessor: ${advisorObj?.name || "Assessor"} - ${data.description}`,
                         costCenter: data.costCenter || "conta-pj",
                         tipoInterno: "transacao",
                         criadoPor: user.uid,
                         advisorId: data.advisorId,
-                        status: ExpenseStatus.PENDING, // Regra obrigatória: Inicia como PENDENTE
+                        status: ExpenseStatus.PENDING,
                         originTransactionId: docRef.id
                     };
                     
@@ -2612,18 +2979,30 @@ const App: FC = () => {
 
     const handleEditTransaction = async (id: string, data: TransactionFormValues) => {
         if (!user) return;
+        if (id.startsWith('proj-')) {
+            alert("Aguarde a sincronização do lançamento automático...");
+            return;
+        }
         await updateTransaction(id, data);
         setTransactions(transactions.map(t => t.id === id ? { ...t, ...data } as unknown as Transaction : t));
     };
 
     const handleDeleteTransaction = async (id: string) => {
          if (!user || !window.confirm("Excluir?")) return;
+         if (id.startsWith('proj-')) {
+             alert("Não é possível excluir um lançamento em fase de sincronização automática.");
+             return;
+         }
          await deleteTransactionFromDb(id);
          setTransactions(transactions.filter(t => t.id !== id));
     };
 
     const handleSetPaid = async (id: string) => {
         if (!user) return;
+        if (id.startsWith('proj-')) {
+            alert("Aguarde a sincronização do lançamento automático...");
+            return;
+        }
         await updateTransaction(id, { status: ExpenseStatus.PAID });
         setTransactions(transactions.map(t => t.id === id ? { ...t, status: ExpenseStatus.PAID } : t));
     };
@@ -2648,8 +3027,127 @@ const App: FC = () => {
          const importPromises = data.map(item => saveImportedRevenue(item, user.uid).then(docRef => ({ id: docRef.id, ...item } as ImportedRevenue)).catch(() => null));
          Promise.all(importPromises).then((results) => {
              const newRevenues = results.filter((r): r is ImportedRevenue => r !== null);
-             setImportedRevenues([...newRevenues, ...importedRevenues]);
+             setImportedRevenues(prev => [...newRevenues, ...prev]);
          });
+    };
+
+    const handleAddImportedRevenue = async (data: Partial<ImportedRevenue>) => {
+        if (!user) return;
+        try {
+            const docRef = await saveImportedRevenue(data, user.uid);
+            setImportedRevenues(prev => [{ id: docRef.id, ...data } as ImportedRevenue, ...prev]);
+        } catch (error) {
+            console.error(error);
+            alert("Erro ao salvar receita.");
+        }
+    };
+
+    const handleUpdateImportedRevenue = async (id: string, data: Partial<ImportedRevenue>) => {
+        if (!user) return;
+        try {
+            await updateImportedRevenue(id, data);
+            setImportedRevenues(prev => prev.map(r => r.id === id ? { ...r, ...data } : r));
+        } catch (error) {
+            console.error(error);
+            alert("Erro ao atualizar receita.");
+        }
+    };
+
+    const handleRegisterFinancials = async (revenue: ImportedRevenue) => {
+        if (!user || revenue.status === CommissionStatus.COMPLETED || revenue.lancamentosRealizados) return;
+        try {
+            const transactionIds: any = {};
+
+            // 1. Receita Líquida do Escritório
+            if ((revenue.officeNetRevenue || 0) > 0) {
+                const incomeData = {
+                    date: revenue.date,
+                    description: `Receita Escritório: ${revenue.cliente || 'S/C'} - Ref: ${revenue.advisorName}`,
+                    amount: revenue.officeNetRevenue,
+                    type: TransactionType.INCOME,
+                    category: 'Taxa de Consultoria',
+                    clientSupplier: revenue.cliente || 'Cliente',
+                    paymentMethod: 'Transferência Bancária',
+                    costCenter: 'conta-pj',
+                    grossAmount: revenue.officeShare,
+                    taxAmount: revenue.officeTax,
+                    taxRate: revenue.taxRate
+                };
+                const docRef = await saveTransaction(incomeData as any, user.uid);
+                transactionIds.revenue = docRef.id;
+                setTransactions(prev => [{ id: docRef.id, ...incomeData } as unknown as Transaction, ...prev]);
+            }
+
+            // 2. Despesa de comissão do assessor responsável
+            if ((revenue.responsibleAdvisorNet || 0) > 0) {
+                const expenseData = {
+                    date: revenue.date,
+                    description: `Comissão Assessor (Resp): ${revenue.advisorName} - ${revenue.cliente || 'S/C'}`,
+                    amount: revenue.responsibleAdvisorNet,
+                    type: TransactionType.EXPENSE,
+                    category: 'Remuneração de Assessores',
+                    clientSupplier: revenue.advisorName,
+                    paymentMethod: 'Transferência Bancária',
+                    status: ExpenseStatus.PAID,
+                    nature: ExpenseNature.VARIABLE,
+                    costCenter: 'conta-pj',
+                    advisorId: revenue.advisorId
+                };
+                const docRef = await saveTransaction(expenseData as any, user.uid);
+                transactionIds.commission = docRef.id;
+                setTransactions(prev => [{ id: docRef.id, ...expenseData } as unknown as Transaction, ...prev]);
+            }
+
+            // 3. Despesa de comissão do assessor indicador (se houver)
+            if (revenue.referralAdvisorId && (revenue.referralAmount || 0) > 0) {
+                const referralExpenseData = {
+                    date: revenue.date,
+                    description: `Comissão Assessor (Indicação): ${revenue.referralAdvisorName} - Ref: ${revenue.advisorName} / ${revenue.cliente || 'S/C'}`,
+                    amount: revenue.referralAmount,
+                    type: TransactionType.EXPENSE,
+                    category: 'Remuneração de Assessores',
+                    clientSupplier: revenue.referralAdvisorName,
+                    paymentMethod: 'Transferência Bancária',
+                    status: ExpenseStatus.PAID,
+                    nature: ExpenseNature.VARIABLE,
+                    costCenter: 'conta-pj',
+                    advisorId: revenue.referralAdvisorId
+                };
+                const docRef = await saveTransaction(referralExpenseData as any, user.uid);
+                transactionIds.referral = docRef.id;
+                setTransactions(prev => [{ id: docRef.id, ...referralExpenseData } as unknown as Transaction, ...prev]);
+            }
+
+            // 4. Provisão de impostos (Imposto Assessor + Imposto Escritório)
+            if ((revenue.totalTaxProvision || 0) > 0) {
+                const taxProvisionData = {
+                    date: revenue.date,
+                    description: `Provisão de Impostos: ${revenue.cliente || 'S/C'} - Ref: ${revenue.advisorName}`,
+                    amount: revenue.totalTaxProvision,
+                    type: TransactionType.EXPENSE,
+                    category: 'Impostos e Taxas',
+                    clientSupplier: 'Provisão Tributária',
+                    paymentMethod: 'Outros',
+                    status: ExpenseStatus.PAID,
+                    nature: ExpenseNature.VARIABLE,
+                    costCenter: 'provisao-impostos'
+                };
+                const docRef = await saveTransaction(taxProvisionData as any, user.uid);
+                transactionIds.tax = docRef.id;
+                setTransactions(prev => [{ id: docRef.id, ...taxProvisionData } as unknown as Transaction, ...prev]);
+            }
+
+            // Atualizar o status do registro de receita
+            await handleUpdateImportedRevenue(revenue.id, { 
+                status: CommissionStatus.COMPLETED,
+                lancamentosRealizados: true,
+                transactionIds
+            });
+            alert("Lançamentos financeiros realizados com sucesso!");
+        } catch (error) {
+            console.error(error);
+            alert("Erro ao realizar lançamentos financeiros.");
+        }
     };
 
     const handleDeleteRevenue = async (id: string) => {
@@ -2670,13 +3168,13 @@ const App: FC = () => {
         <div className="flex h-screen bg-background text-text-primary overflow-hidden font-sans">
              <Sidebar activeView={activeView} setActiveView={(v) => { setActiveView(v); setIsSidebarOpen(false); }} isSidebarOpen={isSidebarOpen} user={user} />
              <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
-                <Header pageTitle={activeView === 'dashboard' ? 'Dashboard' : activeView === 'transactions' ? 'Transações' : activeView === 'imported-revenues' ? 'Receitas Importadas' : activeView === 'reports' ? 'Relatórios' : activeView === 'goals' ? 'Metas' : activeView === 'partnership' ? 'Partnership ACI' : 'Configurações'} onMenuClick={() => setIsSidebarOpen(true)} />
+                <Header pageTitle={activeView === 'dashboard' ? 'Dashboard' : activeView === 'transactions' ? 'Transações' : activeView === 'imported-revenues' ? 'Comissões' : activeView === 'reports' ? 'Relatórios' : activeView === 'goals' ? 'Metas' : activeView === 'partnership' ? 'Partnership ACI' : 'Configurações'} onMenuClick={() => setIsSidebarOpen(true)} />
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-background p-4 md:p-6 relative">
                     {loadingData ? <div className="flex items-center justify-center h-full">Carregando dados...</div> : (
                         <>
                             {activeView === 'dashboard' && <DashboardView transactions={transactions} goals={goals} onSetPaid={handleSetPaid} onEdit={handleEditTransaction} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} globalTaxRate={globalTaxRate} importedRevenues={importedRevenues} />}
                             {activeView === 'transactions' && <TransactionsView transactions={transactions} onAdd={handleAddTransaction} onEdit={handleEditTransaction} onDelete={handleDeleteTransaction} onSetPaid={handleSetPaid} onToggleReconciliation={handleToggleReconciliation} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} onImportTransactions={handleImportTransactions} globalTaxRate={globalTaxRate} importedRevenues={importedRevenues} userId={user.uid} />}
-                            {activeView === 'imported-revenues' && <ImportedRevenuesView importedRevenues={importedRevenues} advisors={advisors} onImport={handleImportRevenues} onDelete={handleDeleteRevenue} userId={user.uid} />}
+                            {activeView === 'imported-revenues' && <ImportedRevenuesView importedRevenues={importedRevenues} advisors={advisors} onDelete={handleDeleteRevenue} onAdd={handleAddImportedRevenue} onUpdate={handleUpdateImportedRevenue} onRegisterFinancials={handleRegisterFinancials} globalTaxRate={globalTaxRate} userId={user.uid} />}
                             {activeView === 'reports' && <ReportsView transactions={transactions} importedRevenues={importedRevenues} />}
                             {activeView === 'goals' && <GoalsView goals={goals} onAdd={v => setGoals([...goals, { ...v, id: crypto.randomUUID(), currentAmount: round(0) }])} onUpdateProgress={(id, amount) => setGoals(goals.map(g => g.id === id ? { ...g, currentAmount: round((Number(g.currentAmount) || 0) + (Number(amount) || 0)) } : g))} onDelete={id => setGoals(goals.filter(g => g.id !== id))} />}
                             {activeView === 'partnership' && <PartnershipView partners={partners} onSave={handleSavePartnership} />}
