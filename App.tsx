@@ -1992,11 +1992,12 @@ const ImportedRevenuesView: FC<{
     const [isClosingModalOpen, setIsClosingModalOpen] = useState(false);
     const [importSummary, setImportSummary] = useState<{ records: any[], totalAmount: number } | null>(null);
     const [editingRevenue, setEditingRevenue] = useState<ImportedRevenue | null>(null);
+    const [selectedRevenueIds, setSelectedRevenueIds] = useState<Set<string>>(new Set());
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const availableYears = useMemo(() => {
-        const yearsSet = new Set(importedRevenues.map(r => new Date(r.date).getUTCFullYear()));
-        const currentYear = new Date().getUTCFullYear();
+        const yearsSet = new Set(importedRevenues.map(r => new Date(r.date).getFullYear()));
+        const currentYear = new Date().getFullYear();
         yearsSet.add(currentYear);
         return Array.from(yearsSet).sort((a: number, b: number) => b - a);
     }, [importedRevenues]);
@@ -2007,21 +2008,61 @@ const ImportedRevenuesView: FC<{
     ];
 
     const filteredRevenues = useMemo(() => {
+        const selectedAdvisor = advisors.find(a => a.id === selectedAdvisorId);
         return importedRevenues.filter(r => {
             const date = new Date(r.date);
-            const year = date.getUTCFullYear();
-            const month = date.getUTCMonth();
+            const year = date.getFullYear();
+            const month = date.getMonth();
             
             const yearMatch = selectedYear === 'all' || year === selectedYear;
             const monthMatch = selectedMonth === 'all' || month === selectedMonth;
-            const advisorMatch = selectedAdvisorId === 'all' || r.advisorId === selectedAdvisorId || r.referralAdvisorId === selectedAdvisorId;
+            
+            // Match by ID or Name if ID is missing/mismatched
+            const advisorMatch = selectedAdvisorId === 'all' || 
+                r.advisorId === selectedAdvisorId || 
+                r.referralAdvisorId === selectedAdvisorId ||
+                (selectedAdvisor && r.advisorName === selectedAdvisor.name);
+                
             const clientMatch = !clientSearch || 
                 (r.cliente && r.cliente.toLowerCase().includes(clientSearch.toLowerCase())) ||
                 (r.conta && r.conta.toLowerCase().includes(clientSearch.toLowerCase()));
             
             return yearMatch && monthMatch && advisorMatch && clientMatch;
         });
-    }, [importedRevenues, selectedYear, selectedMonth, selectedAdvisorId, clientSearch]);
+    }, [importedRevenues, selectedYear, selectedMonth, selectedAdvisorId, clientSearch, advisors]);
+
+    // Limpar seleção ao mudar filtros
+    useEffect(() => {
+        setSelectedRevenueIds(new Set());
+    }, [selectedYear, selectedMonth, selectedAdvisorId, clientSearch]);
+
+    const toggleSelectAll = () => {
+        const pendingRevenues = filteredRevenues.filter(r => r.status !== CommissionStatus.COMPLETED && !r.lancamentosRealizados);
+        if (selectedRevenueIds.size === pendingRevenues.length && pendingRevenues.length > 0) {
+            setSelectedRevenueIds(new Set());
+        } else {
+            setSelectedRevenueIds(new Set(pendingRevenues.map(r => r.id)));
+        }
+    };
+
+    const toggleSelect = (id: string) => {
+        const newSet = new Set(selectedRevenueIds);
+        if (newSet.has(id)) {
+            newSet.delete(id);
+        } else {
+            newSet.add(id);
+        }
+        setSelectedRevenueIds(newSet);
+    };
+
+    const selectedSummary = useMemo(() => {
+        const selected = filteredRevenues.filter(r => selectedRevenueIds.has(r.id));
+        return {
+            revenueAmount: selected.reduce((sum, r) => sum + (r.revenueAmount || 0), 0),
+            count: selected.length,
+            ids: selected.map(r => r.id)
+        };
+    }, [filteredRevenues, selectedRevenueIds]);
 
     const totals = useMemo(() => {
         return filteredRevenues.reduce((acc, r) => ({
@@ -2228,7 +2269,7 @@ const ImportedRevenuesView: FC<{
                     <h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Comissões</h2>
                     <p className="text-text-secondary">Controle de comissões e divisão de receitas.</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                     <input type="file" ref={fileInputRef} onChange={handleImportFile} accept=".xlsx, .xls, .csv" className="hidden" />
                     <Button onClick={() => fileInputRef.current?.click()} variant="secondary" className="text-sm">
                         <UploadIcon className="w-4 h-4 mr-2"/> Importar Relatório
@@ -2238,16 +2279,64 @@ const ImportedRevenuesView: FC<{
                             <TrashIcon className="w-4 h-4 mr-2"/> Limpar Lançamentos
                         </Button>
                     )}
-                    {selectedAdvisorId !== 'all' && selectedMonth !== 'all' && selectedYear !== 'all' && (
-                        <Button onClick={() => setIsClosingModalOpen(true)} variant="success" className="text-sm">
-                            <CheckCircleIcon className="w-4 h-4 mr-2"/> Fechar comissões do assessor
-                        </Button>
-                    )}
                     <Button onClick={() => { setEditingRevenue(null); setIsEntryModalOpen(true); }} className="text-sm">
                         <PlusIcon className="w-4 h-4 mr-2"/> Nova Receita
                     </Button>
+                    <Button 
+                        onClick={() => setIsClosingModalOpen(true)} 
+                        variant="success" 
+                        className="text-sm"
+                        disabled={selectedAdvisorId === 'all' || selectedMonth === 'all' || selectedYear === 'all' || selectedRevenueIds.size === 0}
+                    >
+                        <CheckCircleIcon className="w-4 h-4 mr-2"/> Fechar comissões ({selectedRevenueIds.size})
+                    </Button>
                 </div>
             </div>
+
+            <Card className="p-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1">Ano</label>
+                        <select 
+                            value={selectedYear} 
+                            onChange={(e) => setSelectedYear(e.target.value === 'all' ? 'all' : Number(e.target.value))} 
+                            className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary"
+                        >
+                            <option value="all">Todos os Anos</option>
+                            {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1">Mês</label>
+                        <select 
+                            value={selectedMonth} 
+                            onChange={(e) => setSelectedMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))} 
+                            className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary"
+                        >
+                            <option value="all">Todos os Meses</option>
+                            {months.map((m, idx) => <option key={idx} value={idx}>{m}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1">Assessor</label>
+                        <select 
+                            value={selectedAdvisorId} 
+                            onChange={(e) => setSelectedAdvisorId(e.target.value)} 
+                            className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary"
+                        >
+                            <option value="all">Todos os Assessores</option>
+                            {advisors.map(adv => <option key={adv.id} value={adv.id}>{adv.name}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1">Referência / Cliente</label>
+                        <div className="relative">
+                            <input type="text" value={clientSearch} onChange={(e) => setClientSearch(e.target.value)} placeholder="Buscar..." className="w-full bg-background border border-border-color rounded-md pl-8 pr-3 py-2 text-sm focus:ring-primary focus:border-primary" />
+                            <SearchIcon className="w-4 h-4 text-text-secondary absolute left-2.5 top-2.5" />
+                        </div>
+                    </div>
+                </div>
+            </Card>
             
             <Card className="p-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
@@ -2295,56 +2384,19 @@ const ImportedRevenuesView: FC<{
                 </Card>
             )}
 
-            <Card className="p-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                    <div>
-                        <label className="block text-xs font-medium text-text-secondary mb-1">Ano</label>
-                        <select 
-                            value={selectedYear} 
-                            onChange={(e) => setSelectedYear(e.target.value === 'all' ? 'all' : Number(e.target.value))} 
-                            className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary"
-                        >
-                            <option value="all">Todos os Anos</option>
-                            {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-xs font-medium text-text-secondary mb-1">Mês</label>
-                        <select 
-                            value={selectedMonth} 
-                            onChange={(e) => setSelectedMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))} 
-                            className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary"
-                        >
-                            <option value="all">Todos os Meses</option>
-                            {months.map((m, idx) => <option key={idx} value={idx}>{m}</option>)}
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-xs font-medium text-text-secondary mb-1">Assessor</label>
-                        <select 
-                            value={selectedAdvisorId} 
-                            onChange={(e) => setSelectedAdvisorId(e.target.value)} 
-                            className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary"
-                        >
-                            <option value="all">Todos os Assessores</option>
-                            {advisors.map(adv => <option key={adv.id} value={adv.id}>{adv.name}</option>)}
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-xs font-medium text-text-secondary mb-1">Referência / Cliente</label>
-                        <div className="relative">
-                            <input type="text" value={clientSearch} onChange={(e) => setClientSearch(e.target.value)} placeholder="Buscar..." className="w-full bg-background border border-border-color rounded-md pl-8 pr-3 py-2 text-sm focus:ring-primary focus:border-primary" />
-                            <SearchIcon className="w-4 h-4 text-text-secondary absolute left-2.5 top-2.5" />
-                        </div>
-                    </div>
-                </div>
-            </Card>
-
             <Card className="overflow-hidden p-0">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left whitespace-nowrap text-[10px] sm:text-xs">
                         <thead className="bg-background/50 uppercase text-text-secondary">
                             <tr>
+                                <th className="p-4 w-10">
+                                    <input 
+                                        type="checkbox" 
+                                        className="rounded border-border-color bg-background text-primary focus:ring-primary"
+                                        checked={selectedRevenueIds.size > 0 && selectedRevenueIds.size === filteredRevenues.filter(r => r.status !== CommissionStatus.COMPLETED && !r.lancamentosRealizados).length}
+                                        onChange={toggleSelectAll}
+                                    />
+                                </th>
                                 <th className="p-4">Data</th>
                                 <th className="p-4">Referência / Cliente</th>
                                 <th className="p-4">Assessor Resp.</th>
@@ -2360,7 +2412,16 @@ const ImportedRevenuesView: FC<{
                         </thead>
                         <tbody className="divide-y divide-border-color/30">
                             {filteredRevenues.map(r => (
-                                <tr key={r.id} className="hover:bg-background/50">
+                                <tr key={r.id} className={`hover:bg-background/50 ${selectedRevenueIds.has(r.id) ? 'bg-primary/5' : ''}`}>
+                                    <td className="p-4">
+                                        <input 
+                                            type="checkbox" 
+                                            className="rounded border-border-color bg-background text-primary focus:ring-primary"
+                                            checked={selectedRevenueIds.has(r.id)}
+                                            onChange={() => toggleSelect(r.id)}
+                                            disabled={r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados}
+                                        />
+                                    </td>
                                     <td className="p-4">{formatDate(r.date)}</td>
                                     <td className="p-4 font-medium max-w-[150px] truncate" title={`${r.conta ? '[' + r.conta + '] ' : ''}${r.cliente}`}>
                                         {r.conta && <span className="text-text-secondary mr-1">[{r.conta}]</span>}
@@ -2394,15 +2455,6 @@ const ImportedRevenuesView: FC<{
                                             <div className={`px-2 py-1 rounded text-[9px] font-bold uppercase ${getStatusLabel(r.status, r.lancamentosRealizados).bg} ${getStatusLabel(r.status, r.lancamentosRealizados).color}`}>
                                                 {getStatusLabel(r.status, r.lancamentosRealizados).label}
                                             </div>
-                                            {(r.status !== CommissionStatus.COMPLETED && !r.lancamentosRealizados) && (
-                                                <Button 
-                                                    variant="primary" 
-                                                    className="text-[9px] py-1 px-2 h-auto" 
-                                                    onClick={() => onRegisterFinancials(r)}
-                                                >
-                                                    Registrar Lançamentos
-                                                </Button>
-                                            )}
                                         </div>
                                     </td>
                                     <td className="p-4 text-right">
@@ -2483,9 +2535,9 @@ const ImportedRevenuesView: FC<{
                     advisor={advisors.find(a => a.id === selectedAdvisorId)!}
                     month={selectedMonth as number}
                     year={selectedYear as number}
-                    generatedRevenue={totals.revenueAmount}
+                    generatedRevenue={selectedSummary.revenueAmount}
                     globalTaxRate={globalTaxRate}
-                    revenueIds={filteredRevenues.map(r => r.id)}
+                    revenueIds={selectedSummary.ids}
                 />
             )}
          </div>
