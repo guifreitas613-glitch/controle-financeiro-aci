@@ -6,7 +6,7 @@ import Login from './Login';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { logoutUser } from './auth';
-import { getTransactions, saveTransaction, updateTransaction, deleteTransaction as deleteTransactionFromDb, getImportedRevenues, saveImportedRevenue, deleteImportedRevenue, getRevenuesByPeriod, deduplicateImportedRevenues, getPartnership, savePartnership, updateImportedRevenue } from './firestore';
+import { getTransactions, saveTransaction, updateTransaction, deleteTransaction as deleteTransactionFromDb, getImportedRevenues, saveImportedRevenue, deleteImportedRevenue, getRevenuesByPeriod, deduplicateImportedRevenues, getPartnership, savePartnership, updateImportedRevenue, deleteAllImportedRevenues } from './firestore';
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
 // --- UTILITÁRIOS GLOBAIS ---
@@ -1819,9 +1819,10 @@ const ImportedRevenuesView: FC<{
     onAdd: (data: Partial<ImportedRevenue>) => void;
     onUpdate: (id: string, data: Partial<ImportedRevenue>) => void;
     onRegisterFinancials: (revenue: ImportedRevenue) => void;
+    onClearAll: () => void;
     globalTaxRate: number;
     userId?: string;
-}> = ({ importedRevenues, advisors, onDelete, onAdd, onUpdate, onRegisterFinancials, globalTaxRate, userId }) => {
+}> = ({ importedRevenues, advisors, onDelete, onAdd, onUpdate, onRegisterFinancials, onClearAll, globalTaxRate, userId }) => {
     const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
     const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all');
     const [selectedAdvisorId, setSelectedAdvisorId] = useState<string>('all');
@@ -2046,6 +2047,11 @@ const ImportedRevenuesView: FC<{
                     <Button onClick={() => fileInputRef.current?.click()} variant="secondary" className="text-sm">
                         <UploadIcon className="w-4 h-4 mr-2"/> Importar Relatório
                     </Button>
+                    {importedRevenues.length > 0 && (
+                        <Button onClick={onClearAll} variant="ghostDanger" className="text-sm">
+                            <TrashIcon className="w-4 h-4 mr-2"/> Limpar Lançamentos
+                        </Button>
+                    )}
                     <Button onClick={() => { setEditingRevenue(null); setIsEntryModalOpen(true); }} className="text-sm">
                         <PlusIcon className="w-4 h-4 mr-2"/> Nova Receita
                     </Button>
@@ -3156,6 +3162,18 @@ const App: FC = () => {
         setImportedRevenues(importedRevenues.filter(r => r.id !== id));
     };
 
+    const handleClearAllRevenues = async () => {
+        if (!user || !window.confirm("Tem certeza que deseja limpar TODOS os lançamentos de comissões? Esta ação não pode ser desfeita.")) return;
+        try {
+            await deleteAllImportedRevenues();
+            setImportedRevenues([]);
+            alert("Todos os lançamentos foram removidos.");
+        } catch (error) {
+            console.error(error);
+            alert("Erro ao limpar lançamentos.");
+        }
+    };
+
     const handleSavePartnership = async (updatedPartners: Partner[]) => {
         setPartners(updatedPartners);
         await savePartnership(updatedPartners);
@@ -3174,7 +3192,7 @@ const App: FC = () => {
                         <>
                             {activeView === 'dashboard' && <DashboardView transactions={transactions} goals={goals} onSetPaid={handleSetPaid} onEdit={handleEditTransaction} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} globalTaxRate={globalTaxRate} importedRevenues={importedRevenues} />}
                             {activeView === 'transactions' && <TransactionsView transactions={transactions} onAdd={handleAddTransaction} onEdit={handleEditTransaction} onDelete={handleDeleteTransaction} onSetPaid={handleSetPaid} onToggleReconciliation={handleToggleReconciliation} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} onImportTransactions={handleImportTransactions} globalTaxRate={globalTaxRate} importedRevenues={importedRevenues} userId={user.uid} />}
-                            {activeView === 'imported-revenues' && <ImportedRevenuesView importedRevenues={importedRevenues} advisors={advisors} onDelete={handleDeleteRevenue} onAdd={handleAddImportedRevenue} onUpdate={handleUpdateImportedRevenue} onRegisterFinancials={handleRegisterFinancials} globalTaxRate={globalTaxRate} userId={user.uid} />}
+                            {activeView === 'imported-revenues' && <ImportedRevenuesView importedRevenues={importedRevenues} advisors={advisors} onDelete={handleDeleteRevenue} onAdd={handleAddImportedRevenue} onUpdate={handleUpdateImportedRevenue} onRegisterFinancials={handleRegisterFinancials} onClearAll={handleClearAllRevenues} globalTaxRate={globalTaxRate} userId={user.uid} />}
                             {activeView === 'reports' && <ReportsView transactions={transactions} importedRevenues={importedRevenues} />}
                             {activeView === 'goals' && <GoalsView goals={goals} onAdd={v => setGoals([...goals, { ...v, id: crypto.randomUUID(), currentAmount: round(0) }])} onUpdateProgress={(id, amount) => setGoals(goals.map(g => g.id === id ? { ...g, currentAmount: round((Number(g.currentAmount) || 0) + (Number(amount) || 0)) } : g))} onDelete={id => setGoals(goals.filter(g => g.id !== id))} />}
                             {activeView === 'partnership' && <PartnershipView partners={partners} onSave={handleSavePartnership} />}

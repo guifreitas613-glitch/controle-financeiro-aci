@@ -103,6 +103,13 @@ export function getRevenuesByPeriod(startIso: string, endIso: string) {
     return getDocs(q);
 }
 
+export async function deleteAllImportedRevenues() {
+    const snap = await getImportedRevenues();
+    const batch = snap.docs.map(d => deleteDoc(doc(db, "transacoes", d.id)));
+    await Promise.all(batch);
+    return snap.docs.length;
+}
+
 export async function deduplicateImportedRevenues() {
     const snap = await getImportedRevenues();
     const docs = snap.docs;
