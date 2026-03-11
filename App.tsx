@@ -1938,7 +1938,7 @@ const ImportedRevenuesView: FC<{
                     const codAssessorRaw = row['Cod Assessor'] || '';
                     const assessorRaw = row['Assessor Principal'] || '';
                     const receitaLiquida = parseFloat(String(row['Receita Liquida EQI']).replace(',', '.')) || 0;
-                    const dataRaw = row['Data'];
+                    const dataRaw = row['Data'] || row['Data de Referência'] || row['Referência'] || row['Mês/Ano'] || row['Competência'];
 
                     if (!clienteRaw || !assessorRaw || receitaLiquida <= 0) return;
 
@@ -1964,24 +1964,49 @@ const ImportedRevenuesView: FC<{
                     );
                     
                     // Formata a data para extrair Mês/Ano
-                    let displayDate = group.date;
-                    let monthYear = "";
+                    let d = new Date();
                     try {
-                        const parts = String(group.date).split('/');
-                        if (parts.length === 3) {
-                            const d = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
-                            monthYear = months[d.getUTCMonth()] + "/" + d.getUTCFullYear();
-                            displayDate = d.toISOString();
-                        } else {
-                            const d = new Date(group.date);
-                            if (!isNaN(d.getTime())) {
-                                monthYear = months[d.getUTCMonth()] + "/" + d.getUTCFullYear();
-                                displayDate = d.toISOString();
+                        if (group.date) {
+                            if (typeof group.date === 'number') {
+                                // Excel serial date
+                                d = new Date((group.date - 25569) * 86400 * 1000);
+                            } else {
+                                const parts = String(group.date).split('/');
+                                if (parts.length === 3) {
+                                    d = new Date(Date.UTC(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0])));
+                                } else if (parts.length === 2) {
+                                    // Tenta formato Mês/Ano (ex: Março/2026)
+                                    const monthName = parts[0].trim();
+                                    const year = parseInt(parts[1].trim());
+                                    const monthIndex = months.findIndex(m => m.toLowerCase() === monthName.toLowerCase());
+                                    if (monthIndex !== -1 && !isNaN(year)) {
+                                        d = new Date(Date.UTC(year, monthIndex, 1));
+                                    } else {
+                                        // Tenta MM/YYYY
+                                        const month = parseInt(parts[0]);
+                                        if (!isNaN(month) && !isNaN(year)) {
+                                            d = new Date(Date.UTC(year, month - 1, 1));
+                                        }
+                                    }
+                                } else {
+                                    const parsed = new Date(group.date);
+                                    if (!isNaN(parsed.getTime())) {
+                                        d = parsed;
+                                    }
+                                }
                             }
                         }
                     } catch (e) {
                         console.error("Erro ao processar data:", e);
                     }
+
+                    // Se a data resultou em algo inválido ou 1970 (provável erro de parse), usa data atual
+                    if (isNaN(d.getTime()) || d.getUTCFullYear() <= 1970) {
+                        d = new Date();
+                    }
+
+                    const monthYear = months[d.getUTCMonth()] + "/" + d.getUTCFullYear();
+                    const displayDate = d.toISOString();
 
                     return {
                         date: displayDate,
