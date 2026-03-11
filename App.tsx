@@ -77,6 +77,37 @@ const formatDateTime = (dateString: string) => new Date(dateString).toLocaleStri
 const formatDateForInput = (dateString: string) => new Date(dateString).toISOString().split('T')[0];
 const getMonthYear = (dateString: string) => new Date(dateString).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric', timeZone: 'UTC' });
 
+const calculateRevenueFields = (revenueAmount: number, taxRate: number, referralPercentage: number = 0) => {
+    const advisorShare = round(revenueAmount * 0.7);
+    const officeShare = round(revenueAmount * 0.3);
+    
+    const advisorTax = round(advisorShare * (taxRate / 100));
+    const officeTax = round(officeShare * (taxRate / 100));
+    
+    const advisorNetTotal = round(advisorShare - advisorTax);
+    
+    let referralAmount = 0;
+    if (referralPercentage > 0) {
+        referralAmount = round(advisorNetTotal * (referralPercentage / 100));
+    }
+    
+    const responsibleAdvisorNet = round(advisorNetTotal - referralAmount);
+    const officeNetRevenue = round(officeShare - officeTax);
+    const totalTaxProvision = round(advisorTax + officeTax);
+
+    return {
+        advisorShare,
+        officeShare,
+        advisorTax,
+        officeTax,
+        advisorNetTotal,
+        referralAmount,
+        responsibleAdvisorNet,
+        officeNetRevenue,
+        totalTaxProvision
+    };
+};
+
 // Extending Transaction for Import Preview (internal use only)
 type ImportableTransaction = Partial<Transaction> & {
     tempId: string;
@@ -1576,7 +1607,6 @@ const ImportedRevenueForm: FC<ImportedRevenueFormProps> = ({ onSubmit, onClose, 
     const [cliente, setCliente] = useState(initialData?.cliente || '');
     const [advisorId, setAdvisorId] = useState(initialData?.advisorId || (advisors.length > 0 ? advisors[0].id : ''));
     const [revenueAmount, setRevenueAmount] = useState(initialData?.revenueAmount || 0);
-    const [crmCost, setCrmCost] = useState(initialData?.crmCost || 0);
     const [taxRate, setTaxRate] = useState(initialData?.taxRate || globalTaxRate);
     const [observacao, setObservacao] = useState(initialData?.observacao || '');
     
@@ -1586,35 +1616,8 @@ const ImportedRevenueForm: FC<ImportedRevenueFormProps> = ({ onSubmit, onClose, 
     const [referralPercentage, setReferralPercentage] = useState(initialData?.referralPercentage || 0);
 
     const calculations = useMemo(() => {
-        const advisorShare = round(revenueAmount * 0.7);
-        const officeShare = round(revenueAmount * 0.3);
-        
-        const advisorTax = round(advisorShare * (taxRate / 100));
-        const officeTax = round(officeShare * (taxRate / 100));
-        
-        const advisorNetTotal = round(advisorShare - advisorTax - crmCost);
-        
-        let referralAmount = 0;
-        if (hasReferral && referralPercentage > 0) {
-            referralAmount = round(advisorNetTotal * (referralPercentage / 100));
-        }
-        
-        const responsibleAdvisorNet = round(advisorNetTotal - referralAmount);
-        const officeNetRevenue = round(officeShare - officeTax);
-        const totalTaxProvision = round(advisorTax + officeTax);
-
-        return {
-            advisorShare,
-            officeShare,
-            advisorTax,
-            officeTax,
-            advisorNetTotal,
-            referralAmount,
-            responsibleAdvisorNet,
-            officeNetRevenue,
-            totalTaxProvision
-        };
-    }, [revenueAmount, taxRate, crmCost, hasReferral, referralPercentage]);
+        return calculateRevenueFields(revenueAmount, taxRate, hasReferral ? referralPercentage : 0);
+    }, [revenueAmount, taxRate, hasReferral, referralPercentage]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -1628,7 +1631,6 @@ const ImportedRevenueForm: FC<ImportedRevenueFormProps> = ({ onSubmit, onClose, 
             advisorId,
             advisorName: advisor?.name || 'Desconhecido',
             revenueAmount,
-            crmCost,
             taxRate,
             observacao,
             referralAdvisorId: hasReferral ? referralAdvisorId : undefined,
@@ -1660,14 +1662,7 @@ const ImportedRevenueForm: FC<ImportedRevenueFormProps> = ({ onSubmit, onClose, 
                     <label className="block text-sm font-medium text-text-secondary">Assessor Responsável</label>
                     <select 
                         value={advisorId} 
-                        onChange={(e) => {
-                            const id = e.target.value;
-                            setAdvisorId(id);
-                            const adv = advisors.find(a => a.id === id);
-                            if (adv) {
-                                setCrmCost(Math.abs((adv.costs || []).reduce((acc, c) => acc + c.value, 0)));
-                            }
-                        }}
+                        onChange={(e) => setAdvisorId(e.target.value)}
                         className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary"
                         required
                     >
@@ -1683,10 +1678,6 @@ const ImportedRevenueForm: FC<ImportedRevenueFormProps> = ({ onSubmit, onClose, 
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <label className="block text-sm font-medium text-text-secondary">CRM ou Custo Fixo</label>
-                    <input type="number" step="0.01" value={crmCost} onChange={(e) => setCrmCost(parseFloat(e.target.value) || 0)} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" />
-                </div>
                 <div>
                     <label className="block text-sm font-medium text-text-secondary">% Imposto</label>
                     <input type="number" step="0.1" value={taxRate} onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" />
@@ -2084,9 +2075,9 @@ const ImportedRevenuesView: FC<{
 
         return {
             name: advisor.name,
-            generatedRevenue: generated.reduce((sum, r) => sum + r.revenueAmount, 0),
-            totalCommission: generated.reduce((sum, r) => sum + r.advisorNetTotal, 0),
-            referralsPaid: referrals.reduce((sum, r) => sum + r.referralAmount, 0)
+            generatedRevenue: generated.reduce((sum, r) => sum + (r.revenueAmount || 0), 0),
+            totalCommission: generated.reduce((sum, r) => sum + (r.advisorNetTotal || 0), 0),
+            referralsPaid: referrals.reduce((sum, r) => sum + (r.referralAmount || 0), 0)
         };
     }, [filteredRevenues, selectedAdvisorId, advisors]);
 
@@ -2217,9 +2208,9 @@ const ImportedRevenuesView: FC<{
                         advisorId: advisor?.id || '',
                         advisorName: advisor?.name || group.assessorName,
                         revenueAmount: group.totalRevenue,
-                        crmCost: 0,
                         taxRate: globalTaxRate,
-                        observacao: `Importação Automática. Assessor: ${group.codAssessor} ${group.assessorName}`
+                        observacao: `Importação Automática. Assessor: ${group.codAssessor} ${group.assessorName}`,
+                        ...calculateRevenueFields(group.totalRevenue, globalTaxRate)
                     };
                 });
 
@@ -2286,7 +2277,7 @@ const ImportedRevenuesView: FC<{
                         onClick={() => setIsClosingModalOpen(true)} 
                         variant="success" 
                         className="text-sm"
-                        disabled={selectedAdvisorId === 'all' || selectedMonth === 'all' || selectedYear === 'all' || selectedRevenueIds.size === 0}
+                        disabled={selectedAdvisorId === 'all' || selectedRevenueIds.size === 0}
                     >
                         <CheckCircleIcon className="w-4 h-4 mr-2"/> Fechar comissões ({selectedRevenueIds.size})
                     </Button>
@@ -2401,7 +2392,6 @@ const ImportedRevenuesView: FC<{
                                 <th className="p-4">Referência / Cliente</th>
                                 <th className="p-4">Assessor Resp.</th>
                                 <th className="p-4">Receita Gerada</th>
-                                <th className="p-4">CRM/Custo</th>
                                 <th className="p-4">Indicação</th>
                                 <th className="p-4">Comissão Líquida</th>
                                 <th className="p-4">Escritório Líquido</th>
@@ -2429,7 +2419,6 @@ const ImportedRevenuesView: FC<{
                                     </td>
                                     <td className="p-4">{r.advisorName}</td>
                                     <td className="p-4 font-bold">{formatCurrency(r.revenueAmount || 0)}</td>
-                                    <td className="p-4 text-danger">{formatCurrency(r.crmCost || 0)}</td>
                                     <td className="p-4">
                                         {r.referralAdvisorId ? (
                                             <div className="flex flex-col">
@@ -2527,14 +2516,14 @@ const ImportedRevenuesView: FC<{
                 />
             </Modal>
 
-            {isClosingModalOpen && selectedAdvisorId !== 'all' && selectedMonth !== 'all' && selectedYear !== 'all' && (
+            {isClosingModalOpen && selectedAdvisorId !== 'all' && (
                 <CommissionClosingModal 
                     isOpen={isClosingModalOpen}
                     onClose={() => setIsClosingModalOpen(false)}
                     onConfirm={onBatchCommissionClosing}
                     advisor={advisors.find(a => a.id === selectedAdvisorId)!}
-                    month={selectedMonth as number}
-                    year={selectedYear as number}
+                    month={selectedMonth === 'all' ? new Date().getMonth() : selectedMonth as number}
+                    year={selectedYear === 'all' ? new Date().getFullYear() : selectedYear as number}
                     generatedRevenue={selectedSummary.revenueAmount}
                     globalTaxRate={globalTaxRate}
                     revenueIds={selectedSummary.ids}

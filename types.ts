@@ -69,7 +69,6 @@ export interface ImportedRevenue {
     advisorId: string;
     advisorName: string;
     revenueAmount: number; // Receita gerada pelo assessor
-    crmCost: number; // CRM ou custo fixo
     taxRate: number; // Percentual de imposto
     observacao: string;
     
@@ -83,7 +82,7 @@ export interface ImportedRevenue {
     officeShare: number; // 30%
     advisorTax: number;
     officeTax: number;
-    advisorNetTotal: number; // Parcela Assessor - Imposto Assessor - CRM
+    advisorNetTotal: number; // Parcela Assessor - Imposto Assessor
     referralAmount: number;
     responsibleAdvisorNet: number;
     officeNetRevenue: number;
