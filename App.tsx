@@ -1812,6 +1812,165 @@ const ImportedRevenueForm: FC<ImportedRevenueFormProps> = ({ onSubmit, onClose, 
     );
 };
 
+const CommissionClosingModal: FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    onConfirm: (data: any) => void;
+    advisor: Advisor;
+    month: number;
+    year: number;
+    generatedRevenue: number;
+    globalTaxRate: number;
+    revenueIds: string[];
+}> = ({ isOpen, onClose, onConfirm, advisor, month, year, generatedRevenue, globalTaxRate, revenueIds }) => {
+    const [receivedRevenue, setReceivedRevenue] = useState(generatedRevenue);
+    const [crmCost, setCrmCost] = useState(0);
+    const [taxRate, setTaxRate] = useState(globalTaxRate);
+    const [officePercent, setOfficePercent] = useState(advisor.officeShare || 50);
+    const [advisorPercent, setAdvisorPercent] = useState(advisor.advisorShare || 50);
+
+    const months = [
+        "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+    ];
+
+    const taxProvision = round(generatedRevenue * (taxRate / 100));
+    const revenueAfterTax = round(generatedRevenue - taxProvision);
+    const officeGross = round(revenueAfterTax * (officePercent / 100));
+    const advisorGross = round(revenueAfterTax * (advisorPercent / 100));
+    const advisorNet = round(advisorGross - crmCost);
+    const officeNet = round(officeGross);
+
+    const handleConfirm = () => {
+        onConfirm({
+            advisorId: advisor.id,
+            advisorName: advisor.name,
+            month,
+            year,
+            generatedRevenue,
+            receivedRevenue,
+            crmCost,
+            taxRate,
+            officePercent,
+            advisorPercent,
+            taxProvision,
+            advisorNet,
+            officeNet,
+            revenueIds
+        });
+        onClose();
+    };
+
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title="Fechar Comissões do Assessor">
+            <div className="space-y-4">
+                <div className="bg-surface p-4 rounded-lg border border-border-color space-y-2">
+                    <div className="flex justify-between text-sm">
+                        <span className="text-text-secondary">Assessor:</span>
+                        <span className="font-bold text-text-primary">{advisor.name}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                        <span className="text-text-secondary">Período:</span>
+                        <span className="font-bold text-text-primary">{months[month]}/{year}</span>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1 uppercase">Receita Gerada (Total Clientes)</label>
+                        <div className="p-2 bg-background border border-border-color rounded text-sm font-bold">
+                            {formatCurrency(generatedRevenue)}
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1 uppercase">Receita Recebida Corretora</label>
+                        <input 
+                            type="number" 
+                            value={receivedRevenue} 
+                            onChange={e => setReceivedRevenue(Number(e.target.value))}
+                            className="w-full p-2 bg-background border border-border-color rounded text-sm"
+                        />
+                        <p className="text-[10px] text-text-secondary mt-1 italic">Informe 0 para "Fechamento sem receita"</p>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1 uppercase">Custo CRM (Assessor)</label>
+                        <input 
+                            type="number" 
+                            value={crmCost} 
+                            onChange={e => setCrmCost(Number(e.target.value))}
+                            className="w-full p-2 bg-background border border-border-color rounded text-sm"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1 uppercase">Alíquota Imposto (%)</label>
+                        <input 
+                            type="number" 
+                            value={taxRate} 
+                            onChange={e => setTaxRate(Number(e.target.value))}
+                            className="w-full p-2 bg-background border border-border-color rounded text-sm"
+                        />
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1 uppercase">% Escritório</label>
+                        <input 
+                            type="number" 
+                            value={officePercent} 
+                            onChange={e => setOfficePercent(Number(e.target.value))}
+                            className="w-full p-2 bg-background border border-border-color rounded text-sm"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1 uppercase">% Assessor</label>
+                        <input 
+                            type="number" 
+                            value={advisorPercent} 
+                            onChange={e => setAdvisorPercent(Number(e.target.value))}
+                            className="w-full p-2 bg-background border border-border-color rounded text-sm"
+                        />
+                    </div>
+                </div>
+
+                <div className="bg-primary/5 p-4 rounded-lg border border-primary/20 space-y-3">
+                    <h4 className="text-xs font-bold uppercase text-primary">Resumo do Fechamento</h4>
+                    <div className="space-y-1">
+                        <div className="flex justify-between text-xs">
+                            <span className="text-text-secondary">Provisão de Impostos:</span>
+                            <span className="text-danger">-{formatCurrency(taxProvision)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                            <span className="text-text-secondary">Parte Bruta Escritório:</span>
+                            <span>{formatCurrency(officeGross)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                            <span className="text-text-secondary">Parte Bruta Assessor:</span>
+                            <span>{formatCurrency(advisorGross)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs border-t border-border-color/30 pt-1 mt-1">
+                            <span className="font-bold text-text-primary uppercase">Comissão Líquida Assessor:</span>
+                            <span className="font-bold text-primary">{formatCurrency(advisorNet)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                            <span className="font-bold text-text-secondary uppercase">Resultado Escritório:</span>
+                            <span className="font-bold text-green-400">{formatCurrency(officeNet)}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4">
+                    <Button onClick={onClose} variant="secondary">Cancelar</Button>
+                    <Button onClick={handleConfirm} variant="success">Confirmar Fechamento</Button>
+                </div>
+            </div>
+        </Modal>
+    );
+};
+
 const ImportedRevenuesView: FC<{
     importedRevenues: ImportedRevenue[];
     advisors: Advisor[];
@@ -1819,16 +1978,18 @@ const ImportedRevenuesView: FC<{
     onAdd: (data: Partial<ImportedRevenue>) => void;
     onUpdate: (id: string, data: Partial<ImportedRevenue>) => void;
     onRegisterFinancials: (revenue: ImportedRevenue) => void;
+    onBatchCommissionClosing: (data: any) => Promise<void>;
     onClearAll: () => void;
     globalTaxRate: number;
     userId?: string;
-}> = ({ importedRevenues, advisors, onDelete, onAdd, onUpdate, onRegisterFinancials, onClearAll, globalTaxRate, userId }) => {
+}> = ({ importedRevenues, advisors, onDelete, onAdd, onUpdate, onRegisterFinancials, onBatchCommissionClosing, onClearAll, globalTaxRate, userId }) => {
     const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
     const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all');
     const [selectedAdvisorId, setSelectedAdvisorId] = useState<string>('all');
     const [clientSearch, setClientSearch] = useState('');
     const [isEntryModalOpen, setIsEntryModalOpen] = useState(false);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+    const [isClosingModalOpen, setIsClosingModalOpen] = useState(false);
     const [importSummary, setImportSummary] = useState<{ records: any[], totalAmount: number } | null>(null);
     const [editingRevenue, setEditingRevenue] = useState<ImportedRevenue | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -2077,6 +2238,11 @@ const ImportedRevenuesView: FC<{
                             <TrashIcon className="w-4 h-4 mr-2"/> Limpar Lançamentos
                         </Button>
                     )}
+                    {selectedAdvisorId !== 'all' && selectedMonth !== 'all' && selectedYear !== 'all' && (
+                        <Button onClick={() => setIsClosingModalOpen(true)} variant="success" className="text-sm">
+                            <CheckCircleIcon className="w-4 h-4 mr-2"/> Fechar comissões do assessor
+                        </Button>
+                    )}
                     <Button onClick={() => { setEditingRevenue(null); setIsEntryModalOpen(true); }} className="text-sm">
                         <PlusIcon className="w-4 h-4 mr-2"/> Nova Receita
                     </Button>
@@ -2308,6 +2474,20 @@ const ImportedRevenuesView: FC<{
                     globalTaxRate={globalTaxRate} 
                 />
             </Modal>
+
+            {isClosingModalOpen && selectedAdvisorId !== 'all' && selectedMonth !== 'all' && selectedYear !== 'all' && (
+                <CommissionClosingModal 
+                    isOpen={isClosingModalOpen}
+                    onClose={() => setIsClosingModalOpen(false)}
+                    onConfirm={onBatchCommissionClosing}
+                    advisor={advisors.find(a => a.id === selectedAdvisorId)!}
+                    month={selectedMonth as number}
+                    year={selectedYear as number}
+                    generatedRevenue={totals.revenueAmount}
+                    globalTaxRate={globalTaxRate}
+                    revenueIds={filteredRevenues.map(r => r.id)}
+                />
+            )}
          </div>
     )
 };
@@ -3199,6 +3379,125 @@ const App: FC = () => {
         }
     };
 
+    const handleBatchCommissionClosing = async (closingData: any) => {
+        if (!user) return;
+        try {
+            const months = [
+                "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+                "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+            ];
+            const date = new Date(Date.UTC(closingData.year, closingData.month, 1)).toISOString();
+            const refPeriod = `${months[closingData.month]}/${closingData.year}`;
+
+            // 1. Lançamento de Receita (O que de fato entrou no banco da corretora)
+            if (closingData.receivedRevenue > 0) {
+                const incomeData = {
+                    date,
+                    description: `Receita Corretora - Ref: ${closingData.advisorName} - ${refPeriod}`,
+                    amount: closingData.receivedRevenue,
+                    type: TransactionType.INCOME,
+                    category: 'Taxa de Consultoria',
+                    clientSupplier: 'Corretora',
+                    paymentMethod: 'Transferência Bancária',
+                    costCenter: 'conta-pj',
+                };
+                const docRef = await saveTransaction(incomeData as any, user.uid);
+                setTransactions(prev => [{ id: docRef.id, ...incomeData } as unknown as Transaction, ...prev]);
+            }
+
+            // 2. Lançamento de Despesa CRM
+            if (closingData.crmCost > 0) {
+                const crmData = {
+                    date,
+                    description: `Custo CRM - Assessor: ${closingData.advisorName} - ${refPeriod}`,
+                    amount: closingData.crmCost,
+                    type: TransactionType.EXPENSE,
+                    category: 'Sistemas e Softwares',
+                    clientSupplier: 'CRM / Corretora',
+                    paymentMethod: 'Débito em Conta',
+                    status: ExpenseStatus.PAID,
+                    nature: ExpenseNature.FIXED,
+                    costCenter: 'conta-pj',
+                    advisorId: closingData.advisorId
+                };
+                const docRef = await saveTransaction(crmData as any, user.uid);
+                setTransactions(prev => [{ id: docRef.id, ...crmData } as unknown as Transaction, ...prev]);
+            }
+
+            // 3. Provisão de Imposto
+            if (closingData.taxProvision > 0) {
+                const taxData = {
+                    date,
+                    description: `Provisão Imposto s/ Receita - ${closingData.advisorName} - ${refPeriod}`,
+                    amount: closingData.taxProvision,
+                    type: TransactionType.EXPENSE,
+                    category: 'Impostos e Taxas',
+                    clientSupplier: 'Receita Federal',
+                    paymentMethod: 'Transferência Bancária',
+                    status: ExpenseStatus.PENDING,
+                    nature: ExpenseNature.VARIABLE,
+                    costCenter: 'conta-pj',
+                };
+                const docRef = await saveTransaction(taxData as any, user.uid);
+                setTransactions(prev => [{ id: docRef.id, ...taxData } as unknown as Transaction, ...prev]);
+            }
+
+            // 4. Comissão Líquida do Assessor
+            if (closingData.advisorNet > 0) {
+                const commissionData = {
+                    date,
+                    description: `Comissão Líquida - Assessor: ${closingData.advisorName} - ${refPeriod}`,
+                    amount: closingData.advisorNet,
+                    type: TransactionType.EXPENSE,
+                    category: 'Remuneração de Assessores',
+                    clientSupplier: closingData.advisorName,
+                    paymentMethod: 'Transferência Bancária',
+                    status: ExpenseStatus.PAID,
+                    nature: ExpenseNature.VARIABLE,
+                    costCenter: 'conta-pj',
+                    advisorId: closingData.advisorId
+                };
+                const docRef = await saveTransaction(commissionData as any, user.uid);
+                setTransactions(prev => [{ id: docRef.id, ...commissionData } as unknown as Transaction, ...prev]);
+            }
+
+            // 5. Resultado Escritório
+            if (closingData.officeNet > 0) {
+                 const officeIncomeData = {
+                    date,
+                    description: `Resultado Escritório - Ref: ${closingData.advisorName} - ${refPeriod}`,
+                    amount: closingData.officeNet,
+                    type: TransactionType.INCOME,
+                    category: 'Taxa de Consultoria',
+                    clientSupplier: 'Escritório',
+                    paymentMethod: 'Ajuste Interno',
+                    costCenter: 'conta-pj',
+                };
+                const docRef = await saveTransaction(officeIncomeData as any, user.uid);
+                setTransactions(prev => [{ id: docRef.id, ...officeIncomeData } as unknown as Transaction, ...prev]);
+            }
+
+            // Atualizar status dos registros importados
+            for (const id of closingData.revenueIds) {
+                await handleUpdateImportedRevenue(id, { 
+                    status: CommissionStatus.COMPLETED,
+                    lancamentosRealizados: true 
+                });
+            }
+            
+            setImportedRevenues(prev => prev.map(r => 
+                closingData.revenueIds.includes(r.id) 
+                ? { ...r, status: CommissionStatus.COMPLETED, lancamentosRealizados: true } 
+                : r
+            ));
+
+            alert("Fechamento realizado com sucesso! Os lançamentos financeiros foram gerados.");
+        } catch (error) {
+            console.error(error);
+            alert("Erro ao realizar fechamento.");
+        }
+    };
+
     const handleSavePartnership = async (updatedPartners: Partner[]) => {
         setPartners(updatedPartners);
         await savePartnership(updatedPartners);
@@ -3217,7 +3516,7 @@ const App: FC = () => {
                         <>
                             {activeView === 'dashboard' && <DashboardView transactions={transactions} goals={goals} onSetPaid={handleSetPaid} onEdit={handleEditTransaction} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} globalTaxRate={globalTaxRate} importedRevenues={importedRevenues} />}
                             {activeView === 'transactions' && <TransactionsView transactions={transactions} onAdd={handleAddTransaction} onEdit={handleEditTransaction} onDelete={handleDeleteTransaction} onSetPaid={handleSetPaid} onToggleReconciliation={handleToggleReconciliation} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} onImportTransactions={handleImportTransactions} globalTaxRate={globalTaxRate} importedRevenues={importedRevenues} userId={user.uid} />}
-                            {activeView === 'imported-revenues' && <ImportedRevenuesView importedRevenues={importedRevenues} advisors={advisors} onDelete={handleDeleteRevenue} onAdd={handleAddImportedRevenue} onUpdate={handleUpdateImportedRevenue} onRegisterFinancials={handleRegisterFinancials} onClearAll={handleClearAllRevenues} globalTaxRate={globalTaxRate} userId={user.uid} />}
+                            {activeView === 'imported-revenues' && <ImportedRevenuesView importedRevenues={importedRevenues} advisors={advisors} onDelete={handleDeleteRevenue} onAdd={handleAddImportedRevenue} onUpdate={handleUpdateImportedRevenue} onRegisterFinancials={handleRegisterFinancials} onBatchCommissionClosing={handleBatchCommissionClosing} onClearAll={handleClearAllRevenues} globalTaxRate={globalTaxRate} userId={user.uid} />}
                             {activeView === 'reports' && <ReportsView transactions={transactions} importedRevenues={importedRevenues} />}
                             {activeView === 'goals' && <GoalsView goals={goals} onAdd={v => setGoals([...goals, { ...v, id: crypto.randomUUID(), currentAmount: round(0) }])} onUpdateProgress={(id, amount) => setGoals(goals.map(g => g.id === id ? { ...g, currentAmount: round((Number(g.currentAmount) || 0) + (Number(amount) || 0)) } : g))} onDelete={id => setGoals(goals.filter(g => g.id !== id))} />}
                             {activeView === 'partnership' && <PartnershipView partners={partners} onSave={handleSavePartnership} />}
