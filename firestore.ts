@@ -119,7 +119,7 @@ export async function deduplicateImportedRevenues() {
     // Deleta registros idênticos (mesma data, cliente, valor e assessor)
     for (const d of docs) {
         const data = d.data();
-        const key = `${data.date}-${data.cliente}-${data.receitaLiquidaEQI}-${data.assessorPrincipal}`;
+        const key = `${data.date}-${data.cliente}-${data.revenueAmount}-${data.advisorName}`;
         if (seen.has(key)) {
             await deleteDoc(doc(db, "transacoes", d.id));
             deletedCount++;

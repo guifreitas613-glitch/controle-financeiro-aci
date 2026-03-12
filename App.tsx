@@ -1712,22 +1712,27 @@ const CommissionClosingModal: FC<{
         "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
     ];
 
-    const baseAmount = round(generatedRevenue - crmCost);
-    const advisorShare = round(baseAmount * (advisorPercent / 100));
-    const officeShare = hasBrokerPayout ? round(baseAmount * (officePercent / 100)) : 0;
-    const advisorTax = round(advisorShare * (taxRate / 100));
-    const officeTax = round(officeShare * (taxRate / 100));
-    let advisorNet = round(advisorShare - advisorTax);
-    const officeNet = round(officeShare - officeTax);
+    const advisorOperationalResult = round(generatedRevenue - crmCost);
+    const baseAmount = advisorOperationalResult;
+    const advisorShare = baseAmount > 0 ? round(baseAmount * (advisorPercent / 100)) : 0;
+    const officeShare = (baseAmount > 0 && hasBrokerPayout) ? round(baseAmount * (officePercent / 100)) : 0;
     
-    // Provisão de imposto visual (apenas se houver repasse)
-    const totalTaxProvision = hasBrokerPayout ? round(advisorTax + officeTax) : 0;
-
     let referralAmount = 0;
     if (hasReferral && referralPercentage > 0) {
-        referralAmount = round(advisorNet * (referralPercentage / 100));
-        advisorNet = round(advisorNet - referralAmount);
+        referralAmount = round(advisorShare * (referralPercentage / 100));
     }
+    
+    const advisorBaseAfterReferral = round(advisorShare - referralAmount);
+    const advisorTax = round(advisorBaseAfterReferral * (taxRate / 100));
+    const advisorNet = round(advisorBaseAfterReferral - advisorTax);
+    
+    const officeTax = officeShare > 0 ? round(officeShare * (taxRate / 100)) : 0;
+    const officeNet = round(officeShare - officeTax);
+    
+    // Provisão de imposto visual
+    const totalTaxProvision = round(advisorTax + officeTax);
+
+    const officeOperationalResult = round(generatedRevenue - crmCost - (advisorNet + referralAmount));
 
     const handleConfirm = () => {
         const referralAdvisor = advisors.find(a => a.id === referralAdvisorId);
@@ -1749,6 +1754,8 @@ const CommissionClosingModal: FC<{
             officeTax,
             advisorNet,
             officeNet,
+            advisorOperationalResult,
+            officeOperationalResult,
             hasReferral,
             referralAdvisorId: hasReferral ? referralAdvisorId : undefined,
             referralAdvisorName: hasReferral ? referralAdvisor?.name : undefined,
@@ -1864,19 +1871,37 @@ const CommissionClosingModal: FC<{
                     <h4 className="text-xs font-bold uppercase text-primary">Resumo do Fechamento</h4>
                     <div className="space-y-1">
                         <div className="flex justify-between text-xs">
-                            <span className="text-text-secondary">Parte Bruta Assessor:</span>
-                            <span>{formatCurrency(advisorShare)}</span>
+                            <span className="text-text-secondary">Resultado Operacional Assessor:</span>
+                            <span className={advisorOperationalResult < 0 ? 'text-danger font-bold' : 'font-bold'}>
+                                {formatCurrency(advisorOperationalResult)}
+                            </span>
+                        </div>
+                        <div className="flex justify-between text-xs border-b border-border-color/30 pb-1 mb-1">
+                            <span className="text-text-secondary">Resultado Operacional Escritório:</span>
+                            <span className={officeOperationalResult < 0 ? 'text-danger font-bold' : 'font-bold'}>
+                                {formatCurrency(officeOperationalResult)}
+                            </span>
                         </div>
                         <div className="flex justify-between text-xs">
-                            <span className="text-text-secondary">Imposto s/ Comissão Assessor:</span>
+                            <span className="text-text-secondary">Comissão Bruta Assessor:</span>
+                            <span>{formatCurrency(advisorShare)}</span>
+                        </div>
+                        {hasReferral && referralAmount > 0 && (
+                            <>
+                                <div className="flex justify-between text-xs">
+                                    <span className="text-text-secondary">Repasse Indicação ({referralPercentage}%):</span>
+                                    <span className="text-yellow-500">-{formatCurrency(referralAmount)}</span>
+                                </div>
+                                <div className="flex justify-between text-xs font-medium border-t border-border-color/10 pt-1">
+                                    <span className="text-text-secondary">Base após Indicação:</span>
+                                    <span>{formatCurrency(advisorBaseAfterReferral)}</span>
+                                </div>
+                            </>
+                        )}
+                        <div className="flex justify-between text-xs">
+                            <span className="text-text-secondary">Imposto s/ Comissão Assessor ({taxRate}%):</span>
                             <span className="text-danger">-{formatCurrency(advisorTax)}</span>
                         </div>
-                        {hasReferral && (
-                            <div className="flex justify-between text-xs">
-                                <span className="text-text-secondary">Repasse Indicação ({referralPercentage}%):</span>
-                                <span className="text-yellow-500">-{formatCurrency(referralAmount)}</span>
-                            </div>
-                        )}
                         <div className="flex justify-between text-xs border-t border-border-color/30 pt-1 mt-1">
                             <span className="font-bold text-text-primary uppercase">Comissão Líquida Assessor:</span>
                             <span className="font-bold text-primary">{formatCurrency(advisorNet)}</span>
@@ -1888,16 +1913,16 @@ const CommissionClosingModal: FC<{
                                 <span>{formatCurrency(officeShare)}</span>
                             </div>
                             <div className="flex justify-between text-xs">
-                                <span className="text-text-secondary">Imposto s/ Parte Escritório:</span>
+                                <span className="text-text-secondary">Imposto s/ Parte Escritório ({taxRate}%):</span>
                                 <span className="text-danger">-{formatCurrency(officeTax)}</span>
                             </div>
                             <div className="flex justify-between text-xs">
                                 <span className="font-bold text-text-secondary uppercase">Resultado Líquido Escritório:</span>
                                 <span className="font-bold text-green-400">{formatCurrency(officeNet)}</span>
                             </div>
-                            {hasBrokerPayout && (
+                            {officeTax > 0 && (
                                 <div className="flex justify-between text-[10px] mt-1 pt-1 border-t border-border-color/10 italic">
-                                    <span className="text-text-secondary">Provisão Total de Impostos (Visual):</span>
+                                    <span className="text-text-secondary">Provisão de Impostos (Visual):</span>
                                     <span className="text-text-primary">{formatCurrency(totalTaxProvision)}</span>
                                 </div>
                             )}
@@ -2013,8 +2038,9 @@ const ImportedRevenuesView: FC<{
             advisorNetTotal: acc.advisorNetTotal + (r.advisorNetTotal || 0),
             officeNetRevenue: acc.officeNetRevenue + (r.officeNetRevenue || 0),
             totalTaxProvision: acc.totalTaxProvision + (r.totalTaxProvision || 0),
-            referralAmount: acc.referralAmount + (r.referralAmount || 0)
-        }), { revenueAmount: 0, advisorNetTotal: 0, officeNetRevenue: 0, totalTaxProvision: 0, referralAmount: 0 });
+            referralAmount: acc.referralAmount + (r.referralAmount || 0),
+            officeOperationalResult: acc.officeOperationalResult + (r.officeOperationalResult || 0)
+        }), { revenueAmount: 0, advisorNetTotal: 0, officeNetRevenue: 0, totalTaxProvision: 0, referralAmount: 0, officeOperationalResult: 0 });
     }, [filteredRevenues]);
 
     const advisorSummary = useMemo(() => {
@@ -2282,7 +2308,7 @@ const ImportedRevenuesView: FC<{
             </Card>
             
             <Card className="p-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
                     <div>
                         <label className="block text-xs font-medium text-text-secondary mb-1 uppercase tracking-wider">Receita Total Assessores</label>
                         <p className="text-xl font-bold text-text-primary">{formatCurrency(totals.revenueAmount)}</p>
@@ -2296,8 +2322,14 @@ const ImportedRevenuesView: FC<{
                         <p className="text-xl font-bold text-green-400">{formatCurrency(totals.officeNetRevenue)}</p>
                     </div>
                     <div>
-                        <label className="block text-xs font-medium text-text-secondary mb-1 uppercase tracking-wider">Impostos Provisionados</label>
+                        <label className="block text-xs font-medium text-text-secondary mb-1 uppercase tracking-wider">Estimativa de Imposto</label>
                         <p className="text-xl font-bold text-danger">{formatCurrency(totals.totalTaxProvision)}</p>
+                    </div>
+                    <div className="bg-primary/5 p-2 rounded border border-primary/20">
+                        <label className="block text-xs font-bold text-primary mb-1 uppercase tracking-wider">Resultado Operacional Escritório</label>
+                        <p className={`text-xl font-bold ${totals.officeOperationalResult < 0 ? 'text-danger' : 'text-primary'}`}>
+                            {formatCurrency(totals.officeOperationalResult)}
+                        </p>
                     </div>
                 </div>
             </Card>
@@ -2344,10 +2376,12 @@ const ImportedRevenuesView: FC<{
                                 <th className="p-4">Referência / Cliente</th>
                                 <th className="p-4">Assessor Resp.</th>
                                 <th className="p-4">Receita Gerada</th>
+                                <th className="p-4">Repasse da Corretora</th>
                                 <th className="p-4">Indicação</th>
                                 <th className="p-4">Comissão Líquida</th>
-                                <th className="p-4">Escritório Líquido</th>
-                                <th className="p-4">Provisão Imposto</th>
+                                <th className="p-4">Resultado Assessor</th>
+                                <th className="p-4">Participação do Escritório</th>
+                                <th className="p-4">Estimativa de Imposto</th>
                                 <th className="p-4 text-center">Status Financeiro</th>
                                 <th className="p-4 text-right">Ações</th>
                             </tr>
@@ -2371,6 +2405,7 @@ const ImportedRevenuesView: FC<{
                                     </td>
                                     <td className="p-4">{r.advisorName}</td>
                                     <td className="p-4 font-bold">{formatCurrency(r.revenueAmount || 0)}</td>
+                                    <td className="p-4 text-text-secondary">{r.cashEntryAmount !== undefined ? formatCurrency(r.cashEntryAmount) : '-'}</td>
                                     <td className="p-4">
                                         {r.referralAdvisorId ? (
                                             <div className="flex flex-col">
@@ -2378,7 +2413,9 @@ const ImportedRevenuesView: FC<{
                                                 <span className="text-[9px] text-text-secondary">{r.referralPercentage}% ({formatCurrency(r.referralAmount)})</span>
                                             </div>
                                         ) : (
-                                            <span className="text-text-secondary italic">Nenhuma</span>
+                                            <div className="flex justify-center opacity-20">
+                                                <InfoIcon className="w-3 h-3" />
+                                            </div>
                                         )}
                                     </td>
                                     <td className="p-4 text-primary font-bold">
@@ -2388,6 +2425,9 @@ const ImportedRevenuesView: FC<{
                                                 <span className="text-[9px] text-text-secondary font-normal">Resp: {formatCurrency(r.responsibleAdvisorNet)}</span>
                                             )}
                                         </div>
+                                    </td>
+                                    <td className={`p-4 font-bold ${r.advisorOperationalResult !== undefined && r.advisorOperationalResult < 0 ? 'text-danger' : ''}`}>
+                                        {r.advisorOperationalResult !== undefined ? formatCurrency(r.advisorOperationalResult) : '-'}
                                     </td>
                                     <td className="p-4 text-green-400 font-bold">{formatCurrency(r.officeNetRevenue || 0)}</td>
                                     <td className="p-4 text-danger">{formatCurrency(r.totalTaxProvision || 0)}</td>
@@ -2556,7 +2596,7 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
             if (!filterFn(r.date)) return;
             const key = r.date.substring(0, 7);
             if (!monthlyMap[key]) monthlyMap[key] = { revenue: 0, expense: 0, pjBalanceInMonth: 0 };
-            monthlyMap[key].revenue = round(monthlyMap[key].revenue + (r.receitaLiquidaEQI || 0));
+            monthlyMap[key].revenue = round(monthlyMap[key].revenue + (r.revenueAmount || 0));
         });
 
         const calcularValuation = (llaMensal: number): number => {
@@ -3441,18 +3481,40 @@ const App: FC = () => {
             // OBS: CRM e Impostos não geram lançamentos financeiros automáticos conforme regra de negócio.
             // O imposto é apenas para controle visual interno.
 
-            // 5. Atualizar status dos registros de receita importados
+            // 5. Atualizar status e dados dos registros de receita importados
+            const totalRevenueInBatch = closingData.generatedRevenue;
+            const updatedRecords: Record<string, Partial<ImportedRevenue>> = {};
+
             for (const id of closingData.revenueIds) {
-                await handleUpdateImportedRevenue(id, { 
+                const record = importedRevenues.find(r => r.id === id);
+                if (!record) continue;
+                
+                const proportion = totalRevenueInBatch > 0 ? (record.revenueAmount / totalRevenueInBatch) : (1 / closingData.revenueIds.length);
+                
+                const updateData = { 
                     status: CommissionStatus.COMPLETED,
-                    lancamentosRealizados: true
-                });
+                    lancamentosRealizados: true,
+                    advisorOperationalResult: round(closingData.advisorOperationalResult * proportion),
+                    officeOperationalResult: round(closingData.officeOperationalResult * proportion),
+                    cashEntryAmount: round(closingData.cashEntryAmount * proportion),
+                    advisorShare: round(closingData.advisorShare * proportion),
+                    officeShare: round(closingData.officeShare * proportion),
+                    advisorTax: round(closingData.advisorTax * proportion),
+                    officeTax: round(closingData.officeTax * proportion),
+                    advisorNetTotal: round(closingData.advisorNet * proportion),
+                    officeNetRevenue: round(closingData.officeNet * proportion),
+                    totalTaxProvision: round((closingData.advisorTax + closingData.officeTax) * proportion),
+                    referralAmount: round(closingData.referralAmount * proportion)
+                };
+
+                updatedRecords[id] = updateData;
+                await handleUpdateImportedRevenue(id, updateData);
             }
 
             // Atualizar estado local
             setImportedRevenues(prev => prev.map(r => 
-                closingData.revenueIds.includes(r.id) 
-                    ? { ...r, status: CommissionStatus.COMPLETED, lancamentosRealizados: true }
+                updatedRecords[r.id] 
+                    ? { ...r, ...updatedRecords[r.id] }
                     : r
             ));
 

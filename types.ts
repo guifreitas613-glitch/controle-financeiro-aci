@@ -88,6 +88,11 @@ export interface ImportedRevenue {
     officeNetRevenue?: number;
     totalTaxProvision?: number; // Imposto Assessor + Imposto Escritório
     
+    // Novos campos operacionais
+    advisorOperationalResult?: number;
+    officeOperationalResult?: number;
+    cashEntryAmount?: number;
+    
     // Status e Rastreabilidade
     status?: CommissionStatus;
     transactionIds?: {
