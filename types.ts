@@ -78,15 +78,15 @@ export interface ImportedRevenue {
     referralPercentage?: number;
 
     // Campos Calculados
-    advisorShare: number; // 70%
-    officeShare: number; // 30%
-    advisorTax: number;
-    officeTax: number;
-    advisorNetTotal: number; // Parcela Assessor - Imposto Assessor
-    referralAmount: number;
-    responsibleAdvisorNet: number;
-    officeNetRevenue: number;
-    totalTaxProvision: number; // Imposto Assessor + Imposto Escritório
+    advisorShare?: number; // 70%
+    officeShare?: number; // 30%
+    advisorTax?: number;
+    officeTax?: number;
+    advisorNetTotal?: number; // Parcela Assessor - Imposto Assessor
+    referralAmount?: number;
+    responsibleAdvisorNet?: number;
+    officeNetRevenue?: number;
+    totalTaxProvision?: number; // Imposto Assessor + Imposto Escritório
     
     // Status e Rastreabilidade
     status?: CommissionStatus;
