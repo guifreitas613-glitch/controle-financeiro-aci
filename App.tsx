@@ -1767,170 +1767,178 @@ const CommissionClosingModal: FC<{
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Fechar Comissões do Assessor">
-            <div className="space-y-6 max-h-[80vh] overflow-y-auto pr-2">
-                <div className="bg-surface p-4 rounded-lg border border-border-color space-y-2">
-                    <div className="flex justify-between text-sm">
-                        <span className="text-text-secondary">Assessor:</span>
-                        <span className="font-bold text-text-primary">{advisor.name}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                        <span className="text-text-secondary">Período:</span>
-                        <span className="font-bold text-text-primary">{months[month]}/{year}</span>
+        <Modal isOpen={isOpen} onClose={onClose} title="Fechar Comissões do Assessor" size="xl">
+            <div className="space-y-4">
+                <div className="bg-surface p-3 rounded-lg border border-border-color flex justify-between items-center">
+                    <div className="flex gap-4">
+                        <div className="flex flex-col">
+                            <span className="text-[10px] text-text-secondary uppercase">Assessor</span>
+                            <span className="font-bold text-text-primary text-sm">{advisor.name}</span>
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-[10px] text-text-secondary uppercase">Período</span>
+                            <span className="font-bold text-text-primary text-sm">{months[month]}/{year}</span>
+                        </div>
                     </div>
                 </div>
 
-                <div className="space-y-4">
-                    <p className="text-xs font-bold text-text-secondary uppercase border-b border-border-color pb-1">Dados da Produção</p>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-1 uppercase">Receita Total Gerada</label>
-                            <div className="p-2 bg-background border border-border-color rounded text-sm font-bold">
-                                {formatCurrency(generatedRevenue)}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                        <div className="space-y-3">
+                            <p className="text-[10px] font-bold text-text-secondary uppercase border-b border-border-color pb-1">Dados da Produção</p>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase">Receita Total Gerada</label>
+                                    <div className="p-2 bg-background border border-border-color rounded text-sm font-bold">
+                                        {formatCurrency(generatedRevenue)}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase">Custo CRM (Assessor)</label>
+                                    <input type="number" value={crmCost} onChange={e => setCrmCost(Number(e.target.value))} className="w-full p-2 bg-background border border-border-color rounded text-sm" />
+                                </div>
                             </div>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-1 uppercase">Custo CRM (Assessor)</label>
-                            <input type="number" value={crmCost} onChange={e => setCrmCost(Number(e.target.value))} className="w-full p-2 bg-background border border-border-color rounded text-sm" />
-                        </div>
-                    </div>
-                    <div className="bg-background/50 p-2 rounded border border-dashed border-border-color">
-                        <div className="flex justify-between text-sm">
-                            <span className="text-text-secondary">Base de Cálculo (Receita - CRM):</span>
-                            <span className="font-bold text-text-primary">{formatCurrency(baseAmount)}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="space-y-4">
-                    <p className="text-xs font-bold text-text-secondary uppercase border-b border-border-color pb-1">Repasse da Corretora</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-1 uppercase">Status do Repasse</label>
-                            <select value={hasBrokerPayout ? 'yes' : 'no'} onChange={e => setHasBrokerPayout(e.target.value === 'yes')} className="w-full p-2 bg-background border border-border-color rounded text-sm">
-                                <option value="yes">Repasse recebido</option>
-                                <option value="no">Repasse igual a zero ou negativo</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-1 uppercase">Entrada no Caixa (R$)</label>
-                            <input type="number" value={cashEntryAmount} onChange={e => setCashEntryAmount(Number(e.target.value))} className="w-full p-2 bg-background border border-border-color rounded text-sm" />
-                        </div>
-                    </div>
-                </div>
-
-                <div className="space-y-4">
-                    <p className="text-xs font-bold text-text-secondary uppercase border-b border-border-color pb-1">Indicação de Assessor</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-1 uppercase">Houve Indicação?</label>
-                            <select value={hasReferral ? 'yes' : 'no'} onChange={e => setHasReferral(e.target.value === 'yes')} className="w-full p-2 bg-background border border-border-color rounded text-sm">
-                                <option value="no">Sem assessor de indicação</option>
-                                <option value="yes">Com assessor de indicação</option>
-                            </select>
-                        </div>
-                        {hasReferral && (
-                            <div>
-                                <label className="block text-xs font-medium text-text-secondary mb-1 uppercase">Assessor Indicador</label>
-                                <select value={referralAdvisorId} onChange={e => setReferralAdvisorId(e.target.value)} className="w-full p-2 bg-background border border-border-color rounded text-sm">
-                                    <option value="">Selecione...</option>
-                                    {advisors.filter(a => a.id !== advisor.id).map(adv => (
-                                        <option key={adv.id} value={adv.id}>{adv.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        )}
-                        {hasReferral && (
-                            <div>
-                                <label className="block text-xs font-medium text-text-secondary mb-1 uppercase">% da Indicação</label>
-                                <input type="number" value={referralPercentage} onChange={e => setReferralPercentage(Number(e.target.value))} className="w-full p-2 bg-background border border-border-color rounded text-sm" />
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                <div className="space-y-4">
-                    <p className="text-xs font-bold text-text-secondary uppercase border-b border-border-color pb-1">Configurações de Divisão</p>
-                    <div className="grid grid-cols-3 gap-4">
-                        <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-1 uppercase">% Assessor</label>
-                            <input type="number" value={advisorPercent} onChange={e => setAdvisorPercent(Number(e.target.value))} className="w-full p-2 bg-background border border-border-color rounded text-sm" />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-1 uppercase">% Escritório</label>
-                            <input type="number" value={officePercent} onChange={e => setOfficePercent(Number(e.target.value))} className="w-full p-2 bg-background border border-border-color rounded text-sm" />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-1 uppercase">% Imposto</label>
-                            <input type="number" value={taxRate} onChange={e => setTaxRate(Number(e.target.value))} className="w-full p-2 bg-background border border-border-color rounded text-sm" />
-                        </div>
-                    </div>
-                </div>
-
-                <div className="bg-primary/5 p-4 rounded-lg border border-primary/20 space-y-3">
-                    <h4 className="text-xs font-bold uppercase text-primary">Resumo do Fechamento</h4>
-                    <div className="space-y-1">
-                        <div className="flex justify-between text-xs">
-                            <span className="text-text-secondary">Resultado Operacional Assessor:</span>
-                            <span className={advisorOperationalResult < 0 ? 'text-danger font-bold' : 'font-bold'}>
-                                {formatCurrency(advisorOperationalResult)}
-                            </span>
-                        </div>
-                        <div className="flex justify-between text-xs border-b border-border-color/30 pb-1 mb-1">
-                            <span className="text-text-secondary">Resultado Operacional Escritório:</span>
-                            <span className={officeOperationalResult < 0 ? 'text-danger font-bold' : 'font-bold'}>
-                                {formatCurrency(officeOperationalResult)}
-                            </span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                            <span className="text-text-secondary">Comissão Bruta Assessor:</span>
-                            <span>{formatCurrency(advisorShare)}</span>
-                        </div>
-                        {hasReferral && referralAmount > 0 && (
-                            <>
+                            <div className="bg-background/50 p-2 rounded border border-dashed border-border-color">
                                 <div className="flex justify-between text-xs">
-                                    <span className="text-text-secondary">Repasse Indicação ({referralPercentage}%):</span>
-                                    <span className="text-yellow-500">-{formatCurrency(referralAmount)}</span>
+                                    <span className="text-text-secondary">Base de Cálculo (Receita - CRM):</span>
+                                    <span className="font-bold text-text-primary">{formatCurrency(baseAmount)}</span>
                                 </div>
-                                <div className="flex justify-between text-xs font-medium border-t border-border-color/10 pt-1">
-                                    <span className="text-text-secondary">Base após Indicação:</span>
-                                    <span>{formatCurrency(advisorBaseAfterReferral)}</span>
-                                </div>
-                            </>
-                        )}
-                        <div className="flex justify-between text-xs">
-                            <span className="text-text-secondary">Imposto s/ Comissão Assessor ({taxRate}%):</span>
-                            <span className="text-danger">-{formatCurrency(advisorTax)}</span>
+                            </div>
                         </div>
-                        <div className="flex justify-between text-xs border-t border-border-color/30 pt-1 mt-1">
-                            <span className="font-bold text-text-primary uppercase">Comissão Líquida Assessor:</span>
-                            <span className="font-bold text-primary">{formatCurrency(advisorNet)}</span>
-                        </div>
-                        
-                        <div className="pt-2 mt-2 border-t border-border-color/30">
-                            <div className="flex justify-between text-xs">
-                                <span className="text-text-secondary">Parte Bruta Escritório:</span>
-                                <span>{formatCurrency(officeShare)}</span>
-                            </div>
-                            <div className="flex justify-between text-xs">
-                                <span className="text-text-secondary">Imposto s/ Parte Escritório ({taxRate}%):</span>
-                                <span className="text-danger">-{formatCurrency(officeTax)}</span>
-                            </div>
-                            <div className="flex justify-between text-xs">
-                                <span className="font-bold text-text-secondary uppercase">Resultado Líquido Escritório:</span>
-                                <span className="font-bold text-green-400">{formatCurrency(officeNet)}</span>
-                            </div>
-                            {officeTax > 0 && (
-                                <div className="flex justify-between text-[10px] mt-1 pt-1 border-t border-border-color/10 italic">
-                                    <span className="text-text-secondary">Provisão de Impostos (Visual):</span>
-                                    <span className="text-text-primary">{formatCurrency(totalTaxProvision)}</span>
+
+                        <div className="space-y-3">
+                            <p className="text-[10px] font-bold text-text-secondary uppercase border-b border-border-color pb-1">Repasse da Corretora</p>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase">Status do Repasse</label>
+                                    <select value={hasBrokerPayout ? 'yes' : 'no'} onChange={e => setHasBrokerPayout(e.target.value === 'yes')} className="w-full p-2 bg-background border border-border-color rounded text-sm">
+                                        <option value="yes">Repasse recebido</option>
+                                        <option value="no">Repasse igual a zero ou negativo</option>
+                                    </select>
                                 </div>
-                            )}
+                                <div>
+                                    <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase">Entrada no Caixa (R$)</label>
+                                    <input type="number" value={cashEntryAmount} onChange={e => setCashEntryAmount(Number(e.target.value))} className="w-full p-2 bg-background border border-border-color rounded text-sm" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <p className="text-[10px] font-bold text-text-secondary uppercase border-b border-border-color pb-1">Indicação de Assessor</p>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase">Houve Indicação?</label>
+                                    <select value={hasReferral ? 'yes' : 'no'} onChange={e => setHasReferral(e.target.value === 'yes')} className="w-full p-2 bg-background border border-border-color rounded text-sm">
+                                        <option value="no">Sem indicação</option>
+                                        <option value="yes">Com indicação</option>
+                                    </select>
+                                </div>
+                                {hasReferral && (
+                                    <div>
+                                        <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase">Assessor Indicador</label>
+                                        <select value={referralAdvisorId} onChange={e => setReferralAdvisorId(e.target.value)} className="w-full p-2 bg-background border border-border-color rounded text-sm">
+                                            <option value="">Selecione...</option>
+                                            {advisors.filter(a => a.id !== advisor.id).map(adv => (
+                                                <option key={adv.id} value={adv.id}>{adv.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+                                {hasReferral && (
+                                    <div>
+                                        <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase">% da Indicação</label>
+                                        <input type="number" value={referralPercentage} onChange={e => setReferralPercentage(Number(e.target.value))} className="w-full p-2 bg-background border border-border-color rounded text-sm" />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <p className="text-[10px] font-bold text-text-secondary uppercase border-b border-border-color pb-1">Configurações de Divisão</p>
+                            <div className="grid grid-cols-3 gap-3">
+                                <div>
+                                    <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase">% Assessor</label>
+                                    <input type="number" value={advisorPercent} onChange={e => setAdvisorPercent(Number(e.target.value))} className="w-full p-2 bg-background border border-border-color rounded text-sm" />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase">% Escritório</label>
+                                    <input type="number" value={officePercent} onChange={e => setOfficePercent(Number(e.target.value))} className="w-full p-2 bg-background border border-border-color rounded text-sm" />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase">% Imposto</label>
+                                    <input type="number" value={taxRate} onChange={e => setTaxRate(Number(e.target.value))} className="w-full p-2 bg-background border border-border-color rounded text-sm" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
+                        <div className="bg-primary/5 p-4 rounded-lg border border-primary/20 space-y-3 h-full">
+                            <h4 className="text-xs font-bold uppercase text-primary border-b border-primary/10 pb-1">Resumo do Fechamento</h4>
+                            <div className="space-y-2">
+                                <div className="flex justify-between text-xs">
+                                    <span className="text-text-secondary">Resultado Operacional Assessor:</span>
+                                    <span className={advisorOperationalResult < 0 ? 'text-danger font-bold' : 'font-bold'}>
+                                        {formatCurrency(advisorOperationalResult)}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between text-xs border-b border-border-color/30 pb-1 mb-1">
+                                    <span className="text-text-secondary">Resultado Operacional Escritório:</span>
+                                    <span className={officeOperationalResult < 0 ? 'text-danger font-bold' : 'font-bold'}>
+                                        {formatCurrency(officeOperationalResult)}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between text-xs">
+                                    <span className="text-text-secondary">Comissão Bruta Assessor:</span>
+                                    <span>{formatCurrency(advisorShare)}</span>
+                                </div>
+                                {hasReferral && referralAmount > 0 && (
+                                    <>
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-text-secondary">Repasse Indicação ({referralPercentage}%):</span>
+                                            <span className="text-yellow-500">-{formatCurrency(referralAmount)}</span>
+                                        </div>
+                                        <div className="flex justify-between text-xs font-medium border-t border-border-color/10 pt-1">
+                                            <span className="text-text-secondary">Base após Indicação:</span>
+                                            <span>{formatCurrency(advisorBaseAfterReferral)}</span>
+                                        </div>
+                                    </>
+                                )}
+                                <div className="flex justify-between text-xs">
+                                    <span className="text-text-secondary">Imposto s/ Comissão Assessor ({taxRate}%):</span>
+                                    <span className="text-danger">-{formatCurrency(advisorTax)}</span>
+                                </div>
+                                <div className="flex justify-between text-xs border-t border-border-color/30 pt-1 mt-1">
+                                    <span className="font-bold text-text-primary uppercase">Comissão Líquida Assessor:</span>
+                                    <span className="font-bold text-primary">{formatCurrency(advisorNet)}</span>
+                                </div>
+                                
+                                <div className="pt-2 mt-2 border-t border-border-color/30 space-y-1">
+                                    <div className="flex justify-between text-xs">
+                                        <span className="text-text-secondary">Parte Bruta Escritório:</span>
+                                        <span>{formatCurrency(officeShare)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-xs">
+                                        <span className="text-text-secondary">Imposto s/ Parte Escritório ({taxRate}%):</span>
+                                        <span className="text-danger">-{formatCurrency(officeTax)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-xs">
+                                        <span className="font-bold text-text-secondary uppercase">Resultado Líquido Escritório:</span>
+                                        <span className="font-bold text-green-400">{formatCurrency(officeNet)}</span>
+                                    </div>
+                                    {officeTax > 0 && (
+                                        <div className="flex justify-between text-[10px] mt-1 pt-1 border-t border-border-color/10 italic">
+                                            <span className="text-text-secondary">Provisão de Impostos (Visual):</span>
+                                            <span className="text-text-primary">{formatCurrency(totalTaxProvision)}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div className="flex justify-end gap-3 pt-4">
+                <div className="flex justify-end gap-3 pt-4 border-t border-border-color/20">
                     <Button onClick={onClose} variant="secondary">Cancelar</Button>
                     <Button onClick={handleConfirm} variant="success">Confirmar Fechamento</Button>
                 </div>
