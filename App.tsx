@@ -81,10 +81,11 @@ const calculateRevenueFields = (revenueAmount: number, taxRate: number, referral
     const advisorShare = round(revenueAmount * 0.7);
     const officeShare = round(revenueAmount * 0.3);
     
-    const advisorTax = round(advisorShare * (taxRate / 100));
-    const officeTax = round(officeShare * (taxRate / 100));
+    // Impostos removidos da lógica de produção conforme regra de negócio
+    const advisorTax = 0;
+    const officeTax = 0;
     
-    const advisorNetTotal = round(advisorShare - advisorTax);
+    const advisorNetTotal = advisorShare;
     
     let referralAmount = 0;
     if (referralPercentage > 0) {
@@ -92,8 +93,8 @@ const calculateRevenueFields = (revenueAmount: number, taxRate: number, referral
     }
     
     const responsibleAdvisorNet = round(advisorNetTotal - referralAmount);
-    const officeNetRevenue = round(officeShare - officeTax);
-    const totalTaxProvision = round(advisorTax + officeTax);
+    const officeNetRevenue = officeShare;
+    const totalTaxProvision = 0;
 
     return {
         advisorShare,
@@ -1666,14 +1667,9 @@ const ImportedRevenueForm: FC<ImportedRevenueFormProps> = ({ onSubmit, onClose, 
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                    <label className="block text-sm font-medium text-text-secondary">% Imposto (Referência)</label>
-                    <input type="number" step="0.1" value={taxRate} onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" />
+                    <label className="block text-sm font-medium text-text-secondary">Observação (Opcional)</label>
+                    <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" rows={2}></textarea>
                 </div>
-            </div>
-
-            <div>
-                <label className="block text-sm font-medium text-text-secondary">Observação (Opcional)</label>
-                <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" rows={2}></textarea>
             </div>
 
             <div className="flex justify-end gap-4 pt-4">
@@ -1700,7 +1696,6 @@ const CommissionClosingModal: FC<{
     const [cashEntryAmount, setCashEntryAmount] = useState(generatedRevenue);
     const initialCrmCost = Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0));
     const [crmCost, setCrmCost] = useState(initialCrmCost);
-    const [taxRate, setTaxRate] = useState(globalTaxRate);
     const [officePercent, setOfficePercent] = useState(30);
     const [advisorPercent, setAdvisorPercent] = useState(70);
     const [hasReferral, setHasReferral] = useState(false);
@@ -1716,11 +1711,11 @@ const CommissionClosingModal: FC<{
     const baseAmount = advisorOperationalResult;
     
     // Regras de comissão: Se a base de cálculo for negativa:
-    // Comissão do assessor = 0, Parte do escritório = 0, Impostos = 0
+    // Comissão do assessor = 0, Parte do escritório = 0
     const canCalculateCommissions = baseAmount > 0;
 
     const advisorShare = canCalculateCommissions ? round(baseAmount * (advisorPercent / 100)) : 0;
-    const officeShare = (canCalculateCommissions && hasBrokerPayout) ? round(baseAmount * (officePercent / 100)) : 0;
+    const officeShare = canCalculateCommissions ? round(baseAmount * (officePercent / 100)) : 0;
     
     let referralAmount = 0;
     if (hasReferral && referralPercentage > 0 && canCalculateCommissions) {
@@ -1728,15 +1723,11 @@ const CommissionClosingModal: FC<{
     }
     
     const advisorBaseAfterReferral = round(advisorShare - referralAmount);
-    const advisorTax = canCalculateCommissions ? round(advisorBaseAfterReferral * (taxRate / 100)) : 0;
-    const advisorNet = round(advisorBaseAfterReferral - advisorTax);
+    // O imposto não é mais deduzido da comissão do assessor
+    const advisorNet = advisorBaseAfterReferral;
     
-    const officeTax = officeShare > 0 ? round(officeShare * (taxRate / 100)) : 0;
-    const officeNet = round(officeShare - officeTax);
+    const officeNet = officeShare;
     
-    // Provisão de imposto visual
-    const totalTaxProvision = round(advisorTax + officeTax);
-
     // Resultado da Produção = Receita Total Gerada − Custo de CRM − Comissão Líquida do Assessor
     const productionResult = round(generatedRevenue - crmCost - (advisorNet + referralAmount));
     
@@ -1754,13 +1745,10 @@ const CommissionClosingModal: FC<{
             cashEntryAmount: cashEntryAmount,
             hasBrokerPayout,
             crmCost,
-            taxRate,
             officePercent,
             advisorPercent,
             advisorShare,
             officeShare,
-            advisorTax,
-            officeTax,
             advisorNet,
             officeNet,
             advisorOperationalResult,
@@ -1889,7 +1877,7 @@ const CommissionClosingModal: FC<{
 
                         <div className="space-y-3">
                             <p className="text-[10px] font-bold text-text-secondary uppercase border-b border-border-color pb-1">Configurações de Divisão</p>
-                            <div className="grid grid-cols-3 gap-3">
+                            <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase">% Assessor</label>
                                     <input type="number" value={advisorPercent} onChange={e => setAdvisorPercent(Number(e.target.value))} className="w-full p-2 bg-background border border-border-color rounded text-sm" />
@@ -1897,10 +1885,6 @@ const CommissionClosingModal: FC<{
                                 <div>
                                     <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase">% Escritório</label>
                                     <input type="number" value={officePercent} onChange={e => setOfficePercent(Number(e.target.value))} className="w-full p-2 bg-background border border-border-color rounded text-sm" />
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase">% Imposto</label>
-                                    <input type="number" value={taxRate} onChange={e => setTaxRate(Number(e.target.value))} className="w-full p-2 bg-background border border-border-color rounded text-sm" />
                                 </div>
                             </div>
                         </div>
@@ -1944,10 +1928,6 @@ const CommissionClosingModal: FC<{
                                         </div>
                                     </>
                                 )}
-                                <div className="flex justify-between text-xs">
-                                    <span className="text-text-secondary">Imposto s/ Comissão Assessor ({taxRate}%):</span>
-                                    <span className="text-danger">-{formatCurrency(advisorTax)}</span>
-                                </div>
                                 <div className="flex justify-between text-xs border-t border-border-color/30 pt-1 mt-1">
                                     <span className="font-bold text-text-primary uppercase">Comissão Líquida Assessor:</span>
                                     <span className="font-bold text-primary">{formatCurrency(advisorNet)}</span>
@@ -1959,19 +1939,9 @@ const CommissionClosingModal: FC<{
                                         <span>{formatCurrency(officeShare)}</span>
                                     </div>
                                     <div className="flex justify-between text-xs">
-                                        <span className="text-text-secondary">Imposto s/ Parte Escritório ({taxRate}%):</span>
-                                        <span className="text-danger">-{formatCurrency(officeTax)}</span>
-                                    </div>
-                                    <div className="flex justify-between text-xs">
                                         <span className="font-bold text-text-secondary uppercase">Resultado Líquido Escritório:</span>
                                         <span className="font-bold text-green-400">{formatCurrency(officeNet)}</span>
                                     </div>
-                                    {officeTax > 0 && (
-                                        <div className="flex justify-between text-[10px] mt-1 pt-1 border-t border-border-color/10 italic">
-                                            <span className="text-text-secondary">Provisão de Impostos (Visual):</span>
-                                            <span className="text-text-primary">{formatCurrency(totalTaxProvision)}</span>
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                         </div>
@@ -1993,12 +1963,11 @@ const ImportedRevenuesView: FC<{
     onDelete: (id: string) => void;
     onAdd: (data: Partial<ImportedRevenue>) => void;
     onUpdate: (id: string, data: Partial<ImportedRevenue>) => void;
-    onRegisterFinancials: (revenue: ImportedRevenue) => void;
     onBatchCommissionClosing: (data: any) => Promise<void>;
     onClearAll: () => void;
     globalTaxRate: number;
     userId?: string;
-}> = ({ importedRevenues, advisors, onDelete, onAdd, onUpdate, onRegisterFinancials, onBatchCommissionClosing, onClearAll, globalTaxRate, userId }) => {
+}> = ({ importedRevenues, advisors, onDelete, onAdd, onUpdate, onBatchCommissionClosing, onClearAll, globalTaxRate, userId }) => {
     const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
     const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all');
     const [selectedAdvisorId, setSelectedAdvisorId] = useState<string>('all');
@@ -2085,7 +2054,6 @@ const ImportedRevenuesView: FC<{
             revenueAmount: acc.revenueAmount + (r.revenueAmount || 0),
             advisorNetTotal: acc.advisorNetTotal + (r.advisorNetTotal || 0),
             officeNetRevenue: acc.officeNetRevenue + (r.officeNetRevenue || 0),
-            totalTaxProvision: acc.totalTaxProvision + (r.totalTaxProvision || 0),
             referralAmount: acc.referralAmount + (r.referralAmount || 0),
             productionResult: acc.productionResult + (r.productionResult || 0),
             cashResult: acc.cashResult + (r.cashResult || 0),
@@ -2095,7 +2063,6 @@ const ImportedRevenuesView: FC<{
             revenueAmount: 0, 
             advisorNetTotal: 0, 
             officeNetRevenue: 0, 
-            totalTaxProvision: 0, 
             referralAmount: 0, 
             productionResult: 0, 
             cashResult: 0,
@@ -2394,7 +2361,7 @@ const ImportedRevenuesView: FC<{
             </Card>
             
             <Card className="p-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
                     <div>
                         <label className="block text-xs font-medium text-text-secondary mb-1 uppercase tracking-wider">Produção Total dos Assessores</label>
                         <p className="text-xl font-bold text-text-primary">{formatCurrency(totals.revenueAmount)}</p>
@@ -2406,10 +2373,6 @@ const ImportedRevenuesView: FC<{
                     <div>
                         <label className="block text-xs font-medium text-text-secondary mb-1 uppercase tracking-wider">Repasse da Corretora</label>
                         <p className={`text-xl font-bold ${totals.cashEntryAmount < 0 ? 'text-danger' : 'text-green-400'}`}>{formatCurrency(totals.cashEntryAmount)}</p>
-                    </div>
-                    <div>
-                        <label className="block text-xs font-medium text-text-secondary mb-1 uppercase tracking-wider">Estimativa de Imposto</label>
-                        <p className="text-xl font-bold text-danger">{formatCurrency(totals.totalTaxProvision)}</p>
                     </div>
                     <div className="bg-primary/5 p-2 rounded border border-primary/20">
                         <label className="block text-xs font-bold text-primary mb-1 uppercase tracking-wider">Resultado da Produção</label>
@@ -2479,7 +2442,6 @@ const ImportedRevenuesView: FC<{
                                 <th className="p-4">Comissão Líquida</th>
                                 <th className="p-4">Resultado Assessor</th>
                                 <th className="p-4">Participação do Escritório</th>
-                                <th className="p-4">Estimativa de Imposto</th>
                                 <th className="p-4 text-center">Status Financeiro</th>
                                 <th className="p-4 text-right">Ações</th>
                             </tr>
@@ -2528,7 +2490,6 @@ const ImportedRevenuesView: FC<{
                                         {r.advisorOperationalResult !== undefined ? formatCurrency(r.advisorOperationalResult) : '-'}
                                     </td>
                                     <td className="p-4 text-green-400 font-bold">{formatCurrency(r.officeNetRevenue || 0)}</td>
-                                    <td className="p-4 text-danger">{formatCurrency(r.totalTaxProvision || 0)}</td>
                                     <td className="p-4 text-center">
                                         <div className="flex flex-col items-center gap-1">
                                             <div className={`px-2 py-1 rounded text-[9px] font-bold uppercase ${getStatusLabel(r.status, r.lancamentosRealizados).bg} ${getStatusLabel(r.status, r.lancamentosRealizados).color}`}>
@@ -3396,103 +3357,6 @@ const App: FC = () => {
         }
     };
 
-    const handleRegisterFinancials = async (revenue: ImportedRevenue) => {
-        if (!user || revenue.status === CommissionStatus.COMPLETED || revenue.lancamentosRealizados) return;
-        try {
-            const transactionIds: any = {};
-
-            // 1. Receita Líquida do Escritório
-            if ((revenue.officeNetRevenue || 0) > 0) {
-                const incomeData = {
-                    date: revenue.date,
-                    description: `Receita Escritório: ${revenue.cliente || 'S/C'} - Ref: ${revenue.advisorName}`,
-                    amount: revenue.officeNetRevenue,
-                    type: TransactionType.INCOME,
-                    category: 'Taxa de Consultoria',
-                    clientSupplier: revenue.cliente || 'Cliente',
-                    paymentMethod: 'Transferência Bancária',
-                    costCenter: 'conta-pj',
-                    grossAmount: revenue.officeShare,
-                    taxAmount: revenue.officeTax,
-                    taxRate: revenue.taxRate
-                };
-                const docRef = await saveTransaction(incomeData as any, user.uid);
-                transactionIds.revenue = docRef.id;
-                setTransactions(prev => [{ id: docRef.id, ...incomeData } as unknown as Transaction, ...prev]);
-            }
-
-            // 2. Despesa de comissão do assessor responsável
-            if ((revenue.responsibleAdvisorNet || 0) > 0) {
-                const expenseData = {
-                    date: revenue.date,
-                    description: `Comissão Assessor (Resp): ${revenue.advisorName} - ${revenue.cliente || 'S/C'}`,
-                    amount: revenue.responsibleAdvisorNet,
-                    type: TransactionType.EXPENSE,
-                    category: 'Remuneração de Assessores',
-                    clientSupplier: revenue.advisorName,
-                    paymentMethod: 'Transferência Bancária',
-                    status: ExpenseStatus.PAID,
-                    nature: ExpenseNature.VARIABLE,
-                    costCenter: 'conta-pj',
-                    advisorId: revenue.advisorId
-                };
-                const docRef = await saveTransaction(expenseData as any, user.uid);
-                transactionIds.commission = docRef.id;
-                setTransactions(prev => [{ id: docRef.id, ...expenseData } as unknown as Transaction, ...prev]);
-            }
-
-            // 3. Despesa de comissão do assessor indicador (se houver)
-            if (revenue.referralAdvisorId && (revenue.referralAmount || 0) > 0) {
-                const referralExpenseData = {
-                    date: revenue.date,
-                    description: `Comissão Assessor (Indicação): ${revenue.referralAdvisorName} - Ref: ${revenue.advisorName} / ${revenue.cliente || 'S/C'}`,
-                    amount: revenue.referralAmount,
-                    type: TransactionType.EXPENSE,
-                    category: 'Remuneração de Assessores',
-                    clientSupplier: revenue.referralAdvisorName,
-                    paymentMethod: 'Transferência Bancária',
-                    status: ExpenseStatus.PAID,
-                    nature: ExpenseNature.VARIABLE,
-                    costCenter: 'conta-pj',
-                    advisorId: revenue.referralAdvisorId
-                };
-                const docRef = await saveTransaction(referralExpenseData as any, user.uid);
-                transactionIds.referral = docRef.id;
-                setTransactions(prev => [{ id: docRef.id, ...referralExpenseData } as unknown as Transaction, ...prev]);
-            }
-
-            // 4. Provisão de impostos (Imposto Assessor + Imposto Escritório)
-            if ((revenue.totalTaxProvision || 0) > 0) {
-                const taxProvisionData = {
-                    date: revenue.date,
-                    description: `Provisão de Impostos: ${revenue.cliente || 'S/C'} - Ref: ${revenue.advisorName}`,
-                    amount: revenue.totalTaxProvision,
-                    type: TransactionType.EXPENSE,
-                    category: 'Impostos e Taxas',
-                    clientSupplier: 'Provisão Tributária',
-                    paymentMethod: 'Outros',
-                    status: ExpenseStatus.PAID,
-                    nature: ExpenseNature.VARIABLE,
-                    costCenter: 'provisao-impostos'
-                };
-                const docRef = await saveTransaction(taxProvisionData as any, user.uid);
-                transactionIds.tax = docRef.id;
-                setTransactions(prev => [{ id: docRef.id, ...taxProvisionData } as unknown as Transaction, ...prev]);
-            }
-
-            // Atualizar o status do registro de receita
-            await handleUpdateImportedRevenue(revenue.id, { 
-                status: CommissionStatus.COMPLETED,
-                lancamentosRealizados: true,
-                transactionIds
-            });
-            alert("Lançamentos financeiros realizados com sucesso!");
-        } catch (error) {
-            console.error(error);
-            alert("Erro ao realizar lançamentos financeiros.");
-        }
-    };
-
     const handleDeleteRevenue = async (id: string) => {
         if (!user || !window.confirm("Excluir?")) return;
         await deleteImportedRevenue(id);
@@ -3521,26 +3385,7 @@ const App: FC = () => {
             const date = new Date(Date.UTC(closingData.year, closingData.month, 1)).toISOString();
             const refPeriod = `${months[closingData.month]}/${closingData.year}`;
 
-            // 1. Lançamento de Receita ou Estorno (Entrada no Caixa da Empresa)
-            if (closingData.cashEntryAmount !== 0) {
-                const isNegative = closingData.cashEntryAmount < 0;
-                const incomeData = {
-                    date,
-                    description: isNegative 
-                        ? `Estorno/Ajuste Corretora - Ref: ${closingData.advisorName} - ${refPeriod}`
-                        : `Entrada Receita Corretora - Ref: ${closingData.advisorName} - ${refPeriod}`,
-                    amount: Math.abs(closingData.cashEntryAmount),
-                    type: isNegative ? TransactionType.EXPENSE : TransactionType.INCOME,
-                    category: isNegative ? 'Ajustes de Receita' : 'Taxa de Consultoria',
-                    clientSupplier: 'Corretora',
-                    paymentMethod: 'Transferência Bancária',
-                    costCenter: 'conta-pj',
-                };
-                const docRef = await saveTransaction(incomeData as any, user.uid);
-                setTransactions(prev => [{ id: docRef.id, ...incomeData } as unknown as Transaction, ...prev]);
-            }
-
-            // 2. Lançamento de Comissão do Assessor (Única despesa automática)
+            // 1. Lançamento de Comissão do Assessor (Única despesa automática)
             if (closingData.advisorNet > 0) {
                 const commissionData = {
                     date,
@@ -3559,7 +3404,7 @@ const App: FC = () => {
                 setTransactions(prev => [{ id: docRef.id, ...commissionData } as unknown as Transaction, ...prev]);
             }
 
-            // 3. Lançamento de Indicação (Também é uma comissão paga a assessor)
+            // 2. Lançamento de Indicação (Também é uma comissão paga a assessor)
             if (closingData.hasReferral && closingData.referralAmount > 0) {
                 const referralData = {
                     date,
@@ -3579,9 +3424,9 @@ const App: FC = () => {
             }
 
             // OBS: CRM e Impostos não geram lançamentos financeiros automáticos conforme regra de negócio.
-            // O imposto é apenas para controle visual interno.
+            // Receitas devem ser lançadas manualmente na aba Transações.
 
-            // 5. Atualizar status e dados dos registros de receita importados
+            // 3. Atualizar status e dados dos registros de receita importados
             const totalRevenueInBatch = closingData.generatedRevenue;
             const updatedRecords: Record<string, Partial<ImportedRevenue>> = {};
 
@@ -3593,7 +3438,6 @@ const App: FC = () => {
                     advisorId: closingData.advisorId,
                     advisorName: closingData.advisorName,
                     revenueAmount: 0,
-                    taxRate: closingData.taxRate,
                     observacao: `Fechamento operacional sem receita - Ref: ${refPeriod}`,
                     status: CommissionStatus.COMPLETED,
                     advisorOperationalResult: closingData.advisorOperationalResult,
@@ -3629,11 +3473,11 @@ const App: FC = () => {
                         crmCost: round(closingData.crmCost * proportion),
                         advisorShare: round(closingData.advisorShare * proportion),
                         officeShare: round(closingData.officeShare * proportion),
-                        advisorTax: round(closingData.advisorTax * proportion),
-                        officeTax: round(closingData.officeTax * proportion),
+                        advisorTax: 0,
+                        officeTax: 0,
                         advisorNetTotal: round(closingData.advisorNet * proportion),
                         officeNetRevenue: round(closingData.officeNet * proportion),
-                        totalTaxProvision: round((closingData.advisorTax + closingData.officeTax) * proportion),
+                        totalTaxProvision: 0,
                         referralAmount: round(closingData.referralAmount * proportion)
                     };
 
@@ -3674,7 +3518,7 @@ const App: FC = () => {
                         <>
                             {activeView === 'dashboard' && <DashboardView transactions={transactions} goals={goals} onSetPaid={handleSetPaid} onEdit={handleEditTransaction} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} globalTaxRate={globalTaxRate} importedRevenues={importedRevenues} />}
                             {activeView === 'transactions' && <TransactionsView transactions={transactions} onAdd={handleAddTransaction} onEdit={handleEditTransaction} onDelete={handleDeleteTransaction} onSetPaid={handleSetPaid} onToggleReconciliation={handleToggleReconciliation} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} onImportTransactions={handleImportTransactions} globalTaxRate={globalTaxRate} importedRevenues={importedRevenues} userId={user.uid} />}
-                            {activeView === 'imported-revenues' && <ImportedRevenuesView importedRevenues={importedRevenues} advisors={advisors} onDelete={handleDeleteRevenue} onAdd={handleAddImportedRevenue} onUpdate={handleUpdateImportedRevenue} onRegisterFinancials={handleRegisterFinancials} onBatchCommissionClosing={handleBatchCommissionClosing} onClearAll={handleClearAllRevenues} globalTaxRate={globalTaxRate} userId={user.uid} />}
+                            {activeView === 'imported-revenues' && <ImportedRevenuesView importedRevenues={importedRevenues} advisors={advisors} onDelete={handleDeleteRevenue} onAdd={handleAddImportedRevenue} onUpdate={handleUpdateImportedRevenue} onBatchCommissionClosing={handleBatchCommissionClosing} onClearAll={handleClearAllRevenues} globalTaxRate={globalTaxRate} userId={user.uid} />}
                             {activeView === 'reports' && <ReportsView transactions={transactions} importedRevenues={importedRevenues} />}
                             {activeView === 'goals' && <GoalsView goals={goals} onAdd={v => setGoals([...goals, { ...v, id: crypto.randomUUID(), currentAmount: round(0) }])} onUpdateProgress={(id, amount) => setGoals(goals.map(g => g.id === id ? { ...g, currentAmount: round((Number(g.currentAmount) || 0) + (Number(amount) || 0)) } : g))} onDelete={id => setGoals(goals.filter(g => g.id !== id))} />}
                             {activeView === 'partnership' && <PartnershipView partners={partners} onSave={handleSavePartnership} />}
