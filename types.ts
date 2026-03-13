@@ -93,6 +93,7 @@ export interface ImportedRevenue {
     productionResult?: number;
     cashResult?: number;
     cashEntryAmount?: number;
+    crmCost?: number;
     
     // Status e Rastreabilidade
     status?: CommissionStatus;

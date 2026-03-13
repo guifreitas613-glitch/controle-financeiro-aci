@@ -2081,15 +2081,44 @@ const ImportedRevenuesView: FC<{
     }, [filteredRevenues, selectedRevenueIds]);
 
     const totals = useMemo(() => {
-        return filteredRevenues.reduce((acc, r) => ({
+        const rawTotals = filteredRevenues.reduce((acc, r) => ({
             revenueAmount: acc.revenueAmount + (r.revenueAmount || 0),
             advisorNetTotal: acc.advisorNetTotal + (r.advisorNetTotal || 0),
             officeNetRevenue: acc.officeNetRevenue + (r.officeNetRevenue || 0),
             totalTaxProvision: acc.totalTaxProvision + (r.totalTaxProvision || 0),
             referralAmount: acc.referralAmount + (r.referralAmount || 0),
             productionResult: acc.productionResult + (r.productionResult || 0),
-            cashResult: acc.cashResult + (r.cashResult || 0)
-        }), { revenueAmount: 0, advisorNetTotal: 0, officeNetRevenue: 0, totalTaxProvision: 0, referralAmount: 0, productionResult: 0, cashResult: 0 });
+            cashResult: acc.cashResult + (r.cashResult || 0),
+            cashEntryAmount: acc.cashEntryAmount + (r.cashEntryAmount || 0),
+            crmCost: acc.crmCost + (r.crmCost || 0)
+        }), { 
+            revenueAmount: 0, 
+            advisorNetTotal: 0, 
+            officeNetRevenue: 0, 
+            totalTaxProvision: 0, 
+            referralAmount: 0, 
+            productionResult: 0, 
+            cashResult: 0,
+            cashEntryAmount: 0,
+            crmCost: 0
+        });
+
+        // Aplicando as fórmulas solicitadas para garantir consistência total
+        // Comissões Pagas = Comissão Líquida + Repasses de Indicação
+        const totalCommissionsPaid = round(rawTotals.advisorNetTotal + rawTotals.referralAmount);
+        
+        // Resultado da Produção = Produção Total - CRM Total - Comissões Pagas
+        const productionResult = round(rawTotals.revenueAmount - rawTotals.crmCost - totalCommissionsPaid);
+        
+        // Resultado de Caixa = Repasse da Corretora - Comissões Pagas
+        const cashResult = round(rawTotals.cashEntryAmount - totalCommissionsPaid);
+
+        return {
+            ...rawTotals,
+            totalCommissionsPaid,
+            productionResult,
+            cashResult
+        };
     }, [filteredRevenues]);
 
     const advisorSummary = useMemo(() => {
@@ -2367,16 +2396,16 @@ const ImportedRevenuesView: FC<{
             <Card className="p-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-4">
                     <div>
-                        <label className="block text-xs font-medium text-text-secondary mb-1 uppercase tracking-wider">Receita Total Assessores</label>
+                        <label className="block text-xs font-medium text-text-secondary mb-1 uppercase tracking-wider">Produção Total dos Assessores</label>
                         <p className="text-xl font-bold text-text-primary">{formatCurrency(totals.revenueAmount)}</p>
                     </div>
                     <div>
                         <label className="block text-xs font-medium text-text-secondary mb-1 uppercase tracking-wider">Comissões Pagas</label>
-                        <p className="text-xl font-bold text-primary">{formatCurrency(totals.advisorNetTotal)}</p>
+                        <p className="text-xl font-bold text-primary">{formatCurrency(totals.totalCommissionsPaid)}</p>
                     </div>
                     <div>
-                        <label className="block text-xs font-medium text-text-secondary mb-1 uppercase tracking-wider">Receita Líquida Escritório</label>
-                        <p className="text-xl font-bold text-green-400">{formatCurrency(totals.officeNetRevenue)}</p>
+                        <label className="block text-xs font-medium text-text-secondary mb-1 uppercase tracking-wider">Repasse da Corretora</label>
+                        <p className={`text-xl font-bold ${totals.cashEntryAmount < 0 ? 'text-danger' : 'text-green-400'}`}>{formatCurrency(totals.cashEntryAmount)}</p>
                     </div>
                     <div>
                         <label className="block text-xs font-medium text-text-secondary mb-1 uppercase tracking-wider">Estimativa de Imposto</label>
@@ -3492,15 +3521,17 @@ const App: FC = () => {
             const date = new Date(Date.UTC(closingData.year, closingData.month, 1)).toISOString();
             const refPeriod = `${months[closingData.month]}/${closingData.year}`;
 
-            // 1. Lançamento de Receita (Entrada no Caixa da Empresa)
-            // Apenas se houve entrada de fato
-            if (closingData.hasBrokerPayout && closingData.cashEntryAmount > 0) {
+            // 1. Lançamento de Receita ou Estorno (Entrada no Caixa da Empresa)
+            if (closingData.cashEntryAmount !== 0) {
+                const isNegative = closingData.cashEntryAmount < 0;
                 const incomeData = {
                     date,
-                    description: `Entrada Receita Corretora - Ref: ${closingData.advisorName} - ${refPeriod}`,
-                    amount: closingData.cashEntryAmount,
-                    type: TransactionType.INCOME,
-                    category: 'Taxa de Consultoria',
+                    description: isNegative 
+                        ? `Estorno/Ajuste Corretora - Ref: ${closingData.advisorName} - ${refPeriod}`
+                        : `Entrada Receita Corretora - Ref: ${closingData.advisorName} - ${refPeriod}`,
+                    amount: Math.abs(closingData.cashEntryAmount),
+                    type: isNegative ? TransactionType.EXPENSE : TransactionType.INCOME,
+                    category: isNegative ? 'Ajustes de Receita' : 'Taxa de Consultoria',
                     clientSupplier: 'Corretora',
                     paymentMethod: 'Transferência Bancária',
                     costCenter: 'conta-pj',
@@ -3569,6 +3600,7 @@ const App: FC = () => {
                     productionResult: closingData.productionResult,
                     cashResult: closingData.cashResult,
                     cashEntryAmount: closingData.cashEntryAmount,
+                    crmCost: closingData.crmCost,
                     advisorShare: 0,
                     officeShare: 0,
                     advisorTax: 0,
@@ -3594,6 +3626,7 @@ const App: FC = () => {
                         productionResult: round(closingData.productionResult * proportion),
                         cashResult: round(closingData.cashResult * proportion),
                         cashEntryAmount: round(closingData.cashEntryAmount * proportion),
+                        crmCost: round(closingData.crmCost * proportion),
                         advisorShare: round(closingData.advisorShare * proportion),
                         officeShare: round(closingData.officeShare * proportion),
                         advisorTax: round(closingData.advisorTax * proportion),
