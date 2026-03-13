@@ -90,7 +90,8 @@ export interface ImportedRevenue {
     
     // Novos campos operacionais
     advisorOperationalResult?: number;
-    officeOperationalResult?: number;
+    productionResult?: number;
+    cashResult?: number;
     cashEntryAmount?: number;
     
     // Status e Rastreabilidade

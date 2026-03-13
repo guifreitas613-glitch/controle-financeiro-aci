@@ -1714,16 +1714,21 @@ const CommissionClosingModal: FC<{
 
     const advisorOperationalResult = round(generatedRevenue - crmCost);
     const baseAmount = advisorOperationalResult;
-    const advisorShare = baseAmount > 0 ? round(baseAmount * (advisorPercent / 100)) : 0;
-    const officeShare = (baseAmount > 0 && hasBrokerPayout) ? round(baseAmount * (officePercent / 100)) : 0;
+    
+    // Regras de comissão: Se a base de cálculo for negativa:
+    // Comissão do assessor = 0, Parte do escritório = 0, Impostos = 0
+    const canCalculateCommissions = baseAmount > 0;
+
+    const advisorShare = canCalculateCommissions ? round(baseAmount * (advisorPercent / 100)) : 0;
+    const officeShare = (canCalculateCommissions && hasBrokerPayout) ? round(baseAmount * (officePercent / 100)) : 0;
     
     let referralAmount = 0;
-    if (hasReferral && referralPercentage > 0) {
+    if (hasReferral && referralPercentage > 0 && canCalculateCommissions) {
         referralAmount = round(advisorShare * (referralPercentage / 100));
     }
     
     const advisorBaseAfterReferral = round(advisorShare - referralAmount);
-    const advisorTax = round(advisorBaseAfterReferral * (taxRate / 100));
+    const advisorTax = canCalculateCommissions ? round(advisorBaseAfterReferral * (taxRate / 100)) : 0;
     const advisorNet = round(advisorBaseAfterReferral - advisorTax);
     
     const officeTax = officeShare > 0 ? round(officeShare * (taxRate / 100)) : 0;
@@ -1732,7 +1737,11 @@ const CommissionClosingModal: FC<{
     // Provisão de imposto visual
     const totalTaxProvision = round(advisorTax + officeTax);
 
-    const officeOperationalResult = round(generatedRevenue - crmCost - (advisorNet + referralAmount));
+    // Resultado da Produção = Receita Total Gerada − Custo de CRM − Comissão Líquida do Assessor
+    const productionResult = round(generatedRevenue - crmCost - (advisorNet + referralAmount));
+    
+    // Resultado de Caixa = Entrada no Caixa da Corretora − Comissão Líquida do Assessor
+    const cashResult = round(cashEntryAmount - (advisorNet + referralAmount));
 
     const handleConfirm = () => {
         const referralAdvisor = advisors.find(a => a.id === referralAdvisorId);
@@ -1755,7 +1764,8 @@ const CommissionClosingModal: FC<{
             advisorNet,
             officeNet,
             advisorOperationalResult,
-            officeOperationalResult,
+            productionResult,
+            cashResult,
             hasReferral,
             referralAdvisorId: hasReferral ? referralAdvisorId : undefined,
             referralAdvisorName: hasReferral ? referralAdvisor?.name : undefined,
@@ -1882,10 +1892,16 @@ const CommissionClosingModal: FC<{
                                         {formatCurrency(advisorOperationalResult)}
                                     </span>
                                 </div>
+                                <div className="flex justify-between text-xs">
+                                    <span className="text-text-secondary">Resultado da Produção:</span>
+                                    <span className={productionResult < 0 ? 'text-danger font-bold' : 'font-bold'}>
+                                        {formatCurrency(productionResult)}
+                                    </span>
+                                </div>
                                 <div className="flex justify-between text-xs border-b border-border-color/30 pb-1 mb-1">
-                                    <span className="text-text-secondary">Resultado Operacional Escritório:</span>
-                                    <span className={officeOperationalResult < 0 ? 'text-danger font-bold' : 'font-bold'}>
-                                        {formatCurrency(officeOperationalResult)}
+                                    <span className="text-text-secondary">Resultado de Caixa do Escritório:</span>
+                                    <span className={cashResult < 0 ? 'text-danger font-bold' : 'font-bold'}>
+                                        {formatCurrency(cashResult)}
                                     </span>
                                 </div>
                                 <div className="flex justify-between text-xs">
@@ -2047,8 +2063,9 @@ const ImportedRevenuesView: FC<{
             officeNetRevenue: acc.officeNetRevenue + (r.officeNetRevenue || 0),
             totalTaxProvision: acc.totalTaxProvision + (r.totalTaxProvision || 0),
             referralAmount: acc.referralAmount + (r.referralAmount || 0),
-            officeOperationalResult: acc.officeOperationalResult + (r.officeOperationalResult || 0)
-        }), { revenueAmount: 0, advisorNetTotal: 0, officeNetRevenue: 0, totalTaxProvision: 0, referralAmount: 0, officeOperationalResult: 0 });
+            productionResult: acc.productionResult + (r.productionResult || 0),
+            cashResult: acc.cashResult + (r.cashResult || 0)
+        }), { revenueAmount: 0, advisorNetTotal: 0, officeNetRevenue: 0, totalTaxProvision: 0, referralAmount: 0, productionResult: 0, cashResult: 0 });
     }, [filteredRevenues]);
 
     const advisorSummary = useMemo(() => {
@@ -2059,13 +2076,21 @@ const ImportedRevenuesView: FC<{
         const generated = filteredRevenues.filter(r => r.advisorId === selectedAdvisorId);
         const referrals = filteredRevenues.filter(r => r.referralAdvisorId === selectedAdvisorId);
 
+        // Custo Acumulado: soma de todos os advisorOperationalResult do histórico (independente de filtro de data)
+        const allAdvisorClosings = importedRevenues.filter(r => 
+            r.advisorId === selectedAdvisorId && 
+            (r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados)
+        );
+        const accumulatedCost = allAdvisorClosings.reduce((sum, r) => sum + (r.advisorOperationalResult || 0), 0);
+
         return {
             name: advisor.name,
             generatedRevenue: generated.reduce((sum, r) => sum + (r.revenueAmount || 0), 0),
             totalCommission: generated.reduce((sum, r) => sum + (r.advisorNetTotal || 0), 0),
-            referralsPaid: referrals.reduce((sum, r) => sum + (r.referralAmount || 0), 0)
+            referralsPaid: referrals.reduce((sum, r) => sum + (r.referralAmount || 0), 0),
+            accumulatedCost
         };
-    }, [filteredRevenues, selectedAdvisorId, advisors]);
+    }, [filteredRevenues, importedRevenues, selectedAdvisorId, advisors]);
 
     const getStatusLabel = (status?: CommissionStatus, lancamentosRealizados?: boolean) => {
         if (status === CommissionStatus.COMPLETED || lancamentosRealizados) return { label: 'Lançamento Completo', color: 'text-green-400', bg: 'bg-green-400/10' };
@@ -2263,7 +2288,7 @@ const ImportedRevenuesView: FC<{
                         onClick={() => setIsClosingModalOpen(true)} 
                         variant="success" 
                         className="text-sm"
-                        disabled={selectedAdvisorId === 'all' || selectedRevenueIds.size === 0}
+                        disabled={selectedAdvisorId === 'all'}
                     >
                         <CheckCircleIcon className="w-4 h-4 mr-2"/> Fechar comissões ({selectedRevenueIds.size})
                     </Button>
@@ -2316,7 +2341,7 @@ const ImportedRevenuesView: FC<{
             </Card>
             
             <Card className="p-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-4">
                     <div>
                         <label className="block text-xs font-medium text-text-secondary mb-1 uppercase tracking-wider">Receita Total Assessores</label>
                         <p className="text-xl font-bold text-text-primary">{formatCurrency(totals.revenueAmount)}</p>
@@ -2334,9 +2359,15 @@ const ImportedRevenuesView: FC<{
                         <p className="text-xl font-bold text-danger">{formatCurrency(totals.totalTaxProvision)}</p>
                     </div>
                     <div className="bg-primary/5 p-2 rounded border border-primary/20">
-                        <label className="block text-xs font-bold text-primary mb-1 uppercase tracking-wider">Resultado Operacional Escritório</label>
-                        <p className={`text-xl font-bold ${totals.officeOperationalResult < 0 ? 'text-danger' : 'text-primary'}`}>
-                            {formatCurrency(totals.officeOperationalResult)}
+                        <label className="block text-xs font-bold text-primary mb-1 uppercase tracking-wider">Resultado da Produção</label>
+                        <p className={`text-xl font-bold ${totals.productionResult < 0 ? 'text-danger' : 'text-primary'}`}>
+                            {formatCurrency(totals.productionResult)}
+                        </p>
+                    </div>
+                    <div className="bg-primary/5 p-2 rounded border border-primary/20">
+                        <label className="block text-xs font-bold text-primary mb-1 uppercase tracking-wider">Resultado de Caixa do Escritório</label>
+                        <p className={`text-xl font-bold ${totals.cashResult < 0 ? 'text-danger' : 'text-primary'}`}>
+                            {formatCurrency(totals.cashResult)}
                         </p>
                     </div>
                 </div>
@@ -2349,7 +2380,7 @@ const ImportedRevenuesView: FC<{
                             <h3 className="text-sm font-bold text-primary uppercase tracking-tight">Resumo: {advisorSummary.name}</h3>
                             <p className="text-xs text-text-secondary">Consolidado do período selecionado</p>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 w-full md:w-auto">
+                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-6 w-full md:w-auto">
                             <div>
                                 <label className="block text-[10px] text-text-secondary uppercase">Receita Gerada</label>
                                 <p className="text-sm font-bold">{formatCurrency(advisorSummary.generatedRevenue)}</p>
@@ -2361,6 +2392,12 @@ const ImportedRevenuesView: FC<{
                             <div>
                                 <label className="block text-[10px] text-text-secondary uppercase">Indicações Recebidas</label>
                                 <p className="text-sm font-bold text-green-400">{formatCurrency(advisorSummary.referralsPaid)}</p>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] text-text-secondary uppercase">Custo Acumulado do Assessor</label>
+                                <p className={`text-sm font-bold ${advisorSummary.accumulatedCost < 0 ? 'text-danger' : 'text-green-400'}`}>
+                                    {formatCurrency(advisorSummary.accumulatedCost)}
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -3493,30 +3530,59 @@ const App: FC = () => {
             const totalRevenueInBatch = closingData.generatedRevenue;
             const updatedRecords: Record<string, Partial<ImportedRevenue>> = {};
 
-            for (const id of closingData.revenueIds) {
-                const record = importedRevenues.find(r => r.id === id);
-                if (!record) continue;
-                
-                const proportion = totalRevenueInBatch > 0 ? (record.revenueAmount / totalRevenueInBatch) : (1 / closingData.revenueIds.length);
-                
-                const updateData = { 
+            if (closingData.revenueIds.length === 0) {
+                // Caso sem receita: criar um registro "dummy" para histórico
+                const dummyRevenue: Partial<ImportedRevenue> = {
+                    date,
+                    cliente: 'FECHAMENTO SEM RECEITA',
+                    advisorId: closingData.advisorId,
+                    advisorName: closingData.advisorName,
+                    revenueAmount: 0,
+                    taxRate: closingData.taxRate,
+                    observacao: `Fechamento operacional sem receita - Ref: ${refPeriod}`,
                     status: CommissionStatus.COMPLETED,
-                    lancamentosRealizados: true,
-                    advisorOperationalResult: round(closingData.advisorOperationalResult * proportion),
-                    officeOperationalResult: round(closingData.officeOperationalResult * proportion),
-                    cashEntryAmount: round(closingData.cashEntryAmount * proportion),
-                    advisorShare: round(closingData.advisorShare * proportion),
-                    officeShare: round(closingData.officeShare * proportion),
-                    advisorTax: round(closingData.advisorTax * proportion),
-                    officeTax: round(closingData.officeTax * proportion),
-                    advisorNetTotal: round(closingData.advisorNet * proportion),
-                    officeNetRevenue: round(closingData.officeNet * proportion),
-                    totalTaxProvision: round((closingData.advisorTax + closingData.officeTax) * proportion),
-                    referralAmount: round(closingData.referralAmount * proportion)
+                    advisorOperationalResult: closingData.advisorOperationalResult,
+                    productionResult: closingData.productionResult,
+                    cashResult: closingData.cashResult,
+                    cashEntryAmount: closingData.cashEntryAmount,
+                    advisorShare: 0,
+                    officeShare: 0,
+                    advisorTax: 0,
+                    officeTax: 0,
+                    advisorNetTotal: 0,
+                    officeNetRevenue: 0,
+                    totalTaxProvision: 0,
+                    referralAmount: 0
                 };
+                const docRef = await saveImportedRevenue(dummyRevenue as any, user.uid);
+                setImportedRevenues(prev => [{ id: docRef.id, ...dummyRevenue } as ImportedRevenue, ...prev]);
+            } else {
+                for (const id of closingData.revenueIds) {
+                    const record = importedRevenues.find(r => r.id === id);
+                    if (!record) continue;
+                    
+                    const proportion = totalRevenueInBatch > 0 ? (record.revenueAmount / totalRevenueInBatch) : (1 / closingData.revenueIds.length);
+                    
+                    const updateData = { 
+                        status: CommissionStatus.COMPLETED,
+                        lancamentosRealizados: true,
+                        advisorOperationalResult: round(closingData.advisorOperationalResult * proportion),
+                        productionResult: round(closingData.productionResult * proportion),
+                        cashResult: round(closingData.cashResult * proportion),
+                        cashEntryAmount: round(closingData.cashEntryAmount * proportion),
+                        advisorShare: round(closingData.advisorShare * proportion),
+                        officeShare: round(closingData.officeShare * proportion),
+                        advisorTax: round(closingData.advisorTax * proportion),
+                        officeTax: round(closingData.officeTax * proportion),
+                        advisorNetTotal: round(closingData.advisorNet * proportion),
+                        officeNetRevenue: round(closingData.officeNet * proportion),
+                        totalTaxProvision: round((closingData.advisorTax + closingData.officeTax) * proportion),
+                        referralAmount: round(closingData.referralAmount * proportion)
+                    };
 
-                updatedRecords[id] = updateData;
-                await handleUpdateImportedRevenue(id, updateData);
+                    updatedRecords[id] = updateData;
+                    await handleUpdateImportedRevenue(id, updateData);
+                }
             }
 
             // Atualizar estado local
