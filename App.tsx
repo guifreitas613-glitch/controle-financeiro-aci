@@ -1751,7 +1751,7 @@ const CommissionClosingModal: FC<{
             month,
             year,
             generatedRevenue,
-            cashEntryAmount: hasBrokerPayout ? cashEntryAmount : 0,
+            cashEntryAmount: cashEntryAmount,
             hasBrokerPayout,
             crmCost,
             taxRate,
@@ -1821,14 +1821,38 @@ const CommissionClosingModal: FC<{
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase">Status do Repasse</label>
-                                    <select value={hasBrokerPayout ? 'yes' : 'no'} onChange={e => setHasBrokerPayout(e.target.value === 'yes')} className="w-full p-2 bg-background border border-border-color rounded text-sm">
+                                    <select 
+                                        value={hasBrokerPayout ? 'yes' : 'no'} 
+                                        onChange={e => {
+                                            const isPositive = e.target.value === 'yes';
+                                            setHasBrokerPayout(isPositive);
+                                            if (!isPositive && cashEntryAmount > 0) {
+                                                setCashEntryAmount(-Math.abs(cashEntryAmount));
+                                            } else if (isPositive && cashEntryAmount < 0) {
+                                                setCashEntryAmount(Math.abs(cashEntryAmount));
+                                            }
+                                        }} 
+                                        className="w-full p-2 bg-background border border-border-color rounded text-sm"
+                                    >
                                         <option value="yes">Repasse recebido</option>
                                         <option value="no">Repasse igual a zero ou negativo</option>
                                     </select>
                                 </div>
                                 <div>
                                     <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase">Entrada no Caixa (R$)</label>
-                                    <input type="number" value={cashEntryAmount} onChange={e => setCashEntryAmount(Number(e.target.value))} className="w-full p-2 bg-background border border-border-color rounded text-sm" />
+                                    <input 
+                                        type="number" 
+                                        value={cashEntryAmount} 
+                                        onChange={e => {
+                                            const val = Number(e.target.value);
+                                            if (!hasBrokerPayout && val > 0) {
+                                                setCashEntryAmount(-val);
+                                            } else {
+                                                setCashEntryAmount(val);
+                                            }
+                                        }} 
+                                        className="w-full p-2 bg-background border border-border-color rounded text-sm" 
+                                    />
                                 </div>
                             </div>
                         </div>
