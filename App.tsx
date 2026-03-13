@@ -1545,9 +1545,30 @@ const TransactionsView: FC<{
                                     <td className={`p-4 text-right font-bold ${t.type === TransactionType.INCOME ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(t.amount)}</td>
                                     {activeTab === TransactionType.EXPENSE && (
                                         <td className="p-4 text-center">
-                                            <span className={`px-3 py-1 rounded text-[10px] font-black uppercase ${t.status === ExpenseStatus.PAID ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-500'}`}>
-                                                {t.status === ExpenseStatus.PAID ? 'PAGO' : 'PENDENTE'}
-                                            </span>
+                                            {(() => {
+                                                const isPaid = t.status === ExpenseStatus.PAID;
+                                                const isOverdue = t.status === ExpenseStatus.PENDING && new Date(t.date).setHours(0,0,0,0) < new Date().setHours(0,0,0,0);
+                                                
+                                                if (isPaid) {
+                                                    return (
+                                                        <span className="px-3 py-1 rounded text-[10px] font-black uppercase bg-green-500/20 text-green-400">
+                                                            PAGO
+                                                        </span>
+                                                    );
+                                                }
+                                                if (isOverdue) {
+                                                    return (
+                                                        <span className="px-3 py-1 rounded text-[10px] font-black uppercase bg-danger/20 text-danger animate-pulse">
+                                                            VENCIDO
+                                                        </span>
+                                                    );
+                                                }
+                                                return (
+                                                    <span className="px-3 py-1 rounded text-[10px] font-black uppercase bg-yellow-500/20 text-yellow-500">
+                                                        PENDENTE
+                                                    </span>
+                                                );
+                                            })()}
                                         </td>
                                     )}
                                     <td className="p-4 text-center">
@@ -2096,19 +2117,19 @@ const ImportedRevenuesView: FC<{
         const generated = filteredRevenues.filter(r => r.advisorId === selectedAdvisorId);
         const referrals = filteredRevenues.filter(r => r.referralAdvisorId === selectedAdvisorId);
 
-        // Custo Acumulado: soma de todos os advisorOperationalResult do histórico (independente de filtro de data)
+        // Resultado Operacional: soma de todos os advisorOperationalResult do histórico (independente de filtro de data)
         const allAdvisorClosings = importedRevenues.filter(r => 
             r.advisorId === selectedAdvisorId && 
             (r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados)
         );
-        const accumulatedCost = allAdvisorClosings.reduce((sum, r) => sum + (r.advisorOperationalResult || 0), 0);
+        const operationalResult = allAdvisorClosings.reduce((sum, r) => sum + (r.advisorOperationalResult || 0), 0);
 
         return {
             name: advisor.name,
             generatedRevenue: generated.reduce((sum, r) => sum + (r.revenueAmount || 0), 0),
             totalCommission: generated.reduce((sum, r) => sum + (r.advisorNetTotal || 0), 0),
             referralsPaid: referrals.reduce((sum, r) => sum + (r.referralAmount || 0), 0),
-            accumulatedCost
+            operationalResult
         };
     }, [filteredRevenues, importedRevenues, selectedAdvisorId, advisors]);
 
@@ -2410,9 +2431,9 @@ const ImportedRevenuesView: FC<{
                                 <p className="text-sm font-bold text-green-400">{formatCurrency(advisorSummary.referralsPaid)}</p>
                             </div>
                             <div>
-                                <label className="block text-[10px] text-text-secondary uppercase">Custo Acumulado do Assessor</label>
-                                <p className={`text-sm font-bold ${advisorSummary.accumulatedCost < 0 ? 'text-danger' : 'text-green-400'}`}>
-                                    {formatCurrency(advisorSummary.accumulatedCost)}
+                                <label className="block text-[10px] text-text-secondary uppercase">Resultado Operacional do Assessor</label>
+                                <p className={`text-sm font-bold ${advisorSummary.operationalResult < 0 ? 'text-danger' : 'text-green-400'}`}>
+                                    {formatCurrency(advisorSummary.operationalResult)}
                                 </p>
                             </div>
                         </div>
@@ -3395,7 +3416,7 @@ const App: FC = () => {
                     category: 'Remuneração de Assessores',
                     clientSupplier: closingData.advisorName,
                     paymentMethod: 'Transferência Bancária',
-                    status: ExpenseStatus.PAID,
+                    status: ExpenseStatus.PENDING,
                     nature: ExpenseNature.VARIABLE,
                     costCenter: 'conta-pj',
                     advisorId: closingData.advisorId
@@ -3414,7 +3435,7 @@ const App: FC = () => {
                     category: 'Remuneração de Assessores',
                     clientSupplier: closingData.referralAdvisorName,
                     paymentMethod: 'Transferência Bancária',
-                    status: ExpenseStatus.PAID,
+                    status: ExpenseStatus.PENDING,
                     nature: ExpenseNature.VARIABLE,
                     costCenter: 'conta-pj',
                     advisorId: closingData.referralAdvisorId
