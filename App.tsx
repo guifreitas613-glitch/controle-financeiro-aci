@@ -2897,6 +2897,28 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
 
     const achievedGoals = useMemo(() => goals.filter(g => (Number(g.currentAmount) || 0) >= g.targetAmount).length, [goals]);
     
+    const strategicIndicators = useMemo(() => {
+        const netMargin = totalIncome > 0 ? (netProfit / totalIncome) * 100 : null;
+
+        const filteredRevenues = importedRevenues.filter(r => {
+            const date = new Date(r.date);
+            const year = date.getUTCFullYear();
+            const month = date.getUTCMonth();
+            return (selectedYear === 'all' || year === selectedYear) && (selectedMonth === 'all' || month === selectedMonth);
+        });
+
+        const grossProduction = round(filteredRevenues.reduce((sum, r) => sum + (r.revenueAmount || 0), 0));
+        const officeParticipation = round(filteredRevenues.reduce((sum, r) => sum + (r.advisorOperationalResult || 0), 0));
+        
+        const productionMargin = grossProduction > 0 ? (officeParticipation / grossProduction) : 0;
+
+        const fixedExpenses = round(filteredTransactions.filter(t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PAID && t.nature === ExpenseNature.FIXED).reduce((sum, t) => sum + t.amount, 0));
+
+        const breakEven = productionMargin > 0 ? round(fixedExpenses / productionMargin) : null;
+
+        return { netMargin, breakEven };
+    }, [totalIncome, netProfit, importedRevenues, selectedYear, selectedMonth, filteredTransactions]);
+
     const upcomingBills = useMemo(() => {
         const thresholdDate = new Date();
         thresholdDate.setHours(23, 59, 59, 999);
@@ -3007,10 +3029,22 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                     </select>
                 </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-6">
                 <Card className="border-l-4 border-green-400"><h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Receita Líquida</h3><p className="text-2xl font-bold text-green-400">{formatCurrency(totalIncome)}</p></Card>
                 <Card className="border-l-4 border-danger"><h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Despesa Total</h3><p className="text-2xl font-bold text-danger">{formatCurrency(totalExpense)}</p></Card>
                 <Card className="border-l-4 border-primary"><h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Lucro Líquido</h3><p className={`text-2xl font-bold ${netProfit >= 0 ? 'text-text-primary' : 'text-danger'}`}>{formatCurrency(netProfit)}</p></Card>
+                <Card className="border-l-4 border-yellow-400">
+                    <h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Margem Líquida</h3>
+                    <p className="text-2xl font-bold text-yellow-400">
+                        {strategicIndicators.netMargin !== null ? `${strategicIndicators.netMargin.toFixed(1)}%` : 'Margem indisponível'}
+                    </p>
+                </Card>
+                <Card className="border-l-4 border-purple-400">
+                    <h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Break-even de Produção</h3>
+                    <p className="text-2xl font-bold text-purple-400">
+                        {strategicIndicators.breakEven !== null ? formatCurrency(strategicIndicators.breakEven) : 'Break-even indisponível'}
+                    </p>
+                </Card>
                 <Card className="border-l-4 border-blue-400"><h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Metas Atingidas</h3><p className="text-2xl font-bold text-blue-400">{achievedGoals} <span className="text-lg text-text-secondary font-normal">/ {goals.length}</span></p></Card>
             </div>
 
