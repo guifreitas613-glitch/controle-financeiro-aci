@@ -77,13 +77,15 @@ const formatDateTime = (dateString: string) => new Date(dateString).toLocaleStri
 const formatDateForInput = (dateString: string) => new Date(dateString).toISOString().split('T')[0];
 const getMonthYear = (dateString: string) => new Date(dateString).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric', timeZone: 'UTC' });
 
-const calculateRevenueFields = (revenueAmount: number, taxRate: number, referralPercentage: number = 0) => {
-    const advisorShare = round(revenueAmount * 0.7);
-    const officeShare = round(revenueAmount * 0.3);
+const calculateRevenueFields = (revenueAmount: number, estimatedTaxRate: number, referralPercentage: number = 0) => {
+    const estimatedTax = round(revenueAmount * (estimatedTaxRate / 100));
+    const estimatedNetRevenue = round(revenueAmount - estimatedTax);
     
-    // Impostos removidos da lógica de produção conforme regra de negócio
-    const advisorTax = 0;
-    const officeTax = 0;
+    // Base da Produção (sem CRM aqui, apenas para visualização na tabela)
+    const baseProduction = estimatedNetRevenue;
+    
+    const advisorShare = round(baseProduction * 0.7); // Mantendo 70% padrão para visualização prévia
+    const officeShare = round(baseProduction - advisorShare);
     
     const advisorNetTotal = advisorShare;
     
@@ -94,18 +96,16 @@ const calculateRevenueFields = (revenueAmount: number, taxRate: number, referral
     
     const responsibleAdvisorNet = round(advisorNetTotal - referralAmount);
     const officeNetRevenue = officeShare;
-    const totalTaxProvision = 0;
 
     return {
         advisorShare,
         officeShare,
-        advisorTax,
-        officeTax,
         advisorNetTotal,
         referralAmount,
         responsibleAdvisorNet,
         officeNetRevenue,
-        totalTaxProvision
+        estimatedTax,
+        estimatedNetRevenue
     };
 };
 
@@ -913,6 +913,8 @@ interface SettingsViewProps {
     setAdvisors: React.Dispatch<React.SetStateAction<Advisor[]>>;
     globalTaxRate: number;
     setGlobalTaxRate: React.Dispatch<React.SetStateAction<number>>;
+    estimatedTaxRate: number;
+    setEstimatedTaxRate: React.Dispatch<React.SetStateAction<number>>;
 }
 
 const SettingsView: FC<SettingsViewProps> = ({ 
@@ -921,7 +923,8 @@ const SettingsView: FC<SettingsViewProps> = ({
     paymentMethods, setPaymentMethods, 
     costCenters, setCostCenters, 
     advisors, setAdvisors,
-    globalTaxRate, setGlobalTaxRate
+    globalTaxRate, setGlobalTaxRate,
+    estimatedTaxRate, setEstimatedTaxRate
 }) => {
     const [newIncomeCat, setNewIncomeCat] = useState('');
     const [newExpenseCatName, setNewExpenseCatName] = useState('');
@@ -1152,9 +1155,16 @@ const SettingsView: FC<SettingsViewProps> = ({
                 {/* IMPOSTOS E TAXAS */}
                 <Card>
                     <h3 className="font-bold mb-4 text-primary text-sm uppercase">Impostos e Taxas</h3>
-                    <div>
-                        <label className="block text-xs text-text-secondary mb-1">Alíquota Padrão de Impostos (%)</label>
-                        <input type="number" step="0.1" value={globalTaxRate} onChange={e => setGlobalTaxRate(parseFloat(e.target.value) || 0)} className="w-full bg-background border border-border-color rounded px-3 py-2 text-sm" />
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-xs text-text-secondary mb-1">Alíquota Padrão de Impostos (%) - Real</label>
+                            <input type="number" step="0.1" value={globalTaxRate} onChange={e => setGlobalTaxRate(parseFloat(e.target.value) || 0)} className="w-full bg-background border border-border-color rounded px-3 py-2 text-sm" />
+                        </div>
+                        <div>
+                            <label className="block text-xs text-text-secondary mb-1">Alíquota de Imposto Estimada (%) - Produção</label>
+                            <input type="number" step="0.1" value={estimatedTaxRate} onChange={e => setEstimatedTaxRate(parseFloat(e.target.value) || 0)} className="w-full bg-background border border-border-color rounded px-3 py-2 text-sm" />
+                            <p className="text-[10px] text-text-secondary mt-1 italic">Utilizada apenas para cálculo da base de comissão dos assessores.</p>
+                        </div>
                     </div>
                 </Card>
 
@@ -1711,8 +1721,9 @@ const CommissionClosingModal: FC<{
     year: number;
     generatedRevenue: number;
     globalTaxRate: number;
+    estimatedTaxRate: number;
     revenueIds: string[];
-}> = ({ isOpen, onClose, onConfirm, advisor, advisors, month, year, generatedRevenue, globalTaxRate, revenueIds }) => {
+}> = ({ isOpen, onClose, onConfirm, advisor, advisors, month, year, generatedRevenue, globalTaxRate, estimatedTaxRate, revenueIds }) => {
     const [hasBrokerPayout, setHasBrokerPayout] = useState(true);
     const [cashEntryAmount, setCashEntryAmount] = useState(generatedRevenue);
     const initialCrmCost = Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0));
@@ -1728,15 +1739,16 @@ const CommissionClosingModal: FC<{
         "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
     ];
 
-    const advisorOperationalResult = round(generatedRevenue - crmCost);
-    const baseAmount = advisorOperationalResult;
+    const estimatedTax = round(generatedRevenue * (estimatedTaxRate / 100));
+    const estimatedNetRevenue = round(generatedRevenue - estimatedTax);
+    const baseAmount = round(estimatedNetRevenue - crmCost);
     
     // Regras de comissão: Se a base de cálculo for negativa:
     // Comissão do assessor = 0, Parte do escritório = 0
     const canCalculateCommissions = baseAmount > 0;
 
     const advisorShare = canCalculateCommissions ? round(baseAmount * (advisorPercent / 100)) : 0;
-    const officeShare = canCalculateCommissions ? round(baseAmount * (officePercent / 100)) : 0;
+    const officeShare = canCalculateCommissions ? round(baseAmount - advisorShare) : 0;
     
     let referralAmount = 0;
     if (hasReferral && referralPercentage > 0 && canCalculateCommissions) {
@@ -1749,7 +1761,11 @@ const CommissionClosingModal: FC<{
     
     const officeNet = officeShare;
     
+    // Resultado Operacional Assessor = Base da Produção - Comissão Líquida
+    const advisorOperationalResult = round(baseAmount - advisorNet);
+    
     // Resultado da Produção = Receita Total Gerada − Custo de CRM − Comissão Líquida do Assessor
+    // Ajustado para refletir a nova lógica se necessário, mas mantendo a fórmula anterior para consistência de indicadores
     const productionResult = round(generatedRevenue - crmCost - (advisorNet + referralAmount));
     
     // Resultado de Caixa = Entrada no Caixa da Corretora − Comissão Líquida do Assessor
@@ -1763,6 +1779,9 @@ const CommissionClosingModal: FC<{
             month,
             year,
             generatedRevenue,
+            estimatedTax,
+            estimatedNetRevenue,
+            baseProduction: baseAmount,
             cashEntryAmount: cashEntryAmount,
             hasBrokerPayout,
             crmCost,
@@ -1826,47 +1845,6 @@ const CommissionClosingModal: FC<{
                         </div>
 
                         <div className="space-y-3">
-                            <p className="text-[10px] font-bold text-text-secondary uppercase border-b border-border-color pb-1">Repasse da Corretora</p>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase">Status do Repasse</label>
-                                    <select 
-                                        value={hasBrokerPayout ? 'yes' : 'no'} 
-                                        onChange={e => {
-                                            const isPositive = e.target.value === 'yes';
-                                            setHasBrokerPayout(isPositive);
-                                            if (!isPositive && cashEntryAmount > 0) {
-                                                setCashEntryAmount(-Math.abs(cashEntryAmount));
-                                            } else if (isPositive && cashEntryAmount < 0) {
-                                                setCashEntryAmount(Math.abs(cashEntryAmount));
-                                            }
-                                        }} 
-                                        className="w-full p-2 bg-background border border-border-color rounded text-sm"
-                                    >
-                                        <option value="yes">Repasse recebido</option>
-                                        <option value="no">Repasse igual a zero ou negativo</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase">Entrada no Caixa (R$)</label>
-                                    <input 
-                                        type="number" 
-                                        value={cashEntryAmount} 
-                                        onChange={e => {
-                                            const val = Number(e.target.value);
-                                            if (!hasBrokerPayout && val > 0) {
-                                                setCashEntryAmount(-val);
-                                            } else {
-                                                setCashEntryAmount(val);
-                                            }
-                                        }} 
-                                        className="w-full p-2 bg-background border border-border-color rounded text-sm" 
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="space-y-3">
                             <p className="text-[10px] font-bold text-text-secondary uppercase border-b border-border-color pb-1">Indicação de Assessor</p>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
@@ -1916,52 +1894,48 @@ const CommissionClosingModal: FC<{
                             <h4 className="text-xs font-bold uppercase text-primary border-b border-primary/10 pb-1">Resumo do Fechamento</h4>
                             <div className="space-y-2">
                                 <div className="flex justify-between text-xs">
-                                    <span className="text-text-secondary">Resultado Operacional Assessor:</span>
-                                    <span className={advisorOperationalResult < 0 ? 'text-danger font-bold' : 'font-bold'}>
-                                        {formatCurrency(advisorOperationalResult)}
-                                    </span>
+                                    <span className="text-text-secondary">Receita Gerada:</span>
+                                    <span className="font-bold">{formatCurrency(generatedRevenue)}</span>
                                 </div>
                                 <div className="flex justify-between text-xs">
-                                    <span className="text-text-secondary">Resultado da Produção:</span>
-                                    <span className={productionResult < 0 ? 'text-danger font-bold' : 'font-bold'}>
-                                        {formatCurrency(productionResult)}
-                                    </span>
+                                    <span className="text-text-secondary">Imposto Estimado ({estimatedTaxRate}%):</span>
+                                    <span className="text-danger">-{formatCurrency(estimatedTax)}</span>
                                 </div>
-                                <div className="flex justify-between text-xs border-b border-border-color/30 pb-1 mb-1">
-                                    <span className="text-text-secondary">Resultado de Caixa do Escritório:</span>
-                                    <span className={cashResult < 0 ? 'text-danger font-bold' : 'font-bold'}>
-                                        {formatCurrency(cashResult)}
-                                    </span>
+                                <div className="flex justify-between text-xs font-medium border-t border-border-color/10 pt-1">
+                                    <span className="text-text-secondary">Receita Líquida Estimada:</span>
+                                    <span className="text-primary">{formatCurrency(estimatedNetRevenue)}</span>
                                 </div>
                                 <div className="flex justify-between text-xs">
-                                    <span className="text-text-secondary">Comissão Bruta Assessor:</span>
-                                    <span>{formatCurrency(advisorShare)}</span>
+                                    <span className="text-text-secondary">CRM do Assessor:</span>
+                                    <span className="text-danger">-{formatCurrency(crmCost)}</span>
                                 </div>
-                                {hasReferral && referralAmount > 0 && (
-                                    <>
-                                        <div className="flex justify-between text-xs">
-                                            <span className="text-text-secondary">Repasse Indicação ({referralPercentage}%):</span>
-                                            <span className="text-yellow-500">-{formatCurrency(referralAmount)}</span>
-                                        </div>
-                                        <div className="flex justify-between text-xs font-medium border-t border-border-color/10 pt-1">
-                                            <span className="text-text-secondary">Base após Indicação:</span>
-                                            <span>{formatCurrency(advisorBaseAfterReferral)}</span>
-                                        </div>
-                                    </>
-                                )}
-                                <div className="flex justify-between text-xs border-t border-border-color/30 pt-1 mt-1">
-                                    <span className="font-bold text-text-primary uppercase">Comissão Líquida Assessor:</span>
-                                    <span className="font-bold text-primary">{formatCurrency(advisorNet)}</span>
+                                <div className="flex justify-between text-xs font-bold border-t border-border-color/30 pt-1 mt-1">
+                                    <span className="text-text-primary uppercase">Base da Produção:</span>
+                                    <span className="text-primary">{formatCurrency(baseAmount)}</span>
                                 </div>
                                 
-                                <div className="pt-2 mt-2 border-t border-border-color/30 space-y-1">
+                                <div className="pt-2 mt-2 border-t border-border-color/30 space-y-2">
                                     <div className="flex justify-between text-xs">
-                                        <span className="text-text-secondary">Parte Bruta Escritório:</span>
-                                        <span>{formatCurrency(officeShare)}</span>
+                                        <span className="text-text-secondary">Comissão do Assessor ({advisorPercent}%):</span>
+                                        <span className="font-bold text-primary">{formatCurrency(advisorShare)}</span>
                                     </div>
-                                    <div className="flex justify-between text-xs">
-                                        <span className="font-bold text-text-secondary uppercase">Resultado Líquido Escritório:</span>
-                                        <span className="font-bold text-green-400">{formatCurrency(officeNet)}</span>
+                                    {hasReferral && referralAmount > 0 && (
+                                        <>
+                                            <div className="flex justify-between text-xs">
+                                                <span className="text-text-secondary">Repasse Indicação ({referralPercentage}%):</span>
+                                                <span className="text-yellow-500">-{formatCurrency(referralAmount)}</span>
+                                            </div>
+                                            <div className="flex justify-between text-xs font-medium border-t border-border-color/10 pt-1">
+                                                <span className="text-text-secondary">Comissão Líquida:</span>
+                                                <span className="font-bold text-primary">{formatCurrency(advisorNet)}</span>
+                                            </div>
+                                        </>
+                                    )}
+                                    <div className="flex justify-between text-xs border-t border-border-color/30 pt-1 mt-1">
+                                        <span className="font-bold text-text-secondary uppercase">Resultado do Escritório na Produção:</span>
+                                        <span className={`font-bold ${advisorOperationalResult < 0 ? 'text-danger' : 'text-green-400'}`}>
+                                            {formatCurrency(advisorOperationalResult)}
+                                        </span>
                                     </div>
                                 </div>
                             </div>
@@ -1987,8 +1961,9 @@ const ImportedRevenuesView: FC<{
     onBatchCommissionClosing: (data: any) => Promise<void>;
     onClearAll: () => void;
     globalTaxRate: number;
+    estimatedTaxRate: number;
     userId?: string;
-}> = ({ importedRevenues, advisors, onDelete, onAdd, onUpdate, onBatchCommissionClosing, onClearAll, globalTaxRate, userId }) => {
+}> = ({ importedRevenues, advisors, onDelete, onAdd, onUpdate, onBatchCommissionClosing, onClearAll, globalTaxRate, estimatedTaxRate, userId }) => {
     const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
     const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all');
     const [selectedAdvisorId, setSelectedAdvisorId] = useState<string>('all');
@@ -2079,7 +2054,8 @@ const ImportedRevenuesView: FC<{
             productionResult: acc.productionResult + (r.productionResult || 0),
             cashResult: acc.cashResult + (r.cashResult || 0),
             cashEntryAmount: acc.cashEntryAmount + (r.cashEntryAmount || 0),
-            crmCost: acc.crmCost + (r.crmCost || 0)
+            crmCost: acc.crmCost + (r.crmCost || 0),
+            advisorOperationalResult: acc.advisorOperationalResult + (r.advisorOperationalResult || 0)
         }), { 
             revenueAmount: 0, 
             advisorNetTotal: 0, 
@@ -2088,26 +2064,59 @@ const ImportedRevenuesView: FC<{
             productionResult: 0, 
             cashResult: 0,
             cashEntryAmount: 0,
-            crmCost: 0
+            crmCost: 0,
+            advisorOperationalResult: 0
         });
 
         // Aplicando as fórmulas solicitadas para garantir consistência total
         // Comissões Pagas = Comissão Líquida + Repasses de Indicação
         const totalCommissionsPaid = round(rawTotals.advisorNetTotal + rawTotals.referralAmount);
         
-        // Resultado da Produção = Produção Total - CRM Total - Comissões Pagas
-        const productionResult = round(rawTotals.revenueAmount - rawTotals.crmCost - totalCommissionsPaid);
+        // Cálculo da Base da Produção conforme solicitado:
+        // Base da Produção = Receita Gerada - Imposto Estimado - CRM do Assessor
+        const totalEstimatedTax = round(rawTotals.revenueAmount * (estimatedTaxRate / 100));
+        const totalEstimatedNetRevenue = round(rawTotals.revenueAmount - totalEstimatedTax);
         
-        // Resultado de Caixa = Repasse da Corretora - Comissões Pagas
-        const cashResult = round(rawTotals.cashEntryAmount - totalCommissionsPaid);
+        // Para o CRM, usamos o valor real dos registros fechados.
+        // Para os pendentes, estimamos o CRM para o indicador ser fiel à "Base da Produção".
+        const activeAdvisorPeriods = new Set();
+        filteredRevenues.forEach(r => {
+            if (r.status !== CommissionStatus.COMPLETED && !r.lancamentosRealizados) {
+                const date = new Date(r.date);
+                const periodKey = `${r.advisorId}-${date.getFullYear()}-${date.getMonth()}`;
+                activeAdvisorPeriods.add(periodKey);
+            }
+        });
+
+        let estimatedCrmForPending = 0;
+        activeAdvisorPeriods.forEach(key => {
+            const [advisorId, year, month] = (key as string).split('-');
+            const hasClosedInSamePeriod = filteredRevenues.some(r => 
+                r.advisorId === advisorId && 
+                new Date(r.date).getFullYear() === parseInt(year) && 
+                new Date(r.date).getMonth() === parseInt(month) && 
+                (r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados)
+            );
+            
+            if (!hasClosedInSamePeriod) {
+                const advisor = advisors.find(a => a.id === advisorId);
+                if (advisor) {
+                    const advisorCrm = Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0));
+                    estimatedCrmForPending += advisorCrm;
+                }
+            }
+        });
+
+        const totalBaseProduction = round(totalEstimatedNetRevenue - rawTotals.crmCost - estimatedCrmForPending);
 
         return {
             ...rawTotals,
+            totalGrossProduction: rawTotals.revenueAmount,
+            totalBaseProduction: totalBaseProduction,
             totalCommissionsPaid,
-            productionResult,
-            cashResult
+            totalOfficeParticipation: rawTotals.advisorOperationalResult
         };
-    }, [filteredRevenues]);
+    }, [filteredRevenues, advisors, estimatedTaxRate]);
 
     const advisorSummary = useMemo(() => {
         if (selectedAdvisorId === 'all') return null;
@@ -2261,8 +2270,7 @@ const ImportedRevenuesView: FC<{
                         advisorName: advisor?.name || group.assessorName,
                         revenueAmount: group.totalRevenue,
                         taxRate: globalTaxRate,
-                        observacao: `Importação Automática. Assessor: ${group.codAssessor} ${group.assessorName}`,
-                        ...calculateRevenueFields(group.totalRevenue, globalTaxRate)
+                        observacao: `Importação Automática. Assessor: ${group.codAssessor} ${group.assessorName}`
                     };
                 });
 
@@ -2382,29 +2390,23 @@ const ImportedRevenuesView: FC<{
             </Card>
             
             <Card className="p-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                     <div>
-                        <label className="block text-xs font-medium text-text-secondary mb-1 uppercase tracking-wider">Produção Total dos Assessores</label>
-                        <p className="text-xl font-bold text-text-primary">{formatCurrency(totals.revenueAmount)}</p>
+                        <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase tracking-wider">Produção Bruta dos Assessores</label>
+                        <p className="text-lg font-bold text-text-primary">{formatCurrency(totals.totalGrossProduction)}</p>
                     </div>
                     <div>
-                        <label className="block text-xs font-medium text-text-secondary mb-1 uppercase tracking-wider">Comissões Pagas</label>
-                        <p className="text-xl font-bold text-primary">{formatCurrency(totals.totalCommissionsPaid)}</p>
+                        <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase tracking-wider">Produção Líquida</label>
+                        <p className="text-lg font-bold text-text-primary">{formatCurrency(totals.totalBaseProduction)}</p>
                     </div>
                     <div>
-                        <label className="block text-xs font-medium text-text-secondary mb-1 uppercase tracking-wider">Repasse da Corretora</label>
-                        <p className={`text-xl font-bold ${totals.cashEntryAmount < 0 ? 'text-danger' : 'text-green-400'}`}>{formatCurrency(totals.cashEntryAmount)}</p>
+                        <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase tracking-wider">Comissões Pagas</label>
+                        <p className="text-lg font-bold text-primary">{formatCurrency(totals.totalCommissionsPaid)}</p>
                     </div>
                     <div className="bg-primary/5 p-2 rounded border border-primary/20">
-                        <label className="block text-xs font-bold text-primary mb-1 uppercase tracking-wider">Resultado da Produção</label>
-                        <p className={`text-xl font-bold ${totals.productionResult < 0 ? 'text-danger' : 'text-primary'}`}>
-                            {formatCurrency(totals.productionResult)}
-                        </p>
-                    </div>
-                    <div className="bg-primary/5 p-2 rounded border border-primary/20">
-                        <label className="block text-xs font-bold text-primary mb-1 uppercase tracking-wider">Resultado de Caixa do Escritório</label>
-                        <p className={`text-xl font-bold ${totals.cashResult < 0 ? 'text-danger' : 'text-primary'}`}>
-                            {formatCurrency(totals.cashResult)}
+                        <label className="block text-[10px] font-bold text-primary mb-1 uppercase tracking-wider">Resultado do Escritório na Produção</label>
+                        <p className={`text-lg font-bold ${totals.totalOfficeParticipation < 0 ? 'text-danger' : 'text-primary'}`}>
+                            {formatCurrency(totals.totalOfficeParticipation)}
                         </p>
                     </div>
                 </div>
@@ -2431,7 +2433,7 @@ const ImportedRevenuesView: FC<{
                                 <p className="text-sm font-bold text-green-400">{formatCurrency(advisorSummary.referralsPaid)}</p>
                             </div>
                             <div>
-                                <label className="block text-[10px] text-text-secondary uppercase">Resultado Operacional do Assessor</label>
+                                <label className="block text-[10px] text-text-secondary uppercase">Resultado do Escritório na Produção</label>
                                 <p className={`text-sm font-bold ${advisorSummary.operationalResult < 0 ? 'text-danger' : 'text-green-400'}`}>
                                     {formatCurrency(advisorSummary.operationalResult)}
                                 </p>
@@ -2458,11 +2460,9 @@ const ImportedRevenuesView: FC<{
                                 <th className="p-4">Referência / Cliente</th>
                                 <th className="p-4">Assessor Resp.</th>
                                 <th className="p-4">Receita Gerada</th>
-                                <th className="p-4">Repasse da Corretora</th>
                                 <th className="p-4">Indicação</th>
                                 <th className="p-4">Comissão Líquida</th>
-                                <th className="p-4">Resultado Assessor</th>
-                                <th className="p-4">Participação do Escritório</th>
+                                <th className="p-4">Resultado do Escritório na Produção</th>
                                 <th className="p-4 text-center">Status Financeiro</th>
                                 <th className="p-4 text-right">Ações</th>
                             </tr>
@@ -2486,7 +2486,6 @@ const ImportedRevenuesView: FC<{
                                     </td>
                                     <td className="p-4">{r.advisorName}</td>
                                     <td className="p-4 font-bold">{formatCurrency(r.revenueAmount || 0)}</td>
-                                    <td className="p-4 text-text-secondary">{r.cashEntryAmount !== undefined ? formatCurrency(r.cashEntryAmount) : '-'}</td>
                                     <td className="p-4">
                                         {r.referralAdvisorId ? (
                                             <div className="flex flex-col">
@@ -2507,10 +2506,9 @@ const ImportedRevenuesView: FC<{
                                             )}
                                         </div>
                                     </td>
-                                    <td className={`p-4 font-bold ${r.advisorOperationalResult !== undefined && r.advisorOperationalResult < 0 ? 'text-danger' : ''}`}>
+                                    <td className={`p-4 font-bold ${r.advisorOperationalResult !== undefined && r.advisorOperationalResult < 0 ? 'text-danger' : 'text-green-400'}`}>
                                         {r.advisorOperationalResult !== undefined ? formatCurrency(r.advisorOperationalResult) : '-'}
                                     </td>
-                                    <td className="p-4 text-green-400 font-bold">{formatCurrency(r.officeNetRevenue || 0)}</td>
                                     <td className="p-4 text-center">
                                         <div className="flex flex-col items-center gap-1">
                                             <div className={`px-2 py-1 rounded text-[9px] font-bold uppercase ${getStatusLabel(r.status, r.lancamentosRealizados).bg} ${getStatusLabel(r.status, r.lancamentosRealizados).color}`}>
@@ -2528,7 +2526,7 @@ const ImportedRevenuesView: FC<{
                             ))}
                             {filteredRevenues.length === 0 && (
                                 <tr>
-                                    <td colSpan={11} className="p-8 text-center text-text-secondary italic">Nenhum registro encontrado.</td>
+                                    <td colSpan={10} className="p-8 text-center text-text-secondary italic">Nenhum registro encontrado.</td>
                                 </tr>
                             )}
                         </tbody>
@@ -2599,6 +2597,7 @@ const ImportedRevenuesView: FC<{
                     year={selectedYear === 'all' ? new Date().getFullYear() : selectedYear as number}
                     generatedRevenue={selectedSummary.revenueAmount}
                     globalTaxRate={globalTaxRate}
+                    estimatedTaxRate={estimatedTaxRate}
                     revenueIds={selectedSummary.ids}
                 />
             )}
@@ -3116,6 +3115,7 @@ const App: FC = () => {
     const [costCenters, setCostCenters] = useLocalStorage('costCenters', initialCostCenters);
     const [advisors, setAdvisors] = useLocalStorage('advisors', initialAdvisors);
     const [globalTaxRate, setGlobalTaxRate] = useLocalStorage('globalTaxRate', 6);
+    const [estimatedTaxRate, setEstimatedTaxRate] = useLocalStorage('estimatedTaxRate', 16.5);
     const [goals, setGoals] = useLocalStorage('goals', getInitialGoals());
 
     const [partners, setPartners] = useLocalStorage<Partner[]>('partners', []);
@@ -3539,11 +3539,11 @@ const App: FC = () => {
                         <>
                             {activeView === 'dashboard' && <DashboardView transactions={transactions} goals={goals} onSetPaid={handleSetPaid} onEdit={handleEditTransaction} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} globalTaxRate={globalTaxRate} importedRevenues={importedRevenues} />}
                             {activeView === 'transactions' && <TransactionsView transactions={transactions} onAdd={handleAddTransaction} onEdit={handleEditTransaction} onDelete={handleDeleteTransaction} onSetPaid={handleSetPaid} onToggleReconciliation={handleToggleReconciliation} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} onImportTransactions={handleImportTransactions} globalTaxRate={globalTaxRate} importedRevenues={importedRevenues} userId={user.uid} />}
-                            {activeView === 'imported-revenues' && <ImportedRevenuesView importedRevenues={importedRevenues} advisors={advisors} onDelete={handleDeleteRevenue} onAdd={handleAddImportedRevenue} onUpdate={handleUpdateImportedRevenue} onBatchCommissionClosing={handleBatchCommissionClosing} onClearAll={handleClearAllRevenues} globalTaxRate={globalTaxRate} userId={user.uid} />}
+                            {activeView === 'imported-revenues' && <ImportedRevenuesView importedRevenues={importedRevenues} advisors={advisors} onDelete={handleDeleteRevenue} onAdd={handleAddImportedRevenue} onUpdate={handleUpdateImportedRevenue} onBatchCommissionClosing={handleBatchCommissionClosing} onClearAll={handleClearAllRevenues} globalTaxRate={globalTaxRate} estimatedTaxRate={estimatedTaxRate} userId={user.uid} />}
                             {activeView === 'reports' && <ReportsView transactions={transactions} importedRevenues={importedRevenues} />}
                             {activeView === 'goals' && <GoalsView goals={goals} onAdd={v => setGoals([...goals, { ...v, id: crypto.randomUUID(), currentAmount: round(0) }])} onUpdateProgress={(id, amount) => setGoals(goals.map(g => g.id === id ? { ...g, currentAmount: round((Number(g.currentAmount) || 0) + (Number(amount) || 0)) } : g))} onDelete={id => setGoals(goals.filter(g => g.id !== id))} />}
                             {activeView === 'partnership' && <PartnershipView partners={partners} onSave={handleSavePartnership} />}
-                            {activeView === 'settings' && <SettingsView incomeCategories={incomeCategories} setIncomeCategories={setIncomeCategories} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} paymentMethods={paymentMethods} setPaymentMethods={setPaymentMethods} costCenters={costCenters} setCostCenters={setCostCenters} advisors={advisors} setAdvisors={setAdvisors} globalTaxRate={globalTaxRate} setGlobalTaxRate={setGlobalTaxRate} />}
+                            {activeView === 'settings' && <SettingsView incomeCategories={incomeCategories} setIncomeCategories={setIncomeCategories} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} paymentMethods={paymentMethods} setPaymentMethods={setPaymentMethods} costCenters={costCenters} setCostCenters={setCostCenters} advisors={advisors} setAdvisors={setAdvisors} globalTaxRate={globalTaxRate} setGlobalTaxRate={setGlobalTaxRate} estimatedTaxRate={estimatedTaxRate} setEstimatedTaxRate={setEstimatedTaxRate} />}
                         </>
                     )}
                 </main>
