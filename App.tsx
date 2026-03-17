@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, FC, ReactNode, useEffect, useRef } from 'react';
-import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType, AdvisorSplit, ImportedRevenue, AdvisorCost, Partner, AdvisorParticipation, CommissionStatus } from './types';
+import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType, AdvisorSplit, ImportedRevenue, AdvisorCost, Partner, AdvisorParticipation, CommissionStatus, IncomeCategory, CategoryStructuralType } from './types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area } from 'recharts';
 import Login from './Login';
 import { auth, db } from './firebase';
@@ -160,17 +160,25 @@ const parseOFX = (content: string): ImportableTransaction[] => {
 
 // --- DADOS INICIAIS ---
 const getInitialGoals = (): Goal[] => ([]);
-const initialIncomeCategories = ['Taxa de Consultoria', 'Taxa de Performance', 'Comissão sobre Ativos', 'Rendimento de Investimentos', 'Reembolso de Custos', 'Outros'];
+const initialIncomeCategories: IncomeCategory[] = [
+    { name: 'Taxa de Consultoria', tipoEstrutural: CategoryStructuralType.RECEITA_OPERACIONAL, impactaDRE: true },
+    { name: 'Taxa de Performance', tipoEstrutural: CategoryStructuralType.RECEITA_OPERACIONAL, impactaDRE: true },
+    { name: 'Comissão sobre Ativos', tipoEstrutural: CategoryStructuralType.RECEITA_OPERACIONAL, impactaDRE: true },
+    { name: 'Rendimento de Investimentos', tipoEstrutural: CategoryStructuralType.RECEITA_OPERACIONAL, impactaDRE: true },
+    { name: 'Reembolso de Custos', tipoEstrutural: CategoryStructuralType.RECEITA_OPERACIONAL, impactaDRE: true },
+    { name: 'Outros', tipoEstrutural: CategoryStructuralType.RECEITA_OPERACIONAL, impactaDRE: true }
+];
 const initialExpenseCategories: ExpenseCategory[] = [
-    { name: 'Remuneração de Assessores', type: ExpenseType.COST },
-    { name: 'Plataformas e Sistemas', type: ExpenseType.COST },
-    { name: 'Marketing e Captação', type: ExpenseType.EXPENSE },
-    { name: 'Custos Operacionais', type: ExpenseType.COST },
-    { name: 'Impostos e Encargos', type: ExpenseType.EXPENSE },
-    { name: 'Despesas Administrativas', type: ExpenseType.EXPENSE },
-    { name: 'Despesas Estruturais', type: ExpenseType.EXPENSE },
-    { name: 'Mobiliário e Equipamentos', type: ExpenseType.EXPENSE },
-    { name: 'Outros', type: ExpenseType.EXPENSE },
+    { name: 'Remuneração de Assessores', type: ExpenseType.COST, tipoEstrutural: CategoryStructuralType.CUSTO, impactaDRE: true },
+    { name: 'Custos Operacionais', type: ExpenseType.COST, tipoEstrutural: CategoryStructuralType.CUSTO, impactaDRE: true },
+    { name: 'Plataformas e Sistemas', type: ExpenseType.COST, tipoEstrutural: CategoryStructuralType.DESPESA_OPERACIONAL, impactaDRE: true },
+    { name: 'Marketing e Captação', type: ExpenseType.EXPENSE, tipoEstrutural: CategoryStructuralType.DESPESA_OPERACIONAL, impactaDRE: true },
+    { name: 'Despesas Administrativas', type: ExpenseType.EXPENSE, tipoEstrutural: CategoryStructuralType.DESPESA_OPERACIONAL, impactaDRE: true },
+    { name: 'Despesas Estruturais', type: ExpenseType.EXPENSE, tipoEstrutural: CategoryStructuralType.DESPESA_OPERACIONAL, impactaDRE: true },
+    { name: 'Impostos e Encargos', type: ExpenseType.EXPENSE, tipoEstrutural: CategoryStructuralType.DEDUCAO_RECEITA, impactaDRE: true },
+    { name: 'Mobiliário e Equipamentos', type: ExpenseType.EXPENSE, tipoEstrutural: CategoryStructuralType.INVESTIMENTO, impactaDRE: false },
+    { name: 'Movimentações Societárias', type: ExpenseType.EXPENSE, tipoEstrutural: CategoryStructuralType.SOCIETARIO, impactaDRE: false },
+    { name: 'Outros', type: ExpenseType.EXPENSE, tipoEstrutural: CategoryStructuralType.DESPESA_OPERACIONAL, impactaDRE: true },
 ];
 const initialPaymentMethods = ['Transferência Bancária', 'PIX', 'Cartão de Crédito', 'Cartão de Débito', 'Boleto Bancário'];
 const initialCostCenters: CostCenter[] = [
@@ -249,7 +257,7 @@ interface TransactionFormProps {
     onClose: () => void; 
     initialData?: Transaction | null; 
     defaultType?: TransactionType | null;
-    incomeCategories: string[];
+    incomeCategories: IncomeCategory[];
     expenseCategories: ExpenseCategory[];
     paymentMethods: string[];
     costCenters: CostCenter[];
@@ -270,7 +278,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     const isInitializing = useRef(true); 
     const currentCategories = useMemo(() => 
         type === TransactionType.INCOME 
-            ? incomeCategories 
+            ? incomeCategories.map(c => c.name) 
             : expenseCategories.map(c => c.name), 
         [type, incomeCategories, expenseCategories]
     );
@@ -346,12 +354,11 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     };
 
     useEffect(() => {
-        const newCats = type === TransactionType.INCOME ? incomeCategories : expenseCategories.map(c => c.name);
         setFormData(prev => ({
             ...prev,
-            category: newCats.includes(prev.category) ? prev.category : (newCats[0] || '')
+            category: currentCategories.includes(prev.category) ? prev.category : (currentCategories[0] || '')
         }));
-    }, [type, incomeCategories, expenseCategories]);
+    }, [type, currentCategories]);
     
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -901,8 +908,8 @@ const AdvisorSettingsItem: FC<{
 
 // --- SETTINGS VIEW COMPONENT ---
 interface SettingsViewProps {
-    incomeCategories: string[];
-    setIncomeCategories: React.Dispatch<React.SetStateAction<string[]>>;
+    incomeCategories: IncomeCategory[];
+    setIncomeCategories: React.Dispatch<React.SetStateAction<IncomeCategory[]>>;
     expenseCategories: ExpenseCategory[];
     setExpenseCategories: React.Dispatch<React.SetStateAction<ExpenseCategory[]>>;
     paymentMethods: string[];
@@ -929,6 +936,9 @@ const SettingsView: FC<SettingsViewProps> = ({
     const [newIncomeCat, setNewIncomeCat] = useState('');
     const [newExpenseCatName, setNewExpenseCatName] = useState('');
     const [newExpenseCatType, setNewExpenseCatType] = useState<ExpenseType>(ExpenseType.EXPENSE);
+    const [newExpenseCatStructuralType, setNewExpenseCatStructuralType] = useState<CategoryStructuralType>(CategoryStructuralType.DESPESA_OPERACIONAL);
+    const [newExpenseCatImpactaDRE, setNewExpenseCatImpactaDRE] = useState(true);
+
     const [newPaymentMethod, setNewPaymentMethod] = useState('');
     const [newCostCenterName, setNewCostCenterName] = useState('');
     const [newAdvisorName, setNewAdvisorName] = useState('');
@@ -942,12 +952,37 @@ const SettingsView: FC<SettingsViewProps> = ({
     const [editingExpenseIdx, setEditingExpenseIdx] = useState<number | null>(null);
     const [tempExpenseName, setTempExpenseName] = useState('');
     const [tempExpenseType, setTempExpenseType] = useState<ExpenseType>(ExpenseType.EXPENSE);
+    const [tempExpenseStructuralType, setTempExpenseStructuralType] = useState<CategoryStructuralType>(CategoryStructuralType.DESPESA_OPERACIONAL);
+    const [tempExpenseImpactaDRE, setTempExpenseImpactaDRE] = useState(true);
 
     const [editingPaymentIdx, setEditingPaymentIdx] = useState<number | null>(null);
     const [tempPaymentVal, setTempPaymentVal] = useState('');
 
     const [editingCostCenterIdx, setEditingCostCenterIdx] = useState<number | null>(null);
     const [tempCostCenterName, setTempCostCenterName] = useState('');
+
+    // Auto-fill impactaDRE based on tipoEstrutural
+    useEffect(() => {
+        if (newExpenseCatStructuralType === CategoryStructuralType.CUSTO || 
+            newExpenseCatStructuralType === CategoryStructuralType.DESPESA_OPERACIONAL || 
+            newExpenseCatStructuralType === CategoryStructuralType.DEDUCAO_RECEITA) {
+            setNewExpenseCatImpactaDRE(true);
+        } else if (newExpenseCatStructuralType === CategoryStructuralType.INVESTIMENTO || 
+                   newExpenseCatStructuralType === CategoryStructuralType.SOCIETARIO) {
+            setNewExpenseCatImpactaDRE(false);
+        }
+    }, [newExpenseCatStructuralType]);
+
+    useEffect(() => {
+        if (tempExpenseStructuralType === CategoryStructuralType.CUSTO || 
+            tempExpenseStructuralType === CategoryStructuralType.DESPESA_OPERACIONAL || 
+            tempExpenseStructuralType === CategoryStructuralType.DEDUCAO_RECEITA) {
+            setTempExpenseImpactaDRE(true);
+        } else if (tempExpenseStructuralType === CategoryStructuralType.INVESTIMENTO || 
+                   tempExpenseStructuralType === CategoryStructuralType.SOCIETARIO) {
+            setTempExpenseImpactaDRE(false);
+        }
+    }, [tempExpenseStructuralType]);
 
     // Reorder Helpers
     const moveItem = <T,>(arr: T[], setArr: React.Dispatch<React.SetStateAction<T[]>>, idx: number, direction: 'up' | 'down') => {
@@ -959,29 +994,46 @@ const SettingsView: FC<SettingsViewProps> = ({
     };
 
     // Income Handlers
-    const addIncomeCategory = () => { if (newIncomeCat && !incomeCategories.includes(newIncomeCat)) { setIncomeCategories([...incomeCategories, newIncomeCat]); setNewIncomeCat(''); } };
-    const removeIncomeCategory = (cat: string) => setIncomeCategories(incomeCategories.filter(c => c !== cat));
-    const startEditIncome = (idx: number) => { setEditingIncomeIdx(idx); setTempIncomeVal(incomeCategories[idx]); };
+    const addIncomeCategory = () => { if (newIncomeCat && !incomeCategories.find(c => c.name === newIncomeCat)) { setIncomeCategories([...incomeCategories, { name: newIncomeCat, tipoEstrutural: CategoryStructuralType.RECEITA_OPERACIONAL, impactaDRE: true }]); setNewIncomeCat(''); } };
+    const removeIncomeCategory = (name: string) => setIncomeCategories(incomeCategories.filter(c => c.name !== name));
+    const startEditIncome = (idx: number) => { setEditingIncomeIdx(idx); setTempIncomeVal(incomeCategories[idx].name); };
     const saveEditIncome = () => {
         if (!tempIncomeVal.trim()) return;
         const newList = [...incomeCategories];
-        newList[editingIncomeIdx!] = tempIncomeVal.trim();
+        newList[editingIncomeIdx!] = { ...newList[editingIncomeIdx!], name: tempIncomeVal.trim() };
         setIncomeCategories(newList);
         setEditingIncomeIdx(null);
     };
 
     // Expense Handlers
-    const addExpenseCategory = () => { if (newExpenseCatName && !expenseCategories.find(c => c.name === newExpenseCatName)) { setExpenseCategories([...expenseCategories, { name: newExpenseCatName, type: newExpenseCatType }]); setNewExpenseCatName(''); } };
+    const addExpenseCategory = () => { 
+        if (newExpenseCatName && !expenseCategories.find(c => c.name === newExpenseCatName)) { 
+            setExpenseCategories([...expenseCategories, { 
+                name: newExpenseCatName, 
+                type: newExpenseCatType,
+                tipoEstrutural: newExpenseCatStructuralType,
+                impactaDRE: newExpenseCatImpactaDRE
+            }]); 
+            setNewExpenseCatName(''); 
+        } 
+    };
     const removeExpenseCategory = (name: string) => setExpenseCategories(expenseCategories.filter(c => c.name !== name));
     const startEditExpense = (idx: number) => { 
         setEditingExpenseIdx(idx); 
         setTempExpenseName(expenseCategories[idx].name); 
         setTempExpenseType(expenseCategories[idx].type);
+        setTempExpenseStructuralType(expenseCategories[idx].tipoEstrutural || CategoryStructuralType.DESPESA_OPERACIONAL);
+        setTempExpenseImpactaDRE(expenseCategories[idx].impactaDRE ?? true);
     };
     const saveEditExpense = () => {
         if (!tempExpenseName.trim()) return;
         const newList = [...expenseCategories];
-        newList[editingExpenseIdx!] = { name: tempExpenseName.trim(), type: tempExpenseType };
+        newList[editingExpenseIdx!] = { 
+            name: tempExpenseName.trim(), 
+            type: tempExpenseType,
+            tipoEstrutural: tempExpenseStructuralType,
+            impactaDRE: tempExpenseImpactaDRE
+        };
         setExpenseCategories(newList);
         setEditingExpenseIdx(null);
     };
@@ -1039,12 +1091,12 @@ const SettingsView: FC<SettingsViewProps> = ({
                                             <button onClick={saveEditIncome} className="text-green-400 hover:text-green-300 font-bold text-xs">OK</button>
                                         </div>
                                     ) : (
-                                        <span>{cat}</span>
+                                        <span>{cat.name}</span>
                                     )}
                                 </div>
                                 <div className="flex gap-2">
                                     {editingIncomeIdx !== idx && <button onClick={() => startEditIncome(idx)} className="text-text-secondary hover:text-primary"><EditIcon className="w-4 h-4"/></button>}
-                                    <button onClick={() => removeIncomeCategory(cat)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>
+                                    <button onClick={() => removeIncomeCategory(cat.name)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>
                                 </div>
                             </li>
                         ))}
@@ -1056,13 +1108,34 @@ const SettingsView: FC<SettingsViewProps> = ({
                     <h3 className="font-bold mb-4 text-primary text-sm uppercase">Categorias de Despesa</h3>
                     <div className="flex flex-col gap-2 mb-4">
                         <input type="text" value={newExpenseCatName} onChange={e => setNewExpenseCatName(e.target.value)} className="bg-background border border-border-color rounded px-3 py-2 text-sm" placeholder="Nome da categoria" />
-                        <div className="flex gap-2">
-                            <select value={newExpenseCatType} onChange={e => setNewExpenseCatType(e.target.value as ExpenseType)} className="flex-1 bg-background border border-border-color rounded px-3 py-2 text-sm">
-                                <option value={ExpenseType.COST}>Custo</option>
-                                <option value={ExpenseType.EXPENSE}>Despesa</option>
-                                <option value={ExpenseType.NON_OPERATIONAL}>Despesa não Operacional</option>
-                            </select>
-                            <Button onClick={addExpenseCategory} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button>
+                        <div className="grid grid-cols-2 gap-2">
+                            <div>
+                                <label className="block text-[10px] text-text-secondary uppercase mb-1">Tipo Natureza</label>
+                                <select value={newExpenseCatType} onChange={e => setNewExpenseCatType(e.target.value as ExpenseType)} className="w-full bg-background border border-border-color rounded px-3 py-2 text-sm">
+                                    <option value={ExpenseType.COST}>Custo</option>
+                                    <option value={ExpenseType.EXPENSE}>Despesa</option>
+                                    <option value={ExpenseType.NON_OPERATIONAL}>Despesa não Operacional</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] text-text-secondary uppercase mb-1">Tipo Estrutural</label>
+                                <select value={newExpenseCatStructuralType} onChange={e => setNewExpenseCatStructuralType(e.target.value as CategoryStructuralType)} className="w-full bg-background border border-border-color rounded px-3 py-2 text-sm">
+                                    <option value={CategoryStructuralType.CUSTO}>Custo</option>
+                                    <option value={CategoryStructuralType.DESPESA_OPERACIONAL}>Despesa Operacional</option>
+                                    <option value={CategoryStructuralType.DEDUCAO_RECEITA}>Dedução de Receita</option>
+                                    <option value={CategoryStructuralType.INVESTIMENTO}>Investimento</option>
+                                    <option value={CategoryStructuralType.SOCIETARIO}>Societário</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-between bg-background/30 p-2 rounded border border-border-color/50">
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs font-medium">Impacta no DRE?</span>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${newExpenseCatImpactaDRE ? 'bg-green-400/20 text-green-400' : 'bg-danger/20 text-danger'}`}>
+                                    {newExpenseCatImpactaDRE ? 'SIM' : 'NÃO'}
+                                </span>
+                            </div>
+                            <Button onClick={addExpenseCategory} variant="secondary" className="py-2 px-4"><PlusIcon className="w-4 h-4 mr-2"/> Adicionar</Button>
                         </div>
                     </div>
                     <ul className="space-y-2">
@@ -1074,25 +1147,40 @@ const SettingsView: FC<SettingsViewProps> = ({
                                         <button onClick={() => moveItem(expenseCategories, setExpenseCategories, idx, 'down')} className="text-text-secondary hover:text-primary"><ArrowDownIcon className="w-3 h-3" /></button>
                                     </div>
                                     {editingExpenseIdx === idx ? (
-                                        <div className="flex flex-col gap-1">
-                                            <input type="text" value={tempExpenseName} onChange={e => setTempExpenseName(e.target.value)} className="bg-background border border-border-color rounded px-2 py-0.5 text-xs w-32" />
-                                            <div className="flex gap-2 items-center">
-                                                <select value={tempExpenseType} onChange={e => setTempExpenseType(e.target.value as ExpenseType)} className="bg-background border border-border-color rounded px-1 py-0.5 text-[10px]">
+                                        <div className="flex flex-col gap-2 bg-background p-2 rounded border border-primary/30">
+                                            <input type="text" value={tempExpenseName} onChange={e => setTempExpenseName(e.target.value)} className="bg-background border border-border-color rounded px-2 py-1 text-xs w-full" />
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <select value={tempExpenseType} onChange={e => setTempExpenseType(e.target.value as ExpenseType)} className="bg-background border border-border-color rounded px-1 py-1 text-[10px]">
                                                     <option value={ExpenseType.COST}>Custo</option>
                                                     <option value={ExpenseType.EXPENSE}>Despesa</option>
                                                     <option value={ExpenseType.NON_OPERATIONAL}>Despesa não Operacional</option>
                                                 </select>
-                                                <button onClick={saveEditExpense} className="text-green-400 hover:text-green-300 font-bold text-xs">OK</button>
+                                                <select value={tempExpenseStructuralType} onChange={e => setTempExpenseStructuralType(e.target.value as CategoryStructuralType)} className="bg-background border border-border-color rounded px-1 py-1 text-[10px]">
+                                                    <option value={CategoryStructuralType.CUSTO}>Custo</option>
+                                                    <option value={CategoryStructuralType.DESPESA_OPERACIONAL}>Despesa Operacional</option>
+                                                    <option value={CategoryStructuralType.DEDUCAO_RECEITA}>Dedução de Receita</option>
+                                                    <option value={CategoryStructuralType.INVESTIMENTO}>Investimento</option>
+                                                    <option value={CategoryStructuralType.SOCIETARIO}>Societário</option>
+                                                </select>
+                                            </div>
+                                            <div className="flex justify-between items-center">
+                                                <span className={`text-[9px] font-bold ${tempExpenseImpactaDRE ? 'text-green-400' : 'text-danger'}`}>DRE: {tempExpenseImpactaDRE ? 'SIM' : 'NÃO'}</span>
+                                                <button onClick={saveEditExpense} className="bg-green-500 text-white px-3 py-1 rounded text-[10px] font-bold">SALVAR</button>
                                             </div>
                                         </div>
                                     ) : (
-                                        <div>
-                                            <span className="font-medium">{cat.name}</span>
-                                            <span className="ml-2 text-[10px] text-text-secondary uppercase">
-                                                ({cat.type === ExpenseType.COST ? 'Custo' : 
-                                                  cat.type === ExpenseType.EXPENSE ? 'Despesa' : 
-                                                  'Despesa não Operacional'})
-                                            </span>
+                                        <div className="flex flex-col">
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-bold">{cat.name}</span>
+                                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${cat.impactaDRE ? 'bg-green-400/10 text-green-400' : 'bg-danger/10 text-danger'}`}>
+                                                    {cat.impactaDRE ? 'DRE' : 'NÃO DRE'}
+                                                </span>
+                                            </div>
+                                            <div className="flex gap-2 text-[9px] text-text-secondary uppercase font-medium mt-0.5">
+                                                <span>{cat.type === ExpenseType.COST ? 'Custo' : cat.type === ExpenseType.EXPENSE ? 'Despesa' : 'Não Operacional'}</span>
+                                                <span>•</span>
+                                                <span>{cat.tipoEstrutural?.replace('_', ' ')}</span>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -1291,7 +1379,7 @@ const TransactionsView: FC<{
     onDelete: (id: string) => void;
     onSetPaid: (id: string) => void;
     onToggleReconciliation: (id: string, current: boolean) => void;
-    incomeCategories: string[];
+    incomeCategories: IncomeCategory[];
     expenseCategories: ExpenseCategory[];
     paymentMethods: string[];
     costCenters: CostCenter[];
@@ -1541,7 +1629,7 @@ const TransactionsView: FC<{
                     </select>
                     <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="bg-background border border-border-color rounded-md px-3 py-2 text-sm">
                         <option value="all">Todas as Categorias</option>
-                        {(activeTab === TransactionType.INCOME ? incomeCategories : expenseCategories.map(c => c.name)).map(c => <option key={c} value={c}>{c}</option>)}
+                        {(activeTab === TransactionType.INCOME ? incomeCategories.map(c => c.name) : expenseCategories.map(c => c.name)).map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                     {activeTab === TransactionType.EXPENSE && (
                         <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as any)} className="bg-background border border-border-color rounded-md px-3 py-2 text-sm">
@@ -2946,7 +3034,7 @@ interface DashboardViewProps {
     goals: Goal[];
     onSetPaid: (id: string) => void;
     onEdit: (id: string, data: TransactionFormValues) => void;
-    incomeCategories: string[];
+    incomeCategories: IncomeCategory[];
     expenseCategories: ExpenseCategory[];
     paymentMethods: string[];
     costCenters: CostCenter[];
@@ -3299,8 +3387,8 @@ const App: FC = () => {
     const [activeView, setActiveView] = useState<View>('dashboard');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     
-    const [incomeCategories, setIncomeCategories] = useLocalStorage('incomeCategories', initialIncomeCategories);
-    const [expenseCategories, setExpenseCategories] = useLocalStorage('expenseCategories', initialExpenseCategories);
+    const [incomeCategories, setIncomeCategories] = useLocalStorage<IncomeCategory[]>('incomeCategories', initialIncomeCategories);
+    const [expenseCategories, setExpenseCategories] = useLocalStorage<ExpenseCategory[]>('expenseCategories', initialExpenseCategories);
     const [paymentMethods, setPaymentMethods] = useLocalStorage('paymentMethods', initialPaymentMethods);
     const [costCenters, setCostCenters] = useLocalStorage('costCenters', initialCostCenters);
     const [advisors, setAdvisors] = useLocalStorage('advisors', initialAdvisors);
@@ -3318,6 +3406,51 @@ const App: FC = () => {
         const unsubscribe = onAuthStateChanged(auth, (currentUser) => { setUser(currentUser); setLoadingAuth(false); });
         return () => unsubscribe();
     }, []);
+
+    // Migration for Categories
+    useEffect(() => {
+        let updatedIncome = false;
+        const migratedIncome = incomeCategories.map(cat => {
+            if (typeof cat === 'string') {
+                updatedIncome = true;
+                return {
+                    name: cat,
+                    tipoEstrutural: CategoryStructuralType.RECEITA_OPERACIONAL,
+                    impactaDRE: true
+                } as IncomeCategory;
+            }
+            return cat;
+        });
+        if (updatedIncome) setIncomeCategories(migratedIncome);
+
+        let updatedExpense = false;
+        const migratedExpense = expenseCategories.map(cat => {
+            if (cat.tipoEstrutural === undefined) {
+                updatedExpense = true;
+                let tipo: CategoryStructuralType = CategoryStructuralType.DESPESA_OPERACIONAL;
+                let impacta = true;
+
+                if (cat.name === 'Remuneração de Assessores') { tipo = CategoryStructuralType.CUSTO; impacta = true; }
+                else if (cat.name === 'Custos Operacionais') { tipo = CategoryStructuralType.CUSTO; impacta = true; }
+                else if (cat.name === 'Plataformas e Sistemas') { tipo = CategoryStructuralType.DESPESA_OPERACIONAL; impacta = true; }
+                else if (cat.name === 'Marketing e Captação') { tipo = CategoryStructuralType.DESPESA_OPERACIONAL; impacta = true; }
+                else if (cat.name === 'Despesas Administrativas') { tipo = CategoryStructuralType.DESPESA_OPERACIONAL; impacta = true; }
+                else if (cat.name === 'Despesas Estruturais') { tipo = CategoryStructuralType.DESPESA_OPERACIONAL; impacta = true; }
+                else if (cat.name === 'Impostos e Encargos') { tipo = CategoryStructuralType.DEDUCAO_RECEITA; impacta = true; }
+                else if (cat.name === 'Mobiliário e Equipamentos') { tipo = CategoryStructuralType.INVESTIMENTO; impacta = false; }
+                else if (cat.name === 'Movimentações Societárias') { tipo = CategoryStructuralType.SOCIETARIO; impacta = false; }
+                else { tipo = CategoryStructuralType.DESPESA_OPERACIONAL; impacta = true; }
+
+                return {
+                    ...cat,
+                    tipoEstrutural: tipo,
+                    impactaDRE: impacta
+                } as ExpenseCategory;
+            }
+            return cat;
+        });
+        if (updatedExpense) setExpenseCategories(migratedExpense);
+    }, [incomeCategories, expenseCategories, setIncomeCategories, setExpenseCategories]);
 
     useEffect(() => {
         if (user) {

@@ -150,9 +150,26 @@ export interface Advisor {
     // Deprecated: crmCost?: number; 
 }
 
+export enum CategoryStructuralType {
+    RECEITA_OPERACIONAL = 'receita_operacional',
+    CUSTO = 'custo',
+    DESPESA_OPERACIONAL = 'despesa_operacional',
+    DEDUCAO_RECEITA = 'deducao_receita',
+    INVESTIMENTO = 'investimento',
+    SOCIETARIO = 'societario',
+}
+
+export interface IncomeCategory {
+    name: string;
+    tipoEstrutural: CategoryStructuralType.RECEITA_OPERACIONAL;
+    impactaDRE: boolean;
+}
+
 export interface ExpenseCategory {
     name: string;
-    type: ExpenseType; // Custo ou Despesa
+    type: ExpenseType; // Custo ou Despesa (legacy)
+    tipoEstrutural: CategoryStructuralType;
+    impactaDRE: boolean;
 }
 
 export interface Partner {
