@@ -166,6 +166,9 @@ const initialIncomeCategories: IncomeCategory[] = [
     { name: 'Comissão sobre Ativos', tipoEstrutural: CategoryStructuralType.RECEITA_OPERACIONAL, impactaDRE: true },
     { name: 'Rendimento de Investimentos', tipoEstrutural: CategoryStructuralType.RECEITA_OPERACIONAL, impactaDRE: true },
     { name: 'Reembolso de Custos', tipoEstrutural: CategoryStructuralType.RECEITA_OPERACIONAL, impactaDRE: true },
+    { name: 'Aporte de Corretora', tipoEstrutural: CategoryStructuralType.SOCIETARIO, impactaDRE: false },
+    { name: 'Incentivo de Estruturação', tipoEstrutural: CategoryStructuralType.SOCIETARIO, impactaDRE: false },
+    { name: 'Entrada de Capital', tipoEstrutural: CategoryStructuralType.SOCIETARIO, impactaDRE: false },
     { name: 'Outros', tipoEstrutural: CategoryStructuralType.RECEITA_OPERACIONAL, impactaDRE: true }
 ];
 const initialExpenseCategories: ExpenseCategory[] = [
@@ -934,6 +937,8 @@ const SettingsView: FC<SettingsViewProps> = ({
     estimatedTaxRate, setEstimatedTaxRate
 }) => {
     const [newIncomeCat, setNewIncomeCat] = useState('');
+    const [newIncomeCatStructuralType, setNewIncomeCatStructuralType] = useState<CategoryStructuralType>(CategoryStructuralType.RECEITA_OPERACIONAL);
+    const [newIncomeCatImpactaDRE, setNewIncomeCatImpactaDRE] = useState(true);
     const [newExpenseCatName, setNewExpenseCatName] = useState('');
     const [newExpenseCatType, setNewExpenseCatType] = useState<ExpenseType>(ExpenseType.EXPENSE);
     const [newExpenseCatStructuralType, setNewExpenseCatStructuralType] = useState<CategoryStructuralType>(CategoryStructuralType.DESPESA_OPERACIONAL);
@@ -948,6 +953,8 @@ const SettingsView: FC<SettingsViewProps> = ({
     // States for editing items
     const [editingIncomeIdx, setEditingIncomeIdx] = useState<number | null>(null);
     const [tempIncomeVal, setTempIncomeVal] = useState('');
+    const [tempIncomeStructuralType, setTempIncomeStructuralType] = useState<CategoryStructuralType>(CategoryStructuralType.RECEITA_OPERACIONAL);
+    const [tempIncomeImpactaDRE, setTempIncomeImpactaDRE] = useState(true);
 
     const [editingExpenseIdx, setEditingExpenseIdx] = useState<number | null>(null);
     const [tempExpenseName, setTempExpenseName] = useState('');
@@ -962,6 +969,24 @@ const SettingsView: FC<SettingsViewProps> = ({
     const [tempCostCenterName, setTempCostCenterName] = useState('');
 
     // Auto-fill impactaDRE based on tipoEstrutural
+    useEffect(() => {
+        if (newIncomeCatStructuralType === CategoryStructuralType.RECEITA_OPERACIONAL || 
+            newIncomeCatStructuralType === CategoryStructuralType.RECEITA_NAO_OPERACIONAL) {
+            setNewIncomeCatImpactaDRE(true);
+        } else if (newIncomeCatStructuralType === CategoryStructuralType.SOCIETARIO) {
+            setNewIncomeCatImpactaDRE(false);
+        }
+    }, [newIncomeCatStructuralType]);
+
+    useEffect(() => {
+        if (tempIncomeStructuralType === CategoryStructuralType.RECEITA_OPERACIONAL || 
+            tempIncomeStructuralType === CategoryStructuralType.RECEITA_NAO_OPERACIONAL) {
+            setTempIncomeImpactaDRE(true);
+        } else if (tempIncomeStructuralType === CategoryStructuralType.SOCIETARIO) {
+            setTempIncomeImpactaDRE(false);
+        }
+    }, [tempIncomeStructuralType]);
+
     useEffect(() => {
         if (newExpenseCatStructuralType === CategoryStructuralType.CUSTO || 
             newExpenseCatStructuralType === CategoryStructuralType.DESPESA_OPERACIONAL || 
@@ -994,13 +1019,31 @@ const SettingsView: FC<SettingsViewProps> = ({
     };
 
     // Income Handlers
-    const addIncomeCategory = () => { if (newIncomeCat && !incomeCategories.find(c => c.name === newIncomeCat)) { setIncomeCategories([...incomeCategories, { name: newIncomeCat, tipoEstrutural: CategoryStructuralType.RECEITA_OPERACIONAL, impactaDRE: true }]); setNewIncomeCat(''); } };
+    const addIncomeCategory = () => { 
+        if (newIncomeCat && !incomeCategories.find(c => c.name === newIncomeCat)) { 
+            setIncomeCategories([...incomeCategories, { 
+                name: newIncomeCat, 
+                tipoEstrutural: newIncomeCatStructuralType, 
+                impactaDRE: newIncomeCatImpactaDRE 
+            }]); 
+            setNewIncomeCat(''); 
+        } 
+    };
     const removeIncomeCategory = (name: string) => setIncomeCategories(incomeCategories.filter(c => c.name !== name));
-    const startEditIncome = (idx: number) => { setEditingIncomeIdx(idx); setTempIncomeVal(incomeCategories[idx].name); };
+    const startEditIncome = (idx: number) => { 
+        setEditingIncomeIdx(idx); 
+        setTempIncomeVal(incomeCategories[idx].name); 
+        setTempIncomeStructuralType(incomeCategories[idx].tipoEstrutural || CategoryStructuralType.RECEITA_OPERACIONAL);
+        setTempIncomeImpactaDRE(incomeCategories[idx].impactaDRE ?? true);
+    };
     const saveEditIncome = () => {
         if (!tempIncomeVal.trim()) return;
         const newList = [...incomeCategories];
-        newList[editingIncomeIdx!] = { ...newList[editingIncomeIdx!], name: tempIncomeVal.trim() };
+        newList[editingIncomeIdx!] = { 
+            name: tempIncomeVal.trim(),
+            tipoEstrutural: tempIncomeStructuralType,
+            impactaDRE: tempIncomeImpactaDRE
+        };
         setIncomeCategories(newList);
         setEditingIncomeIdx(null);
     };
@@ -1073,31 +1116,71 @@ const SettingsView: FC<SettingsViewProps> = ({
                 {/* CATEGORIAS DE RECEITA */}
                 <Card>
                     <h3 className="font-bold mb-4 text-primary text-sm uppercase">Categorias de Receita</h3>
-                    <div className="flex gap-2 mb-4">
-                        <input type="text" value={newIncomeCat} onChange={e => setNewIncomeCat(e.target.value)} className="flex-1 bg-background border border-border-color rounded px-3 py-2 text-sm" placeholder="Nova categoria" />
-                        <Button onClick={addIncomeCategory} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button>
+                    <div className="flex flex-col gap-2 mb-4">
+                        <input type="text" value={newIncomeCat} onChange={e => setNewIncomeCat(e.target.value)} className="bg-background border border-border-color rounded px-3 py-2 text-sm" placeholder="Nome da categoria" />
+                        <div className="grid grid-cols-1 gap-2">
+                            <div>
+                                <label className="block text-[10px] text-text-secondary uppercase mb-1">Tipo Estrutural</label>
+                                <select value={newIncomeCatStructuralType} onChange={e => setNewIncomeCatStructuralType(e.target.value as CategoryStructuralType)} className="w-full bg-background border border-border-color rounded px-3 py-2 text-sm">
+                                    <option value={CategoryStructuralType.RECEITA_OPERACIONAL}>Receita Operacional</option>
+                                    <option value={CategoryStructuralType.RECEITA_NAO_OPERACIONAL}>Receita Não Operacional</option>
+                                    <option value={CategoryStructuralType.SOCIETARIO}>Societário</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-between bg-background/30 p-2 rounded border border-border-color/50">
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs font-medium">Impacta no DRE?</span>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${newIncomeCatImpactaDRE ? 'bg-green-400/20 text-green-400' : 'bg-danger/20 text-danger'}`}>
+                                    {newIncomeCatImpactaDRE ? 'SIM' : 'NÃO'}
+                                </span>
+                            </div>
+                            <Button onClick={addIncomeCategory} variant="secondary" className="py-2 px-4"><PlusIcon className="w-4 h-4 mr-2"/> Adicionar</Button>
+                        </div>
                     </div>
                     <ul className="space-y-2">
                         {incomeCategories.map((cat, idx) => (
-                            <li key={idx} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm group">
-                                <div className="flex items-center gap-2">
-                                    <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button onClick={() => moveItem(incomeCategories, setIncomeCategories, idx, 'up')} className="text-text-secondary hover:text-primary"><ArrowUpIcon className="w-3 h-3" /></button>
-                                        <button onClick={() => moveItem(incomeCategories, setIncomeCategories, idx, 'down')} className="text-text-secondary hover:text-primary"><ArrowDownIcon className="w-3 h-3" /></button>
-                                    </div>
-                                    {editingIncomeIdx === idx ? (
-                                        <div className="flex gap-1 items-center">
-                                            <input type="text" value={tempIncomeVal} onChange={e => setTempIncomeVal(e.target.value)} className="bg-background border border-border-color rounded px-2 py-0.5 text-xs w-32" />
-                                            <button onClick={saveEditIncome} className="text-green-400 hover:text-green-300 font-bold text-xs">OK</button>
+                            <li key={idx} className="flex flex-col bg-background/50 p-2 rounded text-sm group gap-2">
+                                <div className="flex justify-between items-center">
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button onClick={() => moveItem(incomeCategories, setIncomeCategories, idx, 'up')} className="text-text-secondary hover:text-primary"><ArrowUpIcon className="w-3 h-3" /></button>
+                                            <button onClick={() => moveItem(incomeCategories, setIncomeCategories, idx, 'down')} className="text-text-secondary hover:text-primary"><ArrowDownIcon className="w-3 h-3" /></button>
                                         </div>
-                                    ) : (
-                                        <span>{cat.name}</span>
-                                    )}
+                                        {editingIncomeIdx === idx ? (
+                                            <input type="text" value={tempIncomeVal} onChange={e => setTempIncomeVal(e.target.value)} className="bg-background border border-border-color rounded px-2 py-0.5 text-xs w-32" />
+                                        ) : (
+                                            <span className="font-bold">{cat.name}</span>
+                                        )}
+                                    </div>
+                                    <div className="flex gap-2">
+                                        {editingIncomeIdx !== idx && <button onClick={() => startEditIncome(idx)} className="text-text-secondary hover:text-primary"><EditIcon className="w-4 h-4"/></button>}
+                                        <button onClick={() => removeIncomeCategory(cat.name)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>
+                                    </div>
                                 </div>
-                                <div className="flex gap-2">
-                                    {editingIncomeIdx !== idx && <button onClick={() => startEditIncome(idx)} className="text-text-secondary hover:text-primary"><EditIcon className="w-4 h-4"/></button>}
-                                    <button onClick={() => removeIncomeCategory(cat.name)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>
-                                </div>
+                                
+                                {editingIncomeIdx === idx ? (
+                                    <div className="flex flex-col gap-2 bg-background p-2 rounded border border-primary/30">
+                                        <select value={tempIncomeStructuralType} onChange={e => setTempIncomeStructuralType(e.target.value as CategoryStructuralType)} className="w-full bg-background border border-border-color rounded px-2 py-1 text-xs">
+                                            <option value={CategoryStructuralType.RECEITA_OPERACIONAL}>Receita Operacional</option>
+                                            <option value={CategoryStructuralType.RECEITA_NAO_OPERACIONAL}>Receita Não Operacional</option>
+                                            <option value={CategoryStructuralType.SOCIETARIO}>Societário</option>
+                                        </select>
+                                        <div className="flex justify-between items-center">
+                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${tempIncomeImpactaDRE ? 'bg-green-400/20 text-green-400' : 'bg-danger/20 text-danger'}`}>
+                                                DRE: {tempIncomeImpactaDRE ? 'SIM' : 'NÃO'}
+                                            </span>
+                                            <button onClick={saveEditIncome} className="bg-primary text-white px-3 py-1 rounded text-xs font-bold">SALVAR</button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex gap-2 items-center pl-5">
+                                        <span className="text-[10px] text-text-secondary uppercase">{cat.tipoEstrutural?.replace('_', ' ')}</span>
+                                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${cat.impactaDRE ? 'bg-green-400/10 text-green-400' : 'bg-danger/10 text-danger'}`}>
+                                            {cat.impactaDRE ? 'DRE' : 'NÃO DRE'}
+                                        </span>
+                                    </div>
+                                )}
                             </li>
                         ))}
                     </ul>
@@ -2804,7 +2887,12 @@ const ImportedRevenuesView: FC<{
     )
 };
 
-const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: ImportedRevenue[] }> = ({ transactions, importedRevenues = [] }) => {
+const ReportsView: FC<{ 
+    transactions: Transaction[], 
+    importedRevenues?: ImportedRevenue[],
+    incomeCategories: IncomeCategory[],
+    expenseCategories: ExpenseCategory[]
+}> = ({ transactions, importedRevenues = [], incomeCategories, expenseCategories }) => {
     const availableYears = useMemo(() => {
         const years = [...new Set([
             ...transactions.map(t => new Date(t.date).getFullYear()),
@@ -2827,62 +2915,152 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
     
     const dreData = useMemo(() => {
         const fTrans = transactions.filter(t => filterFn(t.date));
-        const manualRevenue = fTrans.filter(t => t.type === TransactionType.INCOME).reduce((sum: number, t) => sum + t.amount, 0);
-        const importedRevenue = importedRevenues.filter(r => filterFn(r.date) && !r.lancamentosRealizados).reduce((sum: number, r) => sum + (r.officeNetRevenue || 0), 0);
-        const totalRevenue = round(Number(manualRevenue) + Number(importedRevenue));
-        const expenseTrans = fTrans.filter(t => t.type === TransactionType.EXPENSE);
-        const totalExpense = round(expenseTrans.reduce((sum: number, t) => sum + t.amount, 0));
-        const expensesByCategory: Record<string, number> = {};
-        expenseTrans.forEach(t => { expensesByCategory[t.category] = round((expensesByCategory[t.category] || 0) + t.amount); });
-        const sortedExpenses = Object.entries(expensesByCategory).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
         
-        const result = round(Number(totalRevenue) - Number(totalExpense));
-
-        let limitDate = new Date();
-        if (selectedYear !== 'all') {
-            if (selectedMonth !== 'all') {
-                limitDate = new Date(selectedYear, (selectedMonth as number) + 1, 0, 23, 59, 59);
+        const getStructuralInfo = (t: Transaction) => {
+            if (t.type === TransactionType.INCOME) {
+                const cat = incomeCategories.find(c => c.name === t.category);
+                return {
+                    tipoEstrutural: cat?.tipoEstrutural || CategoryStructuralType.RECEITA_OPERACIONAL,
+                    impactaDRE: cat?.impactaDRE ?? true
+                };
             } else {
-                limitDate = new Date(selectedYear as number, 12, 0, 23, 59, 59);
+                const cat = expenseCategories.find(c => c.name === t.category);
+                return {
+                    tipoEstrutural: cat?.tipoEstrutural || CategoryStructuralType.DESPESA_OPERACIONAL,
+                    impactaDRE: cat?.impactaDRE ?? true
+                };
             }
-        }
+        };
+
+        const dreTransactions = fTrans.filter(t => {
+            const info = getStructuralInfo(t);
+            if (!info.impactaDRE) return false;
+            if (t.type === TransactionType.EXPENSE) {
+                return t.status === ExpenseStatus.PAID || t.status === ExpenseStatus.CLEARED;
+            }
+            return true;
+        });
+
+        // 1. RECEITA OPERACIONAL BRUTA
+        const manualOpRevenue = dreTransactions
+            .filter(t => t.type === TransactionType.INCOME && getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.RECEITA_OPERACIONAL)
+            .reduce((sum, t) => sum + t.amount, 0);
         
-        const caixaEmpresa = round(transactions.reduce((acc, t) => {
-            if (t.costCenter === 'conta-pj' && new Date(t.date) <= limitDate) {
-                if (t.type === TransactionType.INCOME) {
-                    return acc + Number(t.amount);
-                } else if (t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PAID) {
-                    return acc - Number(t.amount);
-                }
-            }
-            return acc;
-        }, 0));
+        const importedOpRevenue = importedRevenues
+            .filter(r => filterFn(r.date) && !r.lancamentosRealizados)
+            .reduce((sum, r) => sum + (r.officeNetRevenue || 0), 0);
+            
+        const receitaBruta = round(manualOpRevenue + importedOpRevenue);
 
-        const lucroLiquidoAjustado = round(result + caixaEmpresa);
+        // 2. DEDUÇÕES DA RECEITA
+        const deducoes = round(dreTransactions
+            .filter(t => getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.DEDUCAO_RECEITA)
+            .reduce((sum, t) => sum + t.amount, 0));
 
-        return { totalRevenue, totalExpense, sortedExpenses, result, caixaEmpresa, lucroLiquidoAjustado };
-    }, [transactions, importedRevenues, selectedYear, selectedMonth]);
+        // 3. RECEITA OPERACIONAL LÍQUIDA
+        const receitaLiquida = round(receitaBruta - deducoes);
+
+        // 4. CUSTOS OPERACIONAIS
+        const custos = round(dreTransactions
+            .filter(t => getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.CUSTO)
+            .reduce((sum, t) => sum + t.amount, 0));
+
+        // 5. RESULTADO BRUTO
+        const resultadoBruto = round(receitaLiquida - custos);
+
+        // 6. DESPESAS OPERACIONAIS
+        const despesasOperacionais = round(dreTransactions
+            .filter(t => getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.DESPESA_OPERACIONAL)
+            .reduce((sum, t) => sum + t.amount, 0));
+
+        // 7. RESULTADO OPERACIONAL
+        const resultadoOperacional = round(resultadoBruto - despesasOperacionais);
+
+        // 8. OUTRAS RECEITAS
+        const outrasReceitas = round(dreTransactions
+            .filter(t => t.type === TransactionType.INCOME && getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.RECEITA_NAO_OPERACIONAL)
+            .reduce((sum, t) => sum + t.amount, 0));
+
+        // 9. RESULTADO FINAL
+        const resultadoFinal = round(resultadoOperacional + outrasReceitas);
+
+        const expensesByCategory: Record<string, number> = {};
+        dreTransactions
+            .filter(t => t.type === TransactionType.EXPENSE && getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.DESPESA_OPERACIONAL)
+            .forEach(t => {
+                expensesByCategory[t.category] = round((expensesByCategory[t.category] || 0) + t.amount);
+            });
+        const sortedExpenses = Object.entries(expensesByCategory)
+            .map(([name, value]) => ({ name, value }))
+            .sort((a, b) => b.value - a.value);
+
+        return { 
+            receitaBruta, 
+            deducoes, 
+            receitaLiquida, 
+            custos, 
+            resultadoBruto, 
+            despesasOperacionais, 
+            resultadoOperacional, 
+            outrasReceitas, 
+            resultadoFinal, 
+            sortedExpenses 
+        };
+    }, [transactions, importedRevenues, incomeCategories, expenseCategories, selectedYear, selectedMonth]);
 
     const valuationMonthlyData = useMemo(() => {
-        const monthlyMap: Record<string, { revenue: number; expense: number; pjBalanceInMonth: number }> = {};
+        const monthlyMap: Record<string, { opRevenue: number; opExpense: number; pjBalanceInMonth: number }> = {};
         
+        const getStructuralInfo = (t: Transaction) => {
+            if (t.type === TransactionType.INCOME) {
+                const cat = incomeCategories.find(c => c.name === t.category);
+                return {
+                    tipoEstrutural: cat?.tipoEstrutural || CategoryStructuralType.RECEITA_OPERACIONAL,
+                    impactaDRE: cat?.impactaDRE ?? true
+                };
+            } else {
+                const cat = expenseCategories.find(c => c.name === t.category);
+                return {
+                    tipoEstrutural: cat?.tipoEstrutural || CategoryStructuralType.DESPESA_OPERACIONAL,
+                    impactaDRE: cat?.impactaDRE ?? true
+                };
+            }
+        };
+
         transactions.forEach(t => {
             if (!filterFn(t.date)) return;
+            const info = getStructuralInfo(t);
+            if (!info.impactaDRE) return;
+            
+            // For valuation, we only care about operational items
+            const isOperational = info.tipoEstrutural === CategoryStructuralType.RECEITA_OPERACIONAL || 
+                                 info.tipoEstrutural === CategoryStructuralType.CUSTO || 
+                                 info.tipoEstrutural === CategoryStructuralType.DESPESA_OPERACIONAL ||
+                                 info.tipoEstrutural === CategoryStructuralType.DEDUCAO_RECEITA;
+
+            if (!isOperational) return;
+
+            if (t.type === TransactionType.EXPENSE && !(t.status === ExpenseStatus.PAID || t.status === ExpenseStatus.CLEARED)) return;
+
             const key = t.date.substring(0, 7);
-            if (!monthlyMap[key]) monthlyMap[key] = { revenue: 0, expense: 0, pjBalanceInMonth: 0 };
-            if (t.type === TransactionType.INCOME) monthlyMap[key].revenue = round(monthlyMap[key].revenue + t.amount);
-            else monthlyMap[key].expense = round(monthlyMap[key].expense + t.amount);
+            if (!monthlyMap[key]) monthlyMap[key] = { opRevenue: 0, opExpense: 0, pjBalanceInMonth: 0 };
+            
+            if (t.type === TransactionType.INCOME) {
+                monthlyMap[key].opRevenue = round(monthlyMap[key].opRevenue + t.amount);
+            } else {
+                monthlyMap[key].opExpense = round(monthlyMap[key].opExpense + t.amount);
+            }
         });
 
         importedRevenues.forEach(r => {
             if (!filterFn(r.date)) return;
             const key = r.date.substring(0, 7);
-            if (!monthlyMap[key]) monthlyMap[key] = { revenue: 0, expense: 0, pjBalanceInMonth: 0 };
-            monthlyMap[key].revenue = round(monthlyMap[key].revenue + (r.revenueAmount || 0));
+            if (!monthlyMap[key]) monthlyMap[key] = { opRevenue: 0, opExpense: 0, pjBalanceInMonth: 0 };
+            monthlyMap[key].opRevenue = round(monthlyMap[key].opRevenue + (r.officeNetRevenue || 0));
         });
 
-        const calcularValuation = (llaMensal: number): number => {
-            return llaMensal > 0 ? round(llaMensal * 5) : 0;
+        const calcularValuation = (val: number): number => {
+            return val > 0 ? round(val * 5) : 0;
         };
 
         return Object.entries(monthlyMap)
@@ -2901,9 +3079,9 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
                     return acc;
                 }, 0));
 
-                const resultadoMes = round(data.revenue - data.expense);
-                const lla = round(resultadoMes + caixaNoMes); 
-                const valuation = calcularValuation(lla);
+                const resultadoOperacionalMes = round(data.opRevenue - data.opExpense);
+                const lla = round(resultadoOperacionalMes + caixaNoMes); 
+                const valuation = calcularValuation(resultadoOperacionalMes); // Using operational result for valuation
                 
                 const date = new Date(year, month - 1, 1, 12, 0, 0);
                 return {
@@ -2914,10 +3092,10 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
                 };
             })
             .sort((a, b) => b.key.localeCompare(a.key));
-    }, [transactions, importedRevenues, selectedYear, selectedMonth]);
+    }, [transactions, importedRevenues, incomeCategories, expenseCategories, selectedYear, selectedMonth]);
 
-    const accumulatedLLA = round(dreData.lucroLiquidoAjustado);
-    const accumulatedValuation = accumulatedLLA > 0 ? round(accumulatedLLA * 5) : 0;
+    const accumulatedOpResult = round(dreData.resultadoOperacional);
+    const accumulatedValuation = accumulatedOpResult > 0 ? round(accumulatedOpResult * 5) : 0;
 
     return (
         <div className="space-y-6 animate-fade-in">
@@ -2952,20 +3130,31 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
                     </p>
                 </div>
                 <div className="space-y-3 font-mono text-sm sm:text-base">
-                    <div className="flex justify-between items-center py-2"><span className="font-bold text-text-primary">RECEITA OPERACIONAL BRUTA</span><span className="font-bold text-green-400">{formatCurrency(dreData.totalRevenue)}</span></div>
-                    <div className="flex justify-between items-center py-2 border-t border-border-color/30 mt-2"><span className="font-bold text-text-primary">(-) DESPESAS OPERACIONAIS</span><span className="font-bold text-danger">{formatCurrency(dreData.totalExpense)}</span></div>
-                    <div className="pl-4 sm:pl-8 space-y-1">
+                    <div className="flex justify-between items-center py-2"><span className="font-bold text-text-primary">RECEITA OPERACIONAL BRUTA</span><span className="font-bold text-green-400">{formatCurrency(dreData.receitaBruta)}</span></div>
+                    
+                    <div className="flex justify-between items-center py-1 text-text-secondary text-xs sm:text-sm pl-4"><span>(-) DEDUÇÕES DA RECEITA</span><span className="text-danger">{formatCurrency(dreData.deducoes)}</span></div>
+                    
+                    <div className="flex justify-between items-center py-2 border-t border-border-color/30 mt-1"><span className="font-bold text-text-primary">(=) RECEITA OPERACIONAL LÍQUIDA</span><span className="font-bold text-green-400">{formatCurrency(dreData.receitaLiquida)}</span></div>
+                    
+                    <div className="flex justify-between items-center py-1 text-text-secondary text-xs sm:text-sm pl-4"><span>(-) CUSTOS OPERACIONAIS</span><span className="text-danger">{formatCurrency(dreData.custos)}</span></div>
+                    
+                    <div className="flex justify-between items-center py-2 border-t border-border-color/30 mt-1"><span className="font-bold text-text-primary">(=) RESULTADO BRUTO</span><span className={`font-bold ${dreData.resultadoBruto >= 0 ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(dreData.resultadoBruto)}</span></div>
+                    
+                    <div className="flex justify-between items-center py-1 text-text-secondary text-xs sm:text-sm pl-4"><span>(-) DESPESAS OPERACIONAIS</span><span className="text-danger">{formatCurrency(dreData.despesasOperacionais)}</span></div>
+                    
+                    <div className="pl-8 space-y-1">
                         {dreData.sortedExpenses.map((exp, idx) => (
-                            <div key={idx} className="flex justify-between text-text-secondary text-xs sm:text-sm hover:bg-background/50 px-2 rounded"><span>{exp.name}</span><span>{formatCurrency(exp.value)}</span></div>
+                            <div key={idx} className="flex justify-between text-text-secondary text-[10px] sm:text-xs hover:bg-background/50 px-2 rounded"><span>{exp.name}</span><span>{formatCurrency(exp.value)}</span></div>
                         ))}
                     </div>
+
+                    <div className="flex justify-between items-center py-2 border-t border-border-color/30 mt-1"><span className="font-bold text-text-primary">(=) RESULTADO OPERACIONAL</span><span className={`font-bold ${dreData.resultadoOperacional >= 0 ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(dreData.resultadoOperacional)}</span></div>
+                    
+                    <div className="flex justify-between items-center py-1 text-text-secondary text-xs sm:text-sm pl-4"><span>(+) OUTRAS RECEITAS</span><span className="text-green-400">{formatCurrency(dreData.outrasReceitas)}</span></div>
+
                     <div className="flex justify-between items-center py-3 border-t-2 border-border-color mt-4 bg-background/30 px-2 rounded">
-                        <span className="font-bold text-lg text-text-primary">RESULTADO DO PERÍODO</span>
-                        <span className={`font-bold text-lg ${dreData.result >= 0 ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(dreData.result)}</span>
-                    </div>
-                    <div className="flex justify-between items-center py-3 border-t border-border-color/50 bg-primary/10 px-2 rounded mt-1">
-                        <span className="font-bold text-lg text-primary">LUCRO LÍQUIDO AJUSTADO</span>
-                        <span className={`font-bold text-lg ${dreData.lucroLiquidoAjustado >= 0 ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(dreData.lucroLiquidoAjustado)}</span>
+                        <span className="font-bold text-lg text-text-primary">(=) RESULTADO FINAL</span>
+                        <span className={`font-bold text-lg ${dreData.resultadoFinal >= 0 ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(dreData.resultadoFinal)}</span>
                     </div>
                 </div>
             </Card>
@@ -2973,14 +3162,14 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
             <Card className="max-w-4xl mx-auto mt-6">
                 <div className="border-b border-border-color pb-4 mb-4 text-center">
                     <h3 className="text-xl font-bold text-text-primary uppercase tracking-tight">Valuation</h3>
-                    <p className="text-text-secondary text-sm">Cálculo baseado no Lucro Líquido Ajustado mensal</p>
+                    <p className="text-text-secondary text-sm">Cálculo baseado no Resultado Operacional mensal</p>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead>
                             <tr className="text-[10px] text-text-secondary uppercase tracking-wider border-b border-border-color">
                                 <th className="p-3">Mês / Ano</th>
-                                <th className="p-3 text-right">LLA Mensal</th>
+                                <th className="p-3 text-right">Resultado Operacional</th>
                                 <th className="p-3 text-right text-primary">Valuation (5x)</th>
                             </tr>
                         </thead>
@@ -3009,13 +3198,13 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
                     <h4 className="text-sm font-bold text-text-secondary uppercase tracking-widest mb-4">Resumo Acumulado (Filtro)</h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="flex justify-between items-center p-3 bg-surface rounded-lg border border-border-color">
-                            <span className="text-xs font-semibold text-text-secondary">LLA Acumulado:</span>
-                            <span className={`text-lg font-bold ${accumulatedLLA >= 0 ? 'text-green-400' : 'text-danger'}`}>
-                                {formatCurrency(accumulatedLLA)}
+                            <span className="text-xs font-semibold text-text-secondary">Resultado Operacional Acumulado:</span>
+                            <span className={`text-lg font-bold ${accumulatedOpResult >= 0 ? 'text-green-400' : 'text-danger'}`}>
+                                {formatCurrency(accumulatedOpResult)}
                             </span>
                         </div>
                         <div className="flex justify-between items-center p-3 bg-surface rounded-lg border border-primary/30">
-                            <span className="text-xs font-semibold text-primary">Valuation 5x LLA Anual:</span>
+                            <span className="text-xs font-semibold text-primary">Valuation 5x Resultado Operacional:</span>
                             <span className="text-lg font-bold text-primary">
                                 {formatCurrency(accumulatedValuation)}
                             </span>
@@ -3066,11 +3255,49 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
             return (selectedYear === 'all' || year === selectedYear) && (selectedMonth === 'all' || month === selectedMonth);
         }), [transactions, selectedYear, selectedMonth]);
 
-    const { totalIncome, totalExpense, netProfit } = useMemo(() => {
-        const income = round(filteredTransactions.filter(t => t.type === TransactionType.INCOME).reduce<number>((acc, t) => acc + t.amount, 0));
-        const expense = round(filteredTransactions.filter(t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PAID).reduce<number>((acc, t) => acc + t.amount, 0));
-        return { totalIncome: income, totalExpense: expense, netProfit: round(Number(income) - Number(expense)) };
-    }, [filteredTransactions]);
+    const { totalIncome, totalExpense, resultadoPeriodo } = useMemo(() => {
+        const getStructuralInfo = (t: Transaction) => {
+            if (t.type === TransactionType.INCOME) {
+                const cat = incomeCategories.find(c => c.name === t.category);
+                return {
+                    tipoEstrutural: cat?.tipoEstrutural || CategoryStructuralType.RECEITA_OPERACIONAL,
+                    impactaDRE: cat?.impactaDRE ?? true
+                };
+            } else {
+                const cat = expenseCategories.find(c => c.name === t.category);
+                return {
+                    tipoEstrutural: cat?.tipoEstrutural || CategoryStructuralType.DESPESA_OPERACIONAL,
+                    impactaDRE: cat?.impactaDRE ?? true
+                };
+            }
+        };
+
+        const dreTransactions = filteredTransactions.filter(t => {
+            const info = getStructuralInfo(t);
+            if (!info.impactaDRE) return false;
+            if (t.type === TransactionType.EXPENSE) {
+                return t.status === ExpenseStatus.PAID || t.status === ExpenseStatus.CLEARED;
+            }
+            return true;
+        });
+
+        const manualIncome = dreTransactions.filter(t => t.type === TransactionType.INCOME).reduce<number>((acc, t) => acc + t.amount, 0);
+        
+        const importedIncome = importedRevenues
+            .filter(r => {
+                const date = new Date(r.date);
+                const year = date.getUTCFullYear();
+                const month = date.getUTCMonth();
+                const periodMatch = (selectedYear === 'all' || year === selectedYear) && (selectedMonth === 'all' || month === selectedMonth);
+                return periodMatch && !r.lancamentosRealizados;
+            })
+            .reduce((sum, r) => sum + (r.officeNetRevenue || 0), 0);
+
+        const income = round(manualIncome + importedIncome);
+        const expense = round(dreTransactions.filter(t => t.type === TransactionType.EXPENSE).reduce<number>((acc, t) => acc + t.amount, 0));
+        
+        return { totalIncome: income, totalExpense: expense, resultadoPeriodo: round(Number(income) - Number(expense)) };
+    }, [filteredTransactions, importedRevenues, incomeCategories, expenseCategories, selectedYear, selectedMonth]);
 
     const saldoHoje = useMemo(() => round(transactions.reduce((acc: number, t: Transaction) => {
         const txDate = new Date(t.date).getTime();
@@ -3105,7 +3332,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
     const achievedGoals = useMemo(() => goals.filter(g => (Number(g.currentAmount) || 0) >= g.targetAmount).length, [goals]);
     
     const strategicIndicators = useMemo(() => {
-        const netMargin = totalIncome > 0 ? (netProfit / totalIncome) * 100 : null;
+        const netMargin = totalIncome > 0 ? (resultadoPeriodo / totalIncome) * 100 : null;
 
         const filteredRevenues = importedRevenues.filter(r => {
             const date = new Date(r.date);
@@ -3161,7 +3388,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         const breakEven = productionMargin > 0 ? round(fixedExpenses / productionMargin) : null;
 
         return { netMargin, breakEven };
-    }, [totalIncome, netProfit, importedRevenues, selectedYear, selectedMonth, filteredTransactions, advisors, estimatedTaxRate]);
+    }, [totalIncome, resultadoPeriodo, importedRevenues, selectedYear, selectedMonth, filteredTransactions, advisors, estimatedTaxRate]);
 
     const upcomingBills = useMemo(() => {
         const thresholdDate = new Date();
@@ -3276,7 +3503,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-6">
                 <Card className="border-l-4 border-green-400"><h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Receita Líquida</h3><p className="text-2xl font-bold text-green-400">{formatCurrency(totalIncome)}</p></Card>
                 <Card className="border-l-4 border-danger"><h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Despesa Total</h3><p className="text-2xl font-bold text-danger">{formatCurrency(totalExpense)}</p></Card>
-                <Card className="border-l-4 border-primary"><h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Lucro Líquido</h3><p className={`text-2xl font-bold ${netProfit >= 0 ? 'text-text-primary' : 'text-danger'}`}>{formatCurrency(netProfit)}</p></Card>
+                <Card className="border-l-4 border-primary"><h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Resultado do Período</h3><p className={`text-2xl font-bold ${resultadoPeriodo >= 0 ? 'text-text-primary' : 'text-danger'}`}>{formatCurrency(resultadoPeriodo)}</p></Card>
                 <Card className="border-l-4 border-yellow-400">
                     <h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Margem Líquida</h3>
                     <p className="text-2xl font-bold text-yellow-400">
@@ -3411,12 +3638,23 @@ const App: FC = () => {
     useEffect(() => {
         let updatedIncome = false;
         const migratedIncome = incomeCategories.map(cat => {
+            const name = typeof cat === 'string' ? cat : cat.name;
+            const isSocietario = ['Aporte de Corretora', 'Incentivo de Estruturação', 'Entrada de Capital'].includes(name);
+            
             if (typeof cat === 'string') {
                 updatedIncome = true;
                 return {
-                    name: cat,
-                    tipoEstrutural: CategoryStructuralType.RECEITA_OPERACIONAL,
-                    impactaDRE: true
+                    name,
+                    tipoEstrutural: isSocietario ? CategoryStructuralType.SOCIETARIO : CategoryStructuralType.RECEITA_OPERACIONAL,
+                    impactaDRE: !isSocietario
+                } as IncomeCategory;
+            }
+            if (!cat.tipoEstrutural || cat.impactaDRE === undefined) {
+                updatedIncome = true;
+                return {
+                    ...cat,
+                    tipoEstrutural: cat.tipoEstrutural || (isSocietario ? CategoryStructuralType.SOCIETARIO : CategoryStructuralType.RECEITA_OPERACIONAL),
+                    impactaDRE: cat.impactaDRE !== undefined ? cat.impactaDRE : !isSocietario
                 } as IncomeCategory;
             }
             return cat;
@@ -3425,10 +3663,10 @@ const App: FC = () => {
 
         let updatedExpense = false;
         const migratedExpense = expenseCategories.map(cat => {
-            if (cat.tipoEstrutural === undefined) {
+            if (cat.tipoEstrutural === undefined || cat.impactaDRE === undefined) {
                 updatedExpense = true;
-                let tipo: CategoryStructuralType = CategoryStructuralType.DESPESA_OPERACIONAL;
-                let impacta = true;
+                let tipo: CategoryStructuralType = cat.tipoEstrutural || CategoryStructuralType.DESPESA_OPERACIONAL;
+                let impacta = cat.impactaDRE !== undefined ? cat.impactaDRE : true;
 
                 if (cat.name === 'Remuneração de Assessores') { tipo = CategoryStructuralType.CUSTO; impacta = true; }
                 else if (cat.name === 'Custos Operacionais') { tipo = CategoryStructuralType.CUSTO; impacta = true; }
@@ -3439,7 +3677,7 @@ const App: FC = () => {
                 else if (cat.name === 'Impostos e Encargos') { tipo = CategoryStructuralType.DEDUCAO_RECEITA; impacta = true; }
                 else if (cat.name === 'Mobiliário e Equipamentos') { tipo = CategoryStructuralType.INVESTIMENTO; impacta = false; }
                 else if (cat.name === 'Movimentações Societárias') { tipo = CategoryStructuralType.SOCIETARIO; impacta = false; }
-                else { tipo = CategoryStructuralType.DESPESA_OPERACIONAL; impacta = true; }
+                else { tipo = tipo || CategoryStructuralType.DESPESA_OPERACIONAL; impacta = impacta !== undefined ? impacta : true; }
 
                 return {
                     ...cat,
@@ -3863,7 +4101,14 @@ const App: FC = () => {
                             {activeView === 'dashboard' && <DashboardView transactions={transactions} goals={goals} onSetPaid={handleSetPaid} onEdit={handleEditTransaction} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} globalTaxRate={globalTaxRate} estimatedTaxRate={estimatedTaxRate} importedRevenues={importedRevenues} />}
                             {activeView === 'transactions' && <TransactionsView transactions={transactions} onAdd={handleAddTransaction} onEdit={handleEditTransaction} onDelete={handleDeleteTransaction} onSetPaid={handleSetPaid} onToggleReconciliation={handleToggleReconciliation} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} onImportTransactions={handleImportTransactions} globalTaxRate={globalTaxRate} importedRevenues={importedRevenues} userId={user.uid} />}
                             {activeView === 'imported-revenues' && <ImportedRevenuesView importedRevenues={importedRevenues} advisors={advisors} onDelete={handleDeleteRevenue} onAdd={handleAddImportedRevenue} onUpdate={handleUpdateImportedRevenue} onBatchCommissionClosing={handleBatchCommissionClosing} onClearAll={handleClearAllRevenues} globalTaxRate={globalTaxRate} estimatedTaxRate={estimatedTaxRate} userId={user.uid} />}
-                            {activeView === 'reports' && <ReportsView transactions={transactions} importedRevenues={importedRevenues} />}
+                            {activeView === 'reports' && (
+                                <ReportsView 
+                                    transactions={transactions} 
+                                    importedRevenues={importedRevenues}
+                                    incomeCategories={incomeCategories}
+                                    expenseCategories={expenseCategories}
+                                />
+                            )}
                             {activeView === 'goals' && <GoalsView goals={goals} onAdd={v => setGoals([...goals, { ...v, id: crypto.randomUUID(), currentAmount: round(0) }])} onUpdateProgress={(id, amount) => setGoals(goals.map(g => g.id === id ? { ...g, currentAmount: round((Number(g.currentAmount) || 0) + (Number(amount) || 0)) } : g))} onDelete={id => setGoals(goals.filter(g => g.id !== id))} />}
                             {activeView === 'partnership' && <PartnershipView partners={partners} onSave={handleSavePartnership} />}
                             {activeView === 'settings' && <SettingsView incomeCategories={incomeCategories} setIncomeCategories={setIncomeCategories} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} paymentMethods={paymentMethods} setPaymentMethods={setPaymentMethods} costCenters={costCenters} setCostCenters={setCostCenters} advisors={advisors} setAdvisors={setAdvisors} globalTaxRate={globalTaxRate} setGlobalTaxRate={setGlobalTaxRate} estimatedTaxRate={estimatedTaxRate} setEstimatedTaxRate={setEstimatedTaxRate} />}

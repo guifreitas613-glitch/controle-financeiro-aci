@@ -6,6 +6,7 @@ export enum TransactionType {
 export enum ExpenseStatus {
     PAID = 'paga',
     PENDING = 'pendente',
+    CLEARED = 'quitada',
 }
 
 export enum ExpenseNature {
@@ -152,6 +153,7 @@ export interface Advisor {
 
 export enum CategoryStructuralType {
     RECEITA_OPERACIONAL = 'receita_operacional',
+    RECEITA_NAO_OPERACIONAL = 'receita_nao_operacional',
     CUSTO = 'custo',
     DESPESA_OPERACIONAL = 'despesa_operacional',
     DEDUCAO_RECEITA = 'deducao_receita',
@@ -161,7 +163,7 @@ export enum CategoryStructuralType {
 
 export interface IncomeCategory {
     name: string;
-    tipoEstrutural: CategoryStructuralType.RECEITA_OPERACIONAL;
+    tipoEstrutural: CategoryStructuralType;
     impactaDRE: boolean;
 }
 
