@@ -396,8 +396,8 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             submissionData.taxAmount = round(taxValueCents / 100);
             submissionData.grossAmount = parsedGrossAmount;
             submissionData.taxRate = parseFloat(taxRateInput) || 0;
-            // Office income for general transactions is simply Gross - Tax
-            submissionData.amount = round(parsedGrossAmount - submissionData.taxAmount);
+            // A receita deve ser salva sempre pelo valor bruto.
+            submissionData.amount = parsedGrossAmount;
         }
 
         if (type === TransactionType.EXPENSE) {
@@ -470,7 +470,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                             />
                         </div>
                         <div>
-                            <p className="text-xs text-text-secondary">(=) Valor Líquido</p>
+                            <p className="text-xs text-text-secondary">(=) Valor Líquido Estimado (pós-imposto)</p>
                             <p className="font-bold text-green-400">{formatCurrency(round(gross - (taxValueCents / 100)))}</p>
                         </div>
                     </div>
@@ -1060,6 +1060,7 @@ const SettingsView: FC<SettingsViewProps> = ({
                             <select value={newExpenseCatType} onChange={e => setNewExpenseCatType(e.target.value as ExpenseType)} className="flex-1 bg-background border border-border-color rounded px-3 py-2 text-sm">
                                 <option value={ExpenseType.COST}>Custo</option>
                                 <option value={ExpenseType.EXPENSE}>Despesa</option>
+                                <option value={ExpenseType.NON_OPERATIONAL}>Despesa não Operacional</option>
                             </select>
                             <Button onClick={addExpenseCategory} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button>
                         </div>
@@ -1079,6 +1080,7 @@ const SettingsView: FC<SettingsViewProps> = ({
                                                 <select value={tempExpenseType} onChange={e => setTempExpenseType(e.target.value as ExpenseType)} className="bg-background border border-border-color rounded px-1 py-0.5 text-[10px]">
                                                     <option value={ExpenseType.COST}>Custo</option>
                                                     <option value={ExpenseType.EXPENSE}>Despesa</option>
+                                                    <option value={ExpenseType.NON_OPERATIONAL}>Despesa não Operacional</option>
                                                 </select>
                                                 <button onClick={saveEditExpense} className="text-green-400 hover:text-green-300 font-bold text-xs">OK</button>
                                             </div>
@@ -1086,7 +1088,11 @@ const SettingsView: FC<SettingsViewProps> = ({
                                     ) : (
                                         <div>
                                             <span className="font-medium">{cat.name}</span>
-                                            <span className="ml-2 text-[10px] text-text-secondary uppercase">({cat.type})</span>
+                                            <span className="ml-2 text-[10px] text-text-secondary uppercase">
+                                                ({cat.type === ExpenseType.COST ? 'Custo' : 
+                                                  cat.type === ExpenseType.EXPENSE ? 'Despesa' : 
+                                                  'Despesa não Operacional'})
+                                            </span>
                                         </div>
                                     )}
                                 </div>
@@ -1299,6 +1305,8 @@ const TransactionsView: FC<{
     const [filterMonth, setFilterMonth] = useState<number | 'all'>('all');
     const [activeTab, setActiveTab] = useState<TransactionType>(TransactionType.EXPENSE);
     const [filterCategory, setFilterCategory] = useState<string>('all');
+    const [filterStatus, setFilterStatus] = useState<ExpenseStatus | 'all'>('all');
+    const [filterReconciliation, setFilterReconciliation] = useState<'all' | 'pending' | 'reconciled'>('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [sortConfig, setSortConfig] = useState<{ key: keyof Transaction; direction: 'asc' | 'desc' } | null>({ key: 'date', direction: 'desc' });
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -1320,6 +1328,11 @@ const TransactionsView: FC<{
             
             if (t.type !== activeTab) return false;
             if (filterCategory !== 'all' && t.category !== filterCategory) return false;
+            
+            if (activeTab === TransactionType.EXPENSE && filterStatus !== 'all' && t.status !== filterStatus) return false;
+            if (filterReconciliation === 'pending' && t.reconciled) return false;
+            if (filterReconciliation === 'reconciled' && !t.reconciled) return false;
+
             if (searchTerm) {
                 const lower = searchTerm.toLowerCase();
                 return (t.description || '').toLowerCase().includes(lower) || (t.clientSupplier || '').toLowerCase().includes(lower) || (t.category || '').toLowerCase().includes(lower);
@@ -1393,7 +1406,7 @@ const TransactionsView: FC<{
             });
         }
         return items;
-    }, [transactions, filterYear, filterMonth, activeTab, filterCategory, searchTerm, sortConfig]);
+    }, [transactions, filterYear, filterMonth, activeTab, filterCategory, searchTerm, sortConfig, filterStatus, filterReconciliation]);
 
     const totalFilteredAmount = useMemo(() => round(filtered.reduce<number>((sum, t) => sum + t.amount, 0)), [filtered]);
 
@@ -1517,7 +1530,7 @@ const TransactionsView: FC<{
                         </div>
                     </div>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className={`grid grid-cols-2 ${activeTab === TransactionType.EXPENSE ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-4`}>
                     <select value={filterYear} onChange={(e) => setFilterYear(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-background border border-border-color rounded-md px-3 py-2 text-sm">
                         <option value="all">Todos os Anos</option>
                         {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
@@ -1529,6 +1542,18 @@ const TransactionsView: FC<{
                     <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="bg-background border border-border-color rounded-md px-3 py-2 text-sm">
                         <option value="all">Todas as Categorias</option>
                         {(activeTab === TransactionType.INCOME ? incomeCategories : expenseCategories.map(c => c.name)).map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    {activeTab === TransactionType.EXPENSE && (
+                        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as any)} className="bg-background border border-border-color rounded-md px-3 py-2 text-sm">
+                            <option value="all">Todos os Status</option>
+                            <option value={ExpenseStatus.PAID}>Pago</option>
+                            <option value={ExpenseStatus.PENDING}>Pendente</option>
+                        </select>
+                    )}
+                    <select value={filterReconciliation} onChange={(e) => setFilterReconciliation(e.target.value as any)} className="bg-background border border-border-color rounded-md px-3 py-2 text-sm">
+                        <option value="all">Todas as Conciliações</option>
+                        <option value="pending">Aguardando Conciliação</option>
+                        <option value="reconciled">Conciliado</option>
                     </select>
                 </div>
             </Card>
@@ -2046,77 +2071,135 @@ const ImportedRevenuesView: FC<{
     }, [filteredRevenues, selectedRevenueIds]);
 
     const totals = useMemo(() => {
-        const rawTotals = filteredRevenues.reduce((acc, r) => ({
-            revenueAmount: acc.revenueAmount + (r.revenueAmount || 0),
-            advisorNetTotal: acc.advisorNetTotal + (r.advisorNetTotal || 0),
-            officeNetRevenue: acc.officeNetRevenue + (r.officeNetRevenue || 0),
-            referralAmount: acc.referralAmount + (r.referralAmount || 0),
-            productionResult: acc.productionResult + (r.productionResult || 0),
-            cashResult: acc.cashResult + (r.cashResult || 0),
-            cashEntryAmount: acc.cashEntryAmount + (r.cashEntryAmount || 0),
-            crmCost: acc.crmCost + (r.crmCost || 0),
-            advisorOperationalResult: acc.advisorOperationalResult + (r.advisorOperationalResult || 0)
-        }), { 
-            revenueAmount: 0, 
-            advisorNetTotal: 0, 
-            officeNetRevenue: 0, 
-            referralAmount: 0, 
-            productionResult: 0, 
-            cashResult: 0,
-            cashEntryAmount: 0,
-            crmCost: 0,
-            advisorOperationalResult: 0
-        });
-
-        // Aplicando as fórmulas solicitadas para garantir consistência total
-        // Comissões Pagas = Comissão Líquida + Repasses de Indicação
-        const totalCommissionsPaid = round(rawTotals.advisorNetTotal + rawTotals.referralAmount);
+        // Agrupar por Assessor e Período (Mês/Ano) para aplicar CRM corretamente
+        const groups: Record<string, { revenue: number, crm: number, commissions: number, operational: number, isClosed: boolean }> = {};
         
-        // Cálculo da Base da Produção conforme solicitado:
-        // Base da Produção = Receita Gerada - Imposto Estimado - CRM do Assessor
-        const totalEstimatedTax = round(rawTotals.revenueAmount * (estimatedTaxRate / 100));
-        const totalEstimatedNetRevenue = round(rawTotals.revenueAmount - totalEstimatedTax);
-        
-        // Para o CRM, usamos o valor real dos registros fechados.
-        // Para os pendentes, estimamos o CRM para o indicador ser fiel à "Base da Produção".
-        const activeAdvisorPeriods = new Set();
         filteredRevenues.forEach(r => {
-            if (r.status !== CommissionStatus.COMPLETED && !r.lancamentosRealizados) {
-                const date = new Date(r.date);
-                const periodKey = `${r.advisorId}-${date.getFullYear()}-${date.getMonth()}`;
-                activeAdvisorPeriods.add(periodKey);
-            }
-        });
-
-        let estimatedCrmForPending = 0;
-        activeAdvisorPeriods.forEach(key => {
-            const [advisorId, year, month] = (key as string).split('-');
-            const hasClosedInSamePeriod = filteredRevenues.some(r => 
-                r.advisorId === advisorId && 
-                new Date(r.date).getFullYear() === parseInt(year) && 
-                new Date(r.date).getMonth() === parseInt(month) && 
-                (r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados)
-            );
+            const date = new Date(r.date);
+            const periodKey = `${r.advisorId}-${date.getFullYear()}-${date.getMonth()}`;
             
-            if (!hasClosedInSamePeriod) {
-                const advisor = advisors.find(a => a.id === advisorId);
-                if (advisor) {
-                    const advisorCrm = Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0));
-                    estimatedCrmForPending += advisorCrm;
-                }
+            if (!groups[periodKey]) {
+                groups[periodKey] = { revenue: 0, crm: 0, commissions: 0, operational: 0, isClosed: false };
+            }
+            
+            groups[periodKey].revenue += (r.revenueAmount || 0);
+            groups[periodKey].commissions += (r.advisorNetTotal || 0) + (r.referralAmount || 0);
+            groups[periodKey].operational += (r.advisorOperationalResult || 0);
+            groups[periodKey].crm += (r.crmCost || 0);
+            
+            if (r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados) {
+                groups[periodKey].isClosed = true;
             }
         });
 
-        const totalBaseProduction = round(totalEstimatedNetRevenue - rawTotals.crmCost - estimatedCrmForPending);
+        let totalGrossProduction = 0;
+        let totalBaseProduction = 0;
+        let totalCommissionsPaid = 0;
+        let totalOfficeParticipation = 0;
+
+        Object.entries(groups).forEach(([key, data]) => {
+            const [advisorId] = key.split('-');
+            const advisor = advisors.find(a => a.id === advisorId);
+            
+            totalGrossProduction += data.revenue;
+            totalCommissionsPaid += data.commissions;
+            
+            const tax = round(data.revenue * (estimatedTaxRate / 100));
+            const netRevenue = round(data.revenue - tax);
+            
+            let crm = data.crm;
+            if (!data.isClosed && advisor) {
+                crm = Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0));
+            }
+            
+            const baseProduction = round(netRevenue - crm);
+            totalBaseProduction += baseProduction;
+            
+            if (data.isClosed) {
+                totalOfficeParticipation += data.operational;
+            } else {
+                // Estimativa para registros pendentes (70% assessor / 30% escritório)
+                const estimatedAdvisorShare = baseProduction > 0 ? round(baseProduction * 0.7) : 0;
+                const estimatedOfficeParticipation = round(baseProduction - estimatedAdvisorShare);
+                totalOfficeParticipation += estimatedOfficeParticipation;
+            }
+        });
 
         return {
-            ...rawTotals,
-            totalGrossProduction: rawTotals.revenueAmount,
-            totalBaseProduction: totalBaseProduction,
+            totalGrossProduction,
+            totalBaseProduction,
             totalCommissionsPaid,
-            totalOfficeParticipation: rawTotals.advisorOperationalResult
+            totalOfficeParticipation
         };
     }, [filteredRevenues, advisors, estimatedTaxRate]);
+
+    const advisorProfitability = useMemo(() => {
+        // Se um assessor específico estiver selecionado, mostramos apenas ele
+        // Se "Todos" estiver selecionado, mostramos todos os assessores que tiveram movimentação ou CRM no período
+        const targetAdvisors = selectedAdvisorId === 'all' ? advisors : advisors.filter(a => a.id === selectedAdvisorId);
+        
+        return targetAdvisors.map(advisor => {
+            // Identificar períodos (meses) no filtro
+            const periods = new Set<string>();
+            if (selectedMonth === 'all') {
+                filteredRevenues.forEach(r => {
+                    const d = new Date(r.date);
+                    periods.add(`${d.getFullYear()}-${d.getMonth()}`);
+                });
+            } else if (selectedYear !== 'all') {
+                periods.add(`${selectedYear}-${selectedMonth}`);
+            } else {
+                // Caso raro: todos os anos, mês específico
+                filteredRevenues.forEach(r => {
+                    const d = new Date(r.date);
+                    if (d.getMonth() === selectedMonth) {
+                        periods.add(`${d.getFullYear()}-${d.getMonth()}`);
+                    }
+                });
+            }
+
+            // Se não houver períodos identificados pelas receitas, mas houver filtro de data, usamos o filtro
+            if (periods.size === 0 && selectedYear !== 'all' && selectedMonth !== 'all') {
+                periods.add(`${selectedYear}-${selectedMonth}`);
+            }
+
+            let totalResult = 0;
+            periods.forEach(period => {
+                const [year, month] = period.split('-').map(Number);
+                const periodRevenues = filteredRevenues.filter(r => 
+                    r.advisorId === advisor.id && 
+                    new Date(r.date).getFullYear() === year && 
+                    new Date(r.date).getMonth() === month
+                );
+                
+                const revSum = periodRevenues.reduce((s, r) => s + (r.revenueAmount || 0), 0);
+                const isClosed = periodRevenues.some(r => r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados);
+                
+                if (isClosed) {
+                    totalResult += periodRevenues.reduce((s, r) => s + (r.advisorOperationalResult || 0), 0);
+                } else {
+                    const tax = round(revSum * (estimatedTaxRate / 100));
+                    const crm = Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0));
+                    const base = round(revSum - tax - crm);
+                    const estAdvisorShare = base > 0 ? round(base * 0.7) : 0;
+                    totalResult += round(base - estAdvisorShare);
+                }
+            });
+
+            let status: 'Lucrativo' | 'Neutro' | 'Subsidiado' = 'Neutro';
+            if (totalResult > 0.01) status = 'Lucrativo';
+            else if (totalResult < -0.01) status = 'Subsidiado';
+
+            return { advisorId: advisor.id, name: advisor.name, result: totalResult, status };
+        }).filter(item => {
+            // Se "Todos" selecionado, removemos quem não tem resultado nem receita (para não poluir)
+            if (selectedAdvisorId === 'all') {
+                const hasRevenue = filteredRevenues.some(r => r.advisorId === item.advisorId);
+                return hasRevenue || item.result !== 0;
+            }
+            return true;
+        }).sort((a, b) => b.result - a.result);
+    }, [filteredRevenues, advisors, estimatedTaxRate, selectedYear, selectedMonth, selectedAdvisorId]);
 
     const advisorSummary = useMemo(() => {
         if (selectedAdvisorId === 'all') return null;
@@ -2412,6 +2495,34 @@ const ImportedRevenuesView: FC<{
                 </div>
             </Card>
 
+            {selectedAdvisorId === 'all' && advisorProfitability.length > 0 && (
+                <Card className="p-4">
+                    <div className="flex items-center gap-2 mb-4">
+                        <TrendingUpIcon className="w-4 h-4 text-primary" />
+                        <h3 className="text-xs font-bold text-text-primary uppercase tracking-wider">Rentabilidade por Assessor</h3>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                        {advisorProfitability.map(item => (
+                            <div key={item.advisorId} className="bg-background/40 p-3 rounded-lg border border-border-color flex justify-between items-center">
+                                <div>
+                                    <p className="text-[10px] text-text-secondary uppercase truncate max-w-[120px]">{item.name}</p>
+                                    <p className={`text-xs font-bold ${item.result < 0 ? 'text-danger' : 'text-green-400'}`}>
+                                        {formatCurrency(item.result)}
+                                    </p>
+                                </div>
+                                <div className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase ${
+                                    item.status === 'Lucrativo' ? 'bg-green-400/10 text-green-400' : 
+                                    item.status === 'Subsidiado' ? 'bg-danger/10 text-danger' : 
+                                    'bg-text-secondary/10 text-text-secondary'
+                                }`}>
+                                    {item.status}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </Card>
+            )}
+
             {advisorSummary && (
                 <Card className="p-4 border-l-4 border-primary bg-primary/5">
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -2650,7 +2761,11 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
         
         const caixaEmpresa = round(transactions.reduce((acc, t) => {
             if (t.costCenter === 'conta-pj' && new Date(t.date) <= limitDate) {
-                return acc + (t.type === TransactionType.INCOME ? t.amount : -t.amount);
+                if (t.type === TransactionType.INCOME) {
+                    return acc + Number(t.amount);
+                } else if (t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PAID) {
+                    return acc - Number(t.amount);
+                }
             }
             return acc;
         }, 0));
@@ -2689,7 +2804,11 @@ const ReportsView: FC<{ transactions: Transaction[], importedRevenues?: Imported
                 
                 const caixaNoMes = round(transactions.reduce((acc, t) => {
                     if (t.costCenter === 'conta-pj' && new Date(t.date) <= lastDayOfMonth) {
-                        return acc + (t.type === TransactionType.INCOME ? t.amount : -t.amount);
+                        if (t.type === TransactionType.INCOME) {
+                            return acc + Number(t.amount);
+                        } else if (t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PAID) {
+                            return acc - Number(t.amount);
+                        }
                     }
                     return acc;
                 }, 0));
@@ -2833,10 +2952,11 @@ interface DashboardViewProps {
     costCenters: CostCenter[];
     advisors: Advisor[];
     globalTaxRate: number;
+    estimatedTaxRate: number;
     importedRevenues: ImportedRevenue[];
 }
 
-const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid, onEdit, incomeCategories, expenseCategories, paymentMethods, costCenters, advisors, globalTaxRate, importedRevenues }) => {
+const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid, onEdit, incomeCategories, expenseCategories, paymentMethods, costCenters, advisors, globalTaxRate, estimatedTaxRate, importedRevenues }) => {
     const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
     const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all');
     const [showProjection, setShowProjection] = useState(false);
@@ -2869,12 +2989,11 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         const now = new Date().getTime();
         if (txDate <= now) {
             if (t.type === TransactionType.INCOME) {
-                const tax = t.taxAmount || 0;
-                return acc + (Number(t.amount) - Number(tax));
+                // Saldo Hoje = Soma de todas as receitas (valor bruto) até hoje
+                return acc + Number(t.amount);
             } else if (t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PAID) {
-                if (t.costCenter !== 'provisao-impostos') {
-                    return acc - Number(t.amount);
-                }
+                // Soma de todas as despesas pagas até hoje (incluindo impostos pagos)
+                return acc - Number(t.amount);
             }
         }
         return acc;
@@ -2907,17 +3026,54 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
             return (selectedYear === 'all' || year === selectedYear) && (selectedMonth === 'all' || month === selectedMonth);
         });
 
-        const grossProduction = round(filteredRevenues.reduce((sum, r) => sum + (r.revenueAmount || 0), 0));
-        const officeParticipation = round(filteredRevenues.reduce((sum, r) => sum + (r.advisorOperationalResult || 0), 0));
+        // Lógica de Produção Consistente (Agrupada por Assessor/Período)
+        const groups: Record<string, { revenue: number, crm: number, operational: number, isClosed: boolean }> = {};
         
-        const productionMargin = grossProduction > 0 ? (officeParticipation / grossProduction) : 0;
+        filteredRevenues.forEach(r => {
+            const date = new Date(r.date);
+            const periodKey = `${r.advisorId}-${date.getUTCFullYear()}-${date.getUTCMonth()}`;
+            
+            if (!groups[periodKey]) {
+                groups[periodKey] = { revenue: 0, crm: 0, operational: 0, isClosed: false };
+            }
+            
+            groups[periodKey].revenue += (r.revenueAmount || 0);
+            groups[periodKey].operational += (r.advisorOperationalResult || 0);
+            groups[periodKey].crm += (r.crmCost || 0);
+            
+            if (r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados) {
+                groups[periodKey].isClosed = true;
+            }
+        });
 
+        let totalGrossProduction = 0;
+        let totalOfficeParticipation = 0;
+
+        Object.entries(groups).forEach(([key, data]) => {
+            const [advisorId] = key.split('-');
+            const advisor = advisors.find(a => a.id === advisorId);
+            
+            totalGrossProduction += data.revenue;
+            
+            if (data.isClosed) {
+                totalOfficeParticipation += data.operational;
+            } else {
+                const tax = round(data.revenue * (estimatedTaxRate / 100));
+                const netRevenue = round(data.revenue - tax);
+                const crm = advisor ? Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0)) : 0;
+                const baseProduction = round(netRevenue - crm);
+                const estimatedAdvisorShare = baseProduction > 0 ? round(baseProduction * 0.7) : 0;
+                totalOfficeParticipation += round(baseProduction - estimatedAdvisorShare);
+            }
+        });
+        
+        const productionMargin = totalGrossProduction > 0 ? (totalOfficeParticipation / totalGrossProduction) : 0;
         const fixedExpenses = round(filteredTransactions.filter(t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PAID && t.nature === ExpenseNature.FIXED).reduce((sum, t) => sum + t.amount, 0));
 
         const breakEven = productionMargin > 0 ? round(fixedExpenses / productionMargin) : null;
 
         return { netMargin, breakEven };
-    }, [totalIncome, netProfit, importedRevenues, selectedYear, selectedMonth, filteredTransactions]);
+    }, [totalIncome, netProfit, importedRevenues, selectedYear, selectedMonth, filteredTransactions, advisors, estimatedTaxRate]);
 
     const upcomingBills = useMemo(() => {
         const thresholdDate = new Date();
@@ -3571,7 +3727,7 @@ const App: FC = () => {
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-background p-4 md:p-6 relative">
                     {loadingData ? <div className="flex items-center justify-center h-full">Carregando dados...</div> : (
                         <>
-                            {activeView === 'dashboard' && <DashboardView transactions={transactions} goals={goals} onSetPaid={handleSetPaid} onEdit={handleEditTransaction} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} globalTaxRate={globalTaxRate} importedRevenues={importedRevenues} />}
+                            {activeView === 'dashboard' && <DashboardView transactions={transactions} goals={goals} onSetPaid={handleSetPaid} onEdit={handleEditTransaction} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} globalTaxRate={globalTaxRate} estimatedTaxRate={estimatedTaxRate} importedRevenues={importedRevenues} />}
                             {activeView === 'transactions' && <TransactionsView transactions={transactions} onAdd={handleAddTransaction} onEdit={handleEditTransaction} onDelete={handleDeleteTransaction} onSetPaid={handleSetPaid} onToggleReconciliation={handleToggleReconciliation} incomeCategories={incomeCategories} expenseCategories={expenseCategories} paymentMethods={paymentMethods} costCenters={costCenters} advisors={advisors} onImportTransactions={handleImportTransactions} globalTaxRate={globalTaxRate} importedRevenues={importedRevenues} userId={user.uid} />}
                             {activeView === 'imported-revenues' && <ImportedRevenuesView importedRevenues={importedRevenues} advisors={advisors} onDelete={handleDeleteRevenue} onAdd={handleAddImportedRevenue} onUpdate={handleUpdateImportedRevenue} onBatchCommissionClosing={handleBatchCommissionClosing} onClearAll={handleClearAllRevenues} globalTaxRate={globalTaxRate} estimatedTaxRate={estimatedTaxRate} userId={user.uid} />}
                             {activeView === 'reports' && <ReportsView transactions={transactions} importedRevenues={importedRevenues} />}

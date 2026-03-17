@@ -16,6 +16,7 @@ export enum ExpenseNature {
 export enum ExpenseType {
     COST = 'custo',
     EXPENSE = 'despesa',
+    NON_OPERATIONAL = 'despesa_nao_operacional',
 }
 
 export interface Transaction {
