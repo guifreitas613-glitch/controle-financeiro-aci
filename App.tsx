@@ -2755,44 +2755,108 @@ const ImportedRevenuesView: FC<{
                 </div>
             </Card>
             
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <Card className="p-5">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                        <div className="flex flex-col justify-center">
-                            <label className="block uppercase tracking-wider mb-1" style={{ fontSize: '10px', opacity: 0.55, fontWeight: 500 }}>Produção Bruta</label>
-                            <p className="font-bold text-text-primary" style={{ fontSize: '20px' }}>{formatCurrency(totals.totalGrossProduction)}</p>
-                        </div>
-                        <div className="flex flex-col justify-center">
-                            <label className="block uppercase tracking-wider mb-1" style={{ fontSize: '10px', opacity: 0.55, fontWeight: 500 }}>Produção Líquida</label>
-                            <p className="font-bold text-text-primary" style={{ fontSize: '20px' }}>{formatCurrency(totals.totalNetProduction)}</p>
-                        </div>
-                        <div className="flex flex-col justify-center">
-                            <label className="block uppercase tracking-wider mb-1" style={{ fontSize: '10px', opacity: 0.55, fontWeight: 500 }}>Comissões Pagas</label>
-                            <p className="font-bold text-text-primary" style={{ fontSize: '20px' }}>{formatCurrency(totals.totalCommissionsPaid)}</p>
-                        </div>
-                        <div className="bg-primary/5 rounded border border-primary/20 flex flex-col justify-center" style={{ padding: '20px 24px' }}>
-                            <label className="block uppercase mb-1" style={{ fontSize: '10px', opacity: 0.50, letterSpacing: '0.08em', fontWeight: 500 }}>Resultado do Escritório</label>
-                            <p className={`font-semibold ${totals.totalOfficeResult < 0 ? 'text-danger' : 'text-primary'}`} style={{ fontSize: '32px' }}>
-                                {formatCurrency(totals.totalOfficeResult)}
-                            </p>
-                        </div>
+            <div style={{ background: 'transparent', padding: '0', borderRadius: '16px' }}>
+                <div style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '10px' }}>
+                    Produção do período
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '8px', marginBottom: '8px' }}>
+                    {/* Produção Bruta */}
+                    <div style={{ 
+                        background: 'rgba(255,255,255,0.04)', 
+                        border: '0.5px solid rgba(255,255,255,0.08)', 
+                        borderLeft: '3px solid rgba(255,255,255,0.20)',
+                        borderRadius: '0 10px 10px 0', 
+                        padding: '16px 18px', 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        justifyContent: 'center' 
+                    }}>
+                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }}>Produção Bruta</label>
+                        <p style={{ fontSize: '20px', fontWeight: 600, color: 'rgba(255,255,255,0.88)' }}>{formatCurrency(totals.totalGrossProduction)}</p>
                     </div>
-                </Card>
 
-                <Card className="p-5">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="flex flex-col justify-center">
-                            <label className="block uppercase tracking-wider mb-1" style={{ fontSize: '10px', opacity: 0.55, fontWeight: 500 }}>Custo de Subsídio</label>
-                            <p className={`font-bold ${totals.totalSubsidyCost > 0 ? 'text-danger' : 'text-text-primary'}`} style={{ fontSize: '22px' }}>{formatCurrency(totals.totalSubsidyCost)}</p>
-                            <p style={{ fontSize: '10px', opacity: 0.45, marginTop: '4px' }}>CRM não coberto no período</p>
-                        </div>
-                        <div className="flex flex-col justify-center">
-                            <label className="block uppercase tracking-wider mb-1" style={{ fontSize: '10px', opacity: 0.55, fontWeight: 500 }}>Produção mínima por assessor</label>
-                            <p className="font-bold text-text-primary" style={{ fontSize: '22px' }}>{formatCurrency(totals.avgMinProduction)} / mês</p>
-                            <p style={{ fontSize: '10px', opacity: 0.45, marginTop: '4px' }}>mínimo para cobrir CRM e imposto</p>
-                        </div>
+                    {/* Produção Líquida */}
+                    <div style={{ 
+                        background: 'rgba(255,255,255,0.04)', 
+                        border: '0.5px solid rgba(255,255,255,0.08)', 
+                        borderLeft: `3px solid ${totals.totalNetProduction < 0 ? '#f87171' : 'rgba(255,255,255,0.20)'}`,
+                        borderRadius: '0 10px 10px 0', 
+                        padding: '16px 18px', 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        justifyContent: 'center' 
+                    }}>
+                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }}>Produção Líquida</label>
+                        <p style={{ fontSize: '20px', fontWeight: 600, color: totals.totalNetProduction < 0 ? '#f87171' : 'rgba(255,255,255,0.88)' }}>{formatCurrency(totals.totalNetProduction)}</p>
                     </div>
-                </Card>
+
+                    {/* Comissões Pagas */}
+                    <div style={{ 
+                        background: 'rgba(255,255,255,0.04)', 
+                        border: '0.5px solid rgba(255,255,255,0.08)', 
+                        borderLeft: '3px solid rgba(255,255,255,0.20)',
+                        borderRadius: '0 10px 10px 0', 
+                        padding: '16px 18px', 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        justifyContent: 'center' 
+                    }}>
+                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }}>Comissões Pagas</label>
+                        <p style={{ fontSize: '20px', fontWeight: 600, color: 'rgba(255,255,255,0.88)' }}>{formatCurrency(totals.totalCommissionsPaid)}</p>
+                    </div>
+
+                    {/* Resultado do Escritório */}
+                    <div style={{ 
+                        background: 'rgba(255,255,255,0.04)', 
+                        border: '0.5px solid rgba(255,255,255,0.08)', 
+                        borderLeft: `3px solid ${totals.totalOfficeResult < 0 ? '#f87171' : '#818cf8'}`,
+                        borderRadius: '0 10px 10px 0', 
+                        padding: '16px 18px', 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        justifyContent: 'center'
+                    }}>
+                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }}>Resultado do Escritório</label>
+                        <p style={{ fontSize: '28px', fontWeight: 600, color: totals.totalOfficeResult < 0 ? '#f87171' : '#818cf8' }}>{formatCurrency(totals.totalOfficeResult)}</p>
+                    </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px' }}>
+                    {/* Custo de Subsídio */}
+                    <div style={{ 
+                        background: 'rgba(255,255,255,0.04)', 
+                        border: '0.5px solid rgba(255,255,255,0.08)', 
+                        borderLeft: `3px solid ${totals.totalSubsidyCost > 0 ? '#f87171' : 'rgba(255,255,255,0.20)'}`,
+                        borderRadius: '0 10px 10px 0', 
+                        padding: '16px 18px', 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        justifyContent: 'center' 
+                    }}>
+                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }}>Custo de Subsídio</label>
+                        <p style={{ fontSize: '22px', fontWeight: 600, color: totals.totalSubsidyCost > 0 ? '#f87171' : 'rgba(255,255,255,0.88)' }}>{formatCurrency(totals.totalSubsidyCost)}</p>
+                        <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.20)', marginTop: '5px' }}>CRM não coberto no período</p>
+                    </div>
+
+                    {/* Produção Mínima */}
+                    <div style={{ 
+                        background: 'rgba(255,255,255,0.04)', 
+                        border: '0.5px solid rgba(255,255,255,0.08)', 
+                        borderLeft: '3px solid #fbbf24',
+                        borderRadius: '0 10px 10px 0', 
+                        padding: '16px 18px', 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        justifyContent: 'center' 
+                    }}>
+                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }}>Produção mínima</label>
+                        <p style={{ fontSize: '22px', fontWeight: 600, color: '#fbbf24' }}>
+                            {formatCurrency(totals.avgMinProduction)}
+                            <span style={{ fontSize: '13px', fontWeight: 400, color: 'rgba(255,255,255,0.25)' }}> / mês</span>
+                        </p>
+                        <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.20)', marginTop: '5px' }}>mínimo para cobrir CRM e imposto</p>
+                    </div>
+                </div>
             </div>
 
             {selectedAdvisorId === 'all' && advisorProfitability.length > 0 && (
