@@ -2614,11 +2614,8 @@ const ImportedRevenuesView: FC<{
                     <Button onClick={() => fileInputRef.current?.click()} variant="secondary" className="text-sm">
                         <UploadIcon className="w-4 h-4 mr-2"/> Importar Relatório
                     </Button>
-                    <Button onClick={handleExport} variant="secondary" className="text-sm">
-                        <DownloadIcon className="w-4 h-4 mr-2"/> Exportar Relatório
-                    </Button>
                     <Button onClick={handlePrint} variant="secondary" className="text-sm">
-                        <PrinterIcon className="w-4 h-4 mr-2"/> Imprimir
+                        <PrinterIcon className="w-4 h-4 mr-2"/> Imprimir / PDF
                     </Button>
                     {importedRevenues.length > 0 && (
                         <Button onClick={onClearAll} variant="ghostDanger" className="text-sm">
@@ -2783,9 +2780,21 @@ const ImportedRevenuesView: FC<{
                                 <th className="p-4">Referência / Cliente</th>
                                 <th className="p-4">Assessor Resp.</th>
                                 <th className="p-4">Receita Gerada</th>
+                                <th className="print-only-cell p-4">Imposto (%)</th>
+                                <th className="print-only-cell p-4">Partilha Assessor</th>
+                                <th className="print-only-cell p-4">Partilha Escritório</th>
+                                <th className="print-only-cell p-4">Imposto Assessor</th>
+                                <th className="print-only-cell p-4">Imposto Escritório</th>
+                                <th className="print-only-cell p-4">Provisão Total Imposto</th>
+                                <th className="print-only-cell p-4">Receita Líq. Escritório</th>
                                 <th className="p-4">Indicação</th>
                                 <th className="p-4">Comissão Líquida</th>
+                                <th className="print-only-cell p-4">Custo CRM</th>
+                                <th className="print-only-cell p-4">Resultado Produção</th>
                                 <th className="p-4">Resultado do Escritório na Produção</th>
+                                <th className="print-only-cell p-4">Resultado Caixa</th>
+                                <th className="print-only-cell p-4">Entrada Caixa</th>
+                                <th className="print-only-cell p-4">Observação</th>
                                 <th className="p-4 text-center">Status Financeiro</th>
                                 <th className="no-print p-4 text-right">Ações</th>
                             </tr>
@@ -2809,6 +2818,13 @@ const ImportedRevenuesView: FC<{
                                     </td>
                                     <td className="p-4">{r.advisorName}</td>
                                     <td className="p-4 font-bold">{formatCurrency(r.revenueAmount || 0)}</td>
+                                    <td className="print-only-cell p-4">{r.taxRate}%</td>
+                                    <td className="print-only-cell p-4">{formatCurrency(r.advisorShare || 0)}</td>
+                                    <td className="print-only-cell p-4">{formatCurrency(r.officeShare || 0)}</td>
+                                    <td className="print-only-cell p-4">{formatCurrency(r.advisorTax || 0)}</td>
+                                    <td className="print-only-cell p-4">{formatCurrency(r.officeTax || 0)}</td>
+                                    <td className="print-only-cell p-4">{formatCurrency(r.totalTaxProvision || 0)}</td>
+                                    <td className="print-only-cell p-4">{formatCurrency(r.officeNetRevenue || 0)}</td>
                                     <td className="p-4">
                                         {r.referralAdvisorId ? (
                                             <div className="flex flex-col">
@@ -2829,9 +2845,14 @@ const ImportedRevenuesView: FC<{
                                             )}
                                         </div>
                                     </td>
+                                    <td className="print-only-cell p-4">{formatCurrency(r.crmCost || 0)}</td>
+                                    <td className="print-only-cell p-4">{formatCurrency(r.productionResult || 0)}</td>
                                     <td className={`p-4 font-bold ${r.advisorOperationalResult !== undefined && r.advisorOperationalResult < 0 ? 'text-danger' : 'text-green-400'}`}>
                                         {r.advisorOperationalResult !== undefined ? formatCurrency(r.advisorOperationalResult) : '-'}
                                     </td>
+                                    <td className="print-only-cell p-4">{formatCurrency(r.cashResult || 0)}</td>
+                                    <td className="print-only-cell p-4">{formatCurrency(r.cashEntryAmount || 0)}</td>
+                                    <td className="print-only-cell p-4">{r.observacao || '-'}</td>
                                     <td className="p-4 text-center">
                                         <div className="flex flex-col items-center gap-1">
                                             <div className={`px-2 py-1 rounded text-[9px] font-bold uppercase ${getStatusLabel(r.status, r.lancamentosRealizados).bg} ${getStatusLabel(r.status, r.lancamentosRealizados).color}`}>

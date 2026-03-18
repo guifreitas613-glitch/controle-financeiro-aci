@@ -42,6 +42,10 @@
     </script>
     <style>
       @media print {
+        @page {
+          size: landscape;
+          margin: 10mm;
+        }
         .no-print, nav, aside, button, .actions-column, .no-print-area, .sidebar-nav {
           display: none !important;
         }
@@ -70,8 +74,14 @@
         .print-only {
           display: block !important;
         }
+        .print-only-cell {
+          display: table-cell !important;
+        }
       }
       .print-only {
+        display: none;
+      }
+      .print-only-cell {
         display: none;
       }
     </style>
