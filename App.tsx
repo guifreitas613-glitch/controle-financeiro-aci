@@ -38,6 +38,9 @@ const FileTextIcon: FC<{ className?: string }> = ({ className }) => (<svg classN
 const TrendingUpIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline><polyline points="16 7 22 7 22 13"></polyline></svg>);
 const BankIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 22h18"/><path d="M6 18v-7"/><path d="M10 18v-7"/><path d="M14 18v-7"/><path d="M18 18v-7"/><path d="m12 2-10 7h20Z"/></svg>);
 
+const DownloadIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>);
+const PrinterIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>);
+
 // --- DECLARAÇÕES DE BIBLIOTECAS GLOBAIS ---
 declare var XLSX: any;
 declare var jspdf: any;
@@ -1402,7 +1405,7 @@ const Sidebar: FC<{ activeView: View; setActiveView: (view: View) => void; isSid
         { view: 'settings', label: 'Configurações', icon: <SettingsIcon className="w-6 h-6"/> },
     ];
     return (
-        <aside className={`absolute md:relative z-20 md:z-auto bg-surface md:translate-x-0 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} transition-transform duration-300 ease-in-out w-64 p-4 flex flex-col`}>
+        <aside className={`no-print absolute md:relative z-20 md:z-auto bg-surface md:translate-x-0 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} transition-transform duration-300 ease-in-out w-64 p-4 flex flex-col`}>
              <h1 className="text-3xl font-bold text-text-primary mb-8">ACI<span className="text-primary">Capital</span></h1>
              <nav className="flex flex-col space-y-2 flex-grow">
                 {allNavItems.map(item => (
@@ -1423,7 +1426,7 @@ const Sidebar: FC<{ activeView: View; setActiveView: (view: View) => void; isSid
     )
 };
 const Header: FC<{ pageTitle: string, onMenuClick: () => void }> = ({ pageTitle, onMenuClick }) => (
-    <header className="bg-surface p-4 flex items-center shadow-md md:hidden sticky top-0 z-10">
+    <header className="no-print bg-surface p-4 flex items-center shadow-md md:hidden sticky top-0 z-10">
         <button onClick={onMenuClick} className="mr-4 text-text-primary"><MenuIcon className="w-6 h-6"/></button>
         <h2 className="text-xl font-bold uppercase">{pageTitle}</h2>
     </header>
@@ -1957,15 +1960,14 @@ const CommissionClosingModal: FC<{
     
     const officeNet = officeShare;
     
-    // Resultado Operacional Assessor = Base da Produção - Comissão Líquida
-    const advisorOperationalResult = round(baseAmount - advisorNet);
+    // Resultado Operacional Assessor = Base da Produção - Comissão Total do Assessor (incluindo indicações)
+    const advisorOperationalResult = round(baseAmount - advisorShare);
     
-    // Resultado da Produção = Receita Total Gerada − Custo de CRM − Comissão Líquida do Assessor
-    // Ajustado para refletir a nova lógica se necessário, mas mantendo a fórmula anterior para consistência de indicadores
-    const productionResult = round(generatedRevenue - crmCost - (advisorNet + referralAmount));
+    // Resultado da Produção = Receita Total Gerada − Custo de CRM − Comissão Total do Assessor
+    const productionResult = round(generatedRevenue - crmCost - advisorShare);
     
-    // Resultado de Caixa = Entrada no Caixa da Corretora − Comissão Líquida do Assessor
-    const cashResult = round(cashEntryAmount - (advisorNet + referralAmount));
+    // Resultado de Caixa = Entrada no Caixa da Corretora − Comissão Total do Assessor
+    const cashResult = round(cashEntryAmount - advisorShare);
 
     const handleConfirm = () => {
         const referralAdvisor = advisors.find(a => a.id === referralAdvisorId);
@@ -2254,7 +2256,7 @@ const ImportedRevenuesView: FC<{
             }
             
             groups[periodKey].revenue += (r.revenueAmount || 0);
-            groups[periodKey].commissions += (r.advisorNetTotal || 0) + (r.referralAmount || 0);
+            groups[periodKey].commissions += (r.advisorNetTotal || 0);
             groups[periodKey].operational += (r.advisorOperationalResult || 0);
             groups[periodKey].crm += (r.crmCost || 0);
             
@@ -2407,6 +2409,39 @@ const ImportedRevenuesView: FC<{
     const handleEdit = (revenue: ImportedRevenue) => {
         setEditingRevenue(revenue);
         setIsEntryModalOpen(true);
+    };
+
+    const handleExport = () => {
+        if (filteredRevenues.length === 0) {
+            alert("Não há dados para exportar.");
+            return;
+        }
+
+        const exportData = filteredRevenues.map(r => ({
+            'Data': formatDate(r.date),
+            'Conta': r.conta || '',
+            'Cliente': r.cliente || '',
+            'Assessor': r.advisorName || '',
+            'Receita Bruta': r.revenueAmount || 0,
+            'Imposto Assessor': r.advisorTax || 0,
+            'Comissão Líquida': r.advisorNetTotal || 0,
+            'Indicação': r.referralAdvisorName || '',
+            'Valor Indicação': r.referralAmount || 0,
+            'Líquido Assessor': r.responsibleAdvisorNet || 0,
+            'Resultado Escritório': r.advisorOperationalResult || 0,
+            'Status': getStatusLabel(r.status, r.lancamentosRealizados).label
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Comissões");
+        
+        const fileName = `Relatorio_Comissoes_${new Date().toISOString().split('T')[0]}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+    };
+
+    const handlePrint = () => {
+        window.print();
     };
 
     const handleFormSubmit = (data: Partial<ImportedRevenue>) => {
@@ -2574,10 +2609,16 @@ const ImportedRevenuesView: FC<{
                     <h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Comissões</h2>
                     <p className="text-text-secondary">Controle de comissões e divisão de receitas.</p>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="no-print flex flex-wrap gap-2">
                     <input type="file" ref={fileInputRef} onChange={handleImportFile} accept=".xlsx, .xls, .csv" className="hidden" />
                     <Button onClick={() => fileInputRef.current?.click()} variant="secondary" className="text-sm">
                         <UploadIcon className="w-4 h-4 mr-2"/> Importar Relatório
+                    </Button>
+                    <Button onClick={handleExport} variant="secondary" className="text-sm">
+                        <DownloadIcon className="w-4 h-4 mr-2"/> Exportar Relatório
+                    </Button>
+                    <Button onClick={handlePrint} variant="secondary" className="text-sm">
+                        <PrinterIcon className="w-4 h-4 mr-2"/> Imprimir
                     </Button>
                     {importedRevenues.length > 0 && (
                         <Button onClick={onClearAll} variant="ghostDanger" className="text-sm">
@@ -2598,7 +2639,7 @@ const ImportedRevenuesView: FC<{
                 </div>
             </div>
 
-            <Card className="p-4">
+            <Card className="no-print p-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                     <div>
                         <label className="block text-xs font-medium text-text-secondary mb-1">Ano</label>
@@ -2730,7 +2771,7 @@ const ImportedRevenuesView: FC<{
                     <table className="w-full text-left whitespace-nowrap text-[10px] sm:text-xs">
                         <thead className="bg-background/50 uppercase text-text-secondary">
                             <tr>
-                                <th className="p-4 w-10">
+                                <th className="no-print p-4 w-10">
                                     <input 
                                         type="checkbox" 
                                         className="rounded border-border-color bg-background text-primary focus:ring-primary"
@@ -2746,13 +2787,13 @@ const ImportedRevenuesView: FC<{
                                 <th className="p-4">Comissão Líquida</th>
                                 <th className="p-4">Resultado do Escritório na Produção</th>
                                 <th className="p-4 text-center">Status Financeiro</th>
-                                <th className="p-4 text-right">Ações</th>
+                                <th className="no-print p-4 text-right">Ações</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border-color/30">
                             {filteredRevenues.map(r => (
                                 <tr key={r.id} className={`hover:bg-background/50 ${selectedRevenueIds.has(r.id) ? 'bg-primary/5' : ''}`}>
-                                    <td className="p-4">
+                                    <td className="no-print p-4">
                                         <input 
                                             type="checkbox" 
                                             className="rounded border-border-color bg-background text-primary focus:ring-primary"
@@ -2798,7 +2839,7 @@ const ImportedRevenuesView: FC<{
                                             </div>
                                         </div>
                                     </td>
-                                    <td className="p-4 text-right">
+                                    <td className="no-print p-4 text-right">
                                         <div className="flex justify-end gap-1">
                                             <Button variant="ghost" className="p-1" onClick={() => handleEdit(r)} disabled={r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados}><EditIcon className="w-3 h-3"/></Button>
                                             <Button variant="ghostDanger" className="p-1" onClick={() => onDelete(r.id)}><TrashIcon className="w-3 h-3"/></Button>

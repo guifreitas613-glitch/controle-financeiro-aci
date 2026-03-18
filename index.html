@@ -40,6 +40,41 @@
         },
       }
     </script>
+    <style>
+      @media print {
+        .no-print, nav, aside, button, .actions-column, .no-print-area, .sidebar-nav {
+          display: none !important;
+        }
+        body {
+          background-color: white !important;
+          color: black !important;
+        }
+        .card, .bg-surface, .bg-background {
+          background-color: white !important;
+          border: 1px solid #e2e8f0 !important;
+          box-shadow: none !important;
+          color: black !important;
+        }
+        .text-text-primary, .text-text-secondary, .text-primary {
+          color: black !important;
+        }
+        table {
+          width: 100% !important;
+          border-collapse: collapse !important;
+        }
+        th, td {
+          border: 1px solid #e2e8f0 !important;
+          padding: 8px !important;
+          color: black !important;
+        }
+        .print-only {
+          display: block !important;
+        }
+      }
+      .print-only {
+        display: none;
+      }
+    </style>
   <script type="importmap">
 {
   "imports": {
