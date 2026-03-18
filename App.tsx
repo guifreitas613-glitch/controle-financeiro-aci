@@ -2868,8 +2868,8 @@ const ImportedRevenuesView: FC<{
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                         {advisorProfitability.map(item => (
                             <div key={item.advisorId} className="bg-background/40 p-3 rounded-lg border border-border-color flex justify-between items-center">
-                                <div>
-                                    <p className="text-[10px] text-text-secondary uppercase truncate max-w-[120px]">{item.name}</p>
+                                <div className="min-w-0 flex-1 mr-2">
+                                    <p className="text-[10px] text-text-secondary uppercase" style={{ overflowWrap: 'break-word', wordBreak: 'break-word' }}>{item.name}</p>
                                     <p className={`text-xs font-bold ${item.result < 0 ? 'text-danger' : 'text-green-400'}`}>
                                         {formatCurrency(item.result)}
                                     </p>
