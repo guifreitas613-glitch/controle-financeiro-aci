@@ -2173,8 +2173,8 @@ const ImportedRevenuesView: FC<{
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const availableYears = useMemo(() => {
-        const yearsSet = new Set(importedRevenues.map(r => new Date(r.date).getFullYear()));
-        const currentYear = new Date().getFullYear();
+        const yearsSet = new Set(importedRevenues.map(r => new Date(r.date).getUTCFullYear()));
+        const currentYear = new Date().getUTCFullYear();
         yearsSet.add(currentYear);
         return Array.from(yearsSet).sort((a: number, b: number) => b - a);
     }, [importedRevenues]);
@@ -2188,8 +2188,8 @@ const ImportedRevenuesView: FC<{
         const selectedAdvisor = advisors.find(a => a.id === selectedAdvisorId);
         return importedRevenues.filter(r => {
             const date = new Date(r.date);
-            const year = date.getFullYear();
-            const month = date.getMonth();
+            const year = date.getUTCFullYear();
+            const month = date.getUTCMonth();
             
             const yearMatch = selectedYear === 'all' || year === selectedYear;
             const monthMatch = selectedMonth === 'all' || month === selectedMonth;
@@ -2247,7 +2247,7 @@ const ImportedRevenuesView: FC<{
         
         filteredRevenues.forEach(r => {
             const date = new Date(r.date);
-            const periodKey = `${r.advisorId}-${date.getFullYear()}-${date.getMonth()}`;
+            const periodKey = `${r.advisorId}-${date.getUTCFullYear()}-${date.getUTCMonth()}`;
             
             if (!groups[periodKey]) {
                 groups[periodKey] = { revenue: 0, crm: 0, commissions: 0, operational: 0, isClosed: false };
@@ -2315,7 +2315,7 @@ const ImportedRevenuesView: FC<{
             if (selectedMonth === 'all') {
                 filteredRevenues.forEach(r => {
                     const d = new Date(r.date);
-                    periods.add(`${d.getFullYear()}-${d.getMonth()}`);
+                    periods.add(`${d.getUTCFullYear()}-${d.getUTCMonth()}`);
                 });
             } else if (selectedYear !== 'all') {
                 periods.add(`${selectedYear}-${selectedMonth}`);
@@ -2323,8 +2323,8 @@ const ImportedRevenuesView: FC<{
                 // Caso raro: todos os anos, mês específico
                 filteredRevenues.forEach(r => {
                     const d = new Date(r.date);
-                    if (d.getMonth() === selectedMonth) {
-                        periods.add(`${d.getFullYear()}-${d.getMonth()}`);
+                    if (d.getUTCMonth() === selectedMonth) {
+                        periods.add(`${d.getUTCFullYear()}-${d.getUTCMonth()}`);
                     }
                 });
             }
@@ -2339,8 +2339,8 @@ const ImportedRevenuesView: FC<{
                 const [year, month] = period.split('-').map(Number);
                 const periodRevenues = filteredRevenues.filter(r => 
                     r.advisorId === advisor.id && 
-                    new Date(r.date).getFullYear() === year && 
-                    new Date(r.date).getMonth() === month
+                    new Date(r.date).getUTCFullYear() === year && 
+                    new Date(r.date).getUTCMonth() === month
                 );
                 
                 const revSum = periodRevenues.reduce((s, r) => s + (r.revenueAmount || 0), 0);
