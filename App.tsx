@@ -2441,8 +2441,7 @@ const ImportedRevenuesView: FC<{
             return { advisorId: advisor.id, name: advisor.name, result: totalResult, status };
         }).filter(item => {
             if (selectedAdvisorId === 'all') {
-                const hasRevenue = filteredRevenues.some(r => r.advisorId === item.advisorId);
-                return hasRevenue || item.result !== 0;
+                return true;
             }
             return true;
         }).sort((a, b) => b.result - a.result);
@@ -2557,7 +2556,7 @@ const ImportedRevenuesView: FC<{
                     const receitaLiquida = parseFloat(String(row['Receita Liquida EQI']).replace(',', '.')) || 0;
                     const dataRaw = row['Data'] || row['Data de Referência'] || row['Referência'] || row['Mês/Ano'] || row['Competência'];
 
-                    if (!clienteRaw || !assessorRaw || receitaLiquida <= 0) return;
+                    if (!clienteRaw || !assessorRaw) return;
 
                     const key = `${contaRaw}|${clienteRaw}|${codAssessorRaw}|${assessorRaw}`;
                     if (!groups[key]) {
@@ -3065,7 +3064,7 @@ const ImportedRevenuesView: FC<{
                     </div>
 
                     <p className="text-[10px] text-text-secondary italic">
-                        * As receitas foram agrupadas por Cliente + Assessor. Linhas com valores negativos ou zerados foram ignoradas.
+                        * As receitas foram agrupadas por Cliente + Assessor.
                     </p>
 
                     <div className="flex justify-end gap-3 pt-4">
