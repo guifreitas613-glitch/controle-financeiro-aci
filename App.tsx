@@ -1978,6 +1978,7 @@ const CommissionClosingModal: FC<{
             estimatedTax,
             estimatedNetRevenue,
             baseProduction: totalParcelaAssessor, // Mantendo campo para compatibilidade
+            productionResult: totalParcelaAssessor, // Novo campo para evitar erro de undefined
             cashEntryAmount: cashEntryAmount,
             hasBrokerPayout,
             crmCost,
@@ -4179,7 +4180,7 @@ const App: FC = () => {
                     observacao: `Fechamento operacional sem receita - Ref: ${refPeriod}`,
                     status: CommissionStatus.COMPLETED,
                     advisorOperationalResult: closingData.advisorOperationalResult,
-                    productionResult: closingData.productionResult,
+                    productionResult: closingData.productionResult || 0,
                     cashResult: closingData.cashResult,
                     cashEntryAmount: closingData.cashEntryAmount,
                     crmCost: closingData.crmCost,
@@ -4205,7 +4206,7 @@ const App: FC = () => {
                         status: CommissionStatus.COMPLETED,
                         lancamentosRealizados: true,
                         advisorOperationalResult: round(closingData.advisorOperationalResult * proportion),
-                        productionResult: round(closingData.productionResult * proportion),
+                        productionResult: round((closingData.productionResult || 0) * proportion),
                         cashResult: round(closingData.cashResult * proportion),
                         cashEntryAmount: round(closingData.cashEntryAmount * proportion),
                         crmCost: round(closingData.crmCost * proportion),
