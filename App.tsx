@@ -80,35 +80,29 @@ const formatDateTime = (dateString: string) => new Date(dateString).toLocaleStri
 const formatDateForInput = (dateString: string) => new Date(dateString).toISOString().split('T')[0];
 const getMonthYear = (dateString: string) => new Date(dateString).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric', timeZone: 'UTC' });
 
-const calculateRevenueFields = (revenueAmount: number, estimatedTaxRate: number, referralPercentage: number = 0) => {
+const calculateRevenueFields = (revenueAmount: number, estimatedTaxRate: number) => {
     const estimatedTax = round(revenueAmount * (estimatedTaxRate / 100));
     const estimatedNetRevenue = round(revenueAmount - estimatedTax);
     
-    // Base da Produção (sem CRM aqui, apenas para visualização na tabela)
-    const baseProduction = estimatedNetRevenue;
+    // Nível 1 — Por lançamento (calculateRevenueFields)
+    // receitaLiquida = receitaBruta - imposto
+    // parcelaAssessor = receitaLiquida * 0.70
+    // parcelaEscritorio = receitaLiquida * 0.30
+    const advisorShare = round(estimatedNetRevenue * 0.70);
+    const officeShare = round(estimatedNetRevenue * 0.30);
     
-    const advisorShare = round(baseProduction * 0.7); // Mantendo 70% padrão para visualização prévia
-    const officeShare = round(baseProduction - advisorShare);
-    
-    const advisorNetTotal = advisorShare;
-    
-    let referralAmount = 0;
-    if (referralPercentage > 0) {
-        referralAmount = round(advisorNetTotal * (referralPercentage / 100));
-    }
-    
-    const responsibleAdvisorNet = round(advisorNetTotal - referralAmount);
-    const officeNetRevenue = officeShare;
 
     return {
         advisorShare,
         officeShare,
-        advisorNetTotal,
-        referralAmount,
-        responsibleAdvisorNet,
-        officeNetRevenue,
+        advisorNetTotal: advisorShare,
+        referralAmount: 0,
+        responsibleAdvisorNet: advisorShare,
+        officeNetRevenue: officeShare,
         estimatedTax,
-        estimatedNetRevenue
+        estimatedNetRevenue,
+        totalParcelaAssessor: advisorShare,
+        totalParcelaEscritorio: officeShare
     };
 };
 
@@ -1940,34 +1934,38 @@ const CommissionClosingModal: FC<{
 
     const estimatedTax = round(generatedRevenue * (estimatedTaxRate / 100));
     const estimatedNetRevenue = round(generatedRevenue - estimatedTax);
-    const baseAmount = round(estimatedNetRevenue - crmCost);
     
-    // Regras de comissão: Se a base de cálculo for negativa:
-    // Comissão do assessor = 0, Parte do escritório = 0
-    const canCalculateCommissions = baseAmount > 0;
+    // Nível 2 — Por assessor/mês (agrupamento obrigatório)
+    // totalParcelaAssessor = soma(parcelaAssessor)
+    // totalParcelaEscritorio = soma(parcelaEscritorio)
+    const totalParcelaAssessor = round(estimatedNetRevenue * (advisorPercent / 100));
+    const totalParcelaEscritorio = round(estimatedNetRevenue * (officePercent / 100));
+    
+    // comissaoLiquidaAssessor = max(totalParcelaAssessor - crmCusto, 0)
+    const comissaoLiquidaAssessor = Math.max(totalParcelaAssessor - crmCost, 0);
+    
+    // crmNaoCoberto = max(crmCusto - totalParcelaAssessor, 0)
+    const crmNaoCoberto = Math.max(crmCost - totalParcelaAssessor, 0);
+    
+    // resultadoEscritorioReal = totalParcelaEscritorio - crmNaoCoberto
+    const resultadoEscritorioReal = totalParcelaEscritorio - crmNaoCoberto;
 
-    const advisorShare = canCalculateCommissions ? round(baseAmount * (advisorPercent / 100)) : 0;
-    const officeShare = canCalculateCommissions ? round(baseAmount - advisorShare) : 0;
-    
+    // Indicação (aplicar após comissão)
     let referralAmount = 0;
-    if (hasReferral && referralPercentage > 0 && canCalculateCommissions) {
-        referralAmount = round(advisorShare * (referralPercentage / 100));
+    if (hasReferral && referralPercentage > 0) {
+        referralAmount = round(comissaoLiquidaAssessor * (referralPercentage / 100));
     }
     
-    const advisorBaseAfterReferral = round(advisorShare - referralAmount);
-    // O imposto não é mais deduzido da comissão do assessor
-    const advisorNet = advisorBaseAfterReferral;
+    // assessorLiquidoFinal = comissaoLiquidaAssessor - indicacao
+    const advisorNet = round(comissaoLiquidaAssessor - referralAmount);
     
-    const officeNet = officeShare;
+    const officeNet = resultadoEscritorioReal;
     
-    // Resultado Operacional Assessor = Base da Produção - Comissão Total do Assessor (incluindo indicações)
-    const advisorOperationalResult = round(baseAmount - advisorShare);
+    // Resultado Operacional Assessor = totalParcelaAssessor - crmCusto
+    const advisorOperationalResult = round(totalParcelaAssessor - crmCost);
     
-    // Resultado da Produção = Receita Total Gerada − Custo de CRM − Comissão Total do Assessor
-    const productionResult = round(generatedRevenue - crmCost - advisorShare);
-    
-    // Resultado de Caixa = Entrada no Caixa da Corretora − Comissão Total do Assessor
-    const cashResult = round(cashEntryAmount - advisorShare);
+    // Resultado de Caixa = Entrada no Caixa da Corretora − Comissões Pagas
+    const cashResult = round(cashEntryAmount - advisorNet - referralAmount);
 
     const handleConfirm = () => {
         const referralAdvisor = advisors.find(a => a.id === referralAdvisorId);
@@ -1979,18 +1977,21 @@ const CommissionClosingModal: FC<{
             generatedRevenue,
             estimatedTax,
             estimatedNetRevenue,
-            baseProduction: baseAmount,
+            baseProduction: totalParcelaAssessor, // Mantendo campo para compatibilidade
             cashEntryAmount: cashEntryAmount,
             hasBrokerPayout,
             crmCost,
+            crmNaoCoberto, // Novo campo
+            totalParcelaAssessor, // Novo campo
+            totalParcelaEscritorio, // Novo campo
             officePercent,
             advisorPercent,
-            advisorShare,
-            officeShare,
+            advisorShare: totalParcelaAssessor, // Mantendo campo para compatibilidade
+            officeShare: totalParcelaEscritorio, // Mantendo campo para compatibilidade
             advisorNet,
             officeNet,
             advisorOperationalResult,
-            productionResult,
+            resultadoEscritorioReal, // Novo campo
             cashResult,
             hasReferral,
             referralAdvisorId: hasReferral ? referralAdvisorId : undefined,
@@ -2034,10 +2035,32 @@ const CommissionClosingModal: FC<{
                                     <input type="number" value={crmCost} onChange={e => setCrmCost(Number(e.target.value))} className="w-full p-2 bg-background border border-border-color rounded text-sm" />
                                 </div>
                             </div>
-                            <div className="bg-background/50 p-2 rounded border border-dashed border-border-color">
+                            <div className="bg-background/50 p-2 rounded border border-dashed border-border-color space-y-2">
                                 <div className="flex justify-between text-xs">
-                                    <span className="text-text-secondary">Base de Cálculo (Receita - CRM):</span>
-                                    <span className="font-bold text-text-primary">{formatCurrency(baseAmount)}</span>
+                                    <span className="text-text-secondary">Parcela Assessor ({advisorPercent}%):</span>
+                                    <span className="font-bold text-text-primary">{formatCurrency(totalParcelaAssessor)}</span>
+                                </div>
+                                <div className="flex justify-between text-xs">
+                                    <span className="text-text-secondary">Parcela Escritório ({officePercent}%):</span>
+                                    <span className="font-bold text-text-primary">{formatCurrency(totalParcelaEscritorio)}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <p className="text-[10px] font-bold text-text-secondary uppercase border-b border-border-color pb-1">Análise de CRM e Déficit</p>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase">Custo CRM Mensal</label>
+                                    <div className="p-2 bg-background border border-border-color rounded text-sm font-bold">
+                                        {formatCurrency(crmCost)}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase">CRM Não Coberto (Déficit)</label>
+                                    <div className="p-2 bg-background border border-border-color rounded text-sm font-bold text-danger">
+                                        {formatCurrency(crmNaoCoberto)}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -2103,20 +2126,21 @@ const CommissionClosingModal: FC<{
                                     <span className="text-text-secondary">Receita Líquida Estimada:</span>
                                     <span className="text-primary">{formatCurrency(estimatedNetRevenue)}</span>
                                 </div>
-                                <div className="flex justify-between text-xs">
-                                    <span className="text-text-secondary">CRM do Assessor:</span>
-                                    <span className="text-danger">-{formatCurrency(crmCost)}</span>
-                                </div>
-                                <div className="flex justify-between text-xs font-bold border-t border-border-color/30 pt-1 mt-1">
-                                    <span className="text-text-primary uppercase">Base da Produção:</span>
-                                    <span className="text-primary">{formatCurrency(baseAmount)}</span>
-                                </div>
                                 
                                 <div className="pt-2 mt-2 border-t border-border-color/30 space-y-2">
                                     <div className="flex justify-between text-xs">
-                                        <span className="text-text-secondary">Comissão do Assessor ({advisorPercent}%):</span>
-                                        <span className="font-bold text-primary">{formatCurrency(advisorShare)}</span>
+                                        <span className="text-text-secondary">Parcela Assessor ({advisorPercent}%):</span>
+                                        <span className="font-bold">{formatCurrency(totalParcelaAssessor)}</span>
                                     </div>
+                                    <div className="flex justify-between text-xs">
+                                        <span className="text-text-secondary">Custo CRM Mensal:</span>
+                                        <span className="text-danger">-{formatCurrency(crmCost)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-xs font-bold border-t border-border-color/10 pt-1">
+                                        <span className="text-text-primary uppercase">Comissão Líquida:</span>
+                                        <span className="text-primary">{formatCurrency(comissaoLiquidaAssessor)}</span>
+                                    </div>
+
                                     {hasReferral && referralAmount > 0 && (
                                         <>
                                             <div className="flex justify-between text-xs">
@@ -2124,16 +2148,27 @@ const CommissionClosingModal: FC<{
                                                 <span className="text-yellow-500">-{formatCurrency(referralAmount)}</span>
                                             </div>
                                             <div className="flex justify-between text-xs font-medium border-t border-border-color/10 pt-1">
-                                                <span className="text-text-secondary">Comissão Líquida:</span>
+                                                <span className="text-text-secondary">Assessor Líquido Final:</span>
                                                 <span className="font-bold text-primary">{formatCurrency(advisorNet)}</span>
                                             </div>
                                         </>
                                     )}
-                                    <div className="flex justify-between text-xs border-t border-border-color/30 pt-1 mt-1">
-                                        <span className="font-bold text-text-secondary uppercase">Resultado do Escritório na Produção:</span>
-                                        <span className={`font-bold ${advisorOperationalResult < 0 ? 'text-danger' : 'text-green-400'}`}>
-                                            {formatCurrency(advisorOperationalResult)}
-                                        </span>
+
+                                    <div className="pt-2 mt-2 border-t border-border-color/30 space-y-2">
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-text-secondary">Parcela Escritório ({officePercent}%):</span>
+                                            <span className="font-bold">{formatCurrency(totalParcelaEscritorio)}</span>
+                                        </div>
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-text-secondary">Déficit CRM (Não Coberto):</span>
+                                            <span className="text-danger">-{formatCurrency(crmNaoCoberto)}</span>
+                                        </div>
+                                        <div className="flex justify-between text-xs font-bold border-t border-border-color/10 pt-1">
+                                            <span className="text-text-primary uppercase">Resultado Escritório Real:</span>
+                                            <span className={`font-bold ${resultadoEscritorioReal < 0 ? 'text-danger' : 'text-green-400'}`}>
+                                                {formatCurrency(resultadoEscritorioReal)}
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -2245,74 +2280,98 @@ const ImportedRevenuesView: FC<{
 
     const totals = useMemo(() => {
         // Agrupar por Assessor e Período (Mês/Ano) para aplicar CRM corretamente
-        const groups: Record<string, { revenue: number, crm: number, commissions: number, operational: number, isClosed: boolean }> = {};
+        const groups: Record<string, { 
+            revenue: number, 
+            netRevenue: number,
+            advisorShare: number, 
+            officeShare: number, 
+            crm: number, 
+            commissionsPaid: number, 
+            officeOperationalResult: number, 
+            isClosed: boolean 
+        }> = {};
         
         filteredRevenues.forEach(r => {
             const date = new Date(r.date);
             const periodKey = `${r.advisorId}-${date.getUTCFullYear()}-${date.getUTCMonth()}`;
             
             if (!groups[periodKey]) {
-                groups[periodKey] = { revenue: 0, crm: 0, commissions: 0, operational: 0, isClosed: false };
+                groups[periodKey] = { 
+                    revenue: 0, 
+                    netRevenue: 0,
+                    advisorShare: 0, 
+                    officeShare: 0, 
+                    crm: 0, 
+                    commissionsPaid: 0, 
+                    officeOperationalResult: 0, 
+                    isClosed: false 
+                };
             }
             
             groups[periodKey].revenue += (r.revenueAmount || 0);
-            groups[periodKey].commissions += (r.advisorNetTotal || 0);
-            groups[periodKey].operational += (r.advisorOperationalResult || 0);
-            groups[periodKey].crm += (r.crmCost || 0);
+            const net = r.estimatedNetRevenue || round((r.revenueAmount || 0) * (1 - (r.taxRate || 0) / 100));
+            groups[periodKey].netRevenue += net;
+            groups[periodKey].advisorShare += (r.advisorShare || round(net * 0.70));
+            groups[periodKey].officeShare += (r.officeShare || round(net * 0.30));
             
             if (r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados) {
                 groups[periodKey].isClosed = true;
+                groups[periodKey].commissionsPaid += (r.advisorNet || r.responsibleAdvisorNet || 0);
+                groups[periodKey].officeOperationalResult += (r.resultadoEscritorioReal || r.advisorOperationalResult || 0);
+                groups[periodKey].crm += (r.crmCost || 0);
             }
         });
 
         let totalGrossProduction = 0;
-        let totalBaseProduction = 0;
+        let totalNetProduction = 0;
         let totalCommissionsPaid = 0;
-        let totalOfficeParticipation = 0;
+        let totalOfficeResult = 0;
 
         Object.entries(groups).forEach(([key, data]) => {
             const [advisorId] = key.split('-');
             const advisor = advisors.find(a => a.id === advisorId);
             
             totalGrossProduction += data.revenue;
-            totalCommissionsPaid += data.commissions;
-            
-            const tax = round(data.revenue * (estimatedTaxRate / 100));
-            const netRevenue = round(data.revenue - tax);
-            
-            let crm = data.crm;
-            if (!data.isClosed && advisor) {
-                crm = Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0));
-            }
-            
-            const baseProduction = round(netRevenue - crm);
-            totalBaseProduction += baseProduction;
+            totalNetProduction += data.netRevenue;
             
             if (data.isClosed) {
-                totalOfficeParticipation += data.operational;
-            } else {
-                // Estimativa para registros pendentes (70% assessor / 30% escritório)
-                const estimatedAdvisorShare = baseProduction > 0 ? round(baseProduction * 0.7) : 0;
-                const estimatedOfficeParticipation = round(baseProduction - estimatedAdvisorShare);
-                totalOfficeParticipation += estimatedOfficeParticipation;
+                totalCommissionsPaid += data.commissionsPaid;
+                totalOfficeResult += data.officeOperationalResult;
+            } else if (advisor) {
+                // Estimativa para registros pendentes seguindo a nova lógica
+                const crmCusto = Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0));
+                
+                // totalParcelaAssessor = soma(parcelaAssessor)
+                // totalParcelaEscritorio = soma(parcelaEscritorio)
+                const totalParcelaAssessor = data.advisorShare;
+                const totalParcelaEscritorio = data.officeShare;
+                
+                // comissaoLiquidaAssessor = max(totalParcelaAssessor - crmCusto, 0)
+                const comissaoLiquidaAssessor = Math.max(totalParcelaAssessor - crmCusto, 0);
+                
+                // crmNaoCoberto = max(crmCusto - totalParcelaAssessor, 0)
+                const crmNaoCoberto = Math.max(crmCusto - totalParcelaAssessor, 0);
+                
+                // resultadoEscritorioReal = totalParcelaEscritorio - crmNaoCoberto
+                const resultadoEscritorioReal = totalParcelaEscritorio - crmNaoCoberto;
+                
+                totalCommissionsPaid += comissaoLiquidaAssessor;
+                totalOfficeResult += resultadoEscritorioReal;
             }
         });
 
         return {
             totalGrossProduction,
-            totalBaseProduction,
+            totalNetProduction,
             totalCommissionsPaid,
-            totalOfficeParticipation
+            totalOfficeResult
         };
-    }, [filteredRevenues, advisors, estimatedTaxRate]);
+    }, [filteredRevenues, advisors]);
 
     const advisorProfitability = useMemo(() => {
-        // Se um assessor específico estiver selecionado, mostramos apenas ele
-        // Se "Todos" estiver selecionado, mostramos todos os assessores que tiveram movimentação ou CRM no período
         const targetAdvisors = selectedAdvisorId === 'all' ? advisors : advisors.filter(a => a.id === selectedAdvisorId);
         
         return targetAdvisors.map(advisor => {
-            // Identificar períodos (meses) no filtro
             const periods = new Set<string>();
             if (selectedMonth === 'all') {
                 filteredRevenues.forEach(r => {
@@ -2322,7 +2381,6 @@ const ImportedRevenuesView: FC<{
             } else if (selectedYear !== 'all') {
                 periods.add(`${selectedYear}-${selectedMonth}`);
             } else {
-                // Caso raro: todos os anos, mês específico
                 filteredRevenues.forEach(r => {
                     const d = new Date(r.date);
                     if (d.getUTCMonth() === selectedMonth) {
@@ -2331,7 +2389,6 @@ const ImportedRevenuesView: FC<{
                 });
             }
 
-            // Se não houver períodos identificados pelas receitas, mas houver filtro de data, usamos o filtro
             if (periods.size === 0 && selectedYear !== 'all' && selectedMonth !== 'all') {
                 periods.add(`${selectedYear}-${selectedMonth}`);
             }
@@ -2345,27 +2402,30 @@ const ImportedRevenuesView: FC<{
                     new Date(r.date).getUTCMonth() === month
                 );
                 
-                const revSum = periodRevenues.reduce((s, r) => s + (r.revenueAmount || 0), 0);
                 const isClosed = periodRevenues.some(r => r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados);
                 
                 if (isClosed) {
-                    totalResult += periodRevenues.reduce((s, r) => s + (r.advisorOperationalResult || 0), 0);
+                    // No fechamento, guardamos o crmCost e advisorShare (70% da receita líquida)
+                    const totalParcelaAssessor = periodRevenues.reduce((s, r) => s + (r.advisorShare || 0), 0);
+                    const closedRevenue = periodRevenues.find(r => r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados);
+                    const crmCusto = closedRevenue?.crmCost || 0;
+                    totalResult += (totalParcelaAssessor - crmCusto);
                 } else {
+                    const revSum = periodRevenues.reduce((s, r) => s + (r.revenueAmount || 0), 0);
                     const tax = round(revSum * (estimatedTaxRate / 100));
-                    const crm = Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0));
-                    const base = round(revSum - tax - crm);
-                    const estAdvisorShare = base > 0 ? round(base * 0.7) : 0;
-                    totalResult += round(base - estAdvisorShare);
+                    const netRevenue = round(revSum - tax);
+                    const crmCusto = Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0));
+                    const totalParcelaAssessor = round(netRevenue * 0.70);
+                    totalResult += (totalParcelaAssessor - crmCusto);
                 }
             });
 
-            let status: 'Lucrativo' | 'Neutro' | 'Subsidiado' = 'Neutro';
+            let status: 'Lucrativo' | 'Breakeven' | 'Subsidiado' = 'Breakeven';
             if (totalResult > 0.01) status = 'Lucrativo';
             else if (totalResult < -0.01) status = 'Subsidiado';
 
             return { advisorId: advisor.id, name: advisor.name, result: totalResult, status };
         }).filter(item => {
-            // Se "Todos" selecionado, removemos quem não tem resultado nem receita (para não poluir)
             if (selectedAdvisorId === 'all') {
                 const hasRevenue = filteredRevenues.some(r => r.advisorId === item.advisorId);
                 return hasRevenue || item.result !== 0;
@@ -2684,21 +2744,21 @@ const ImportedRevenuesView: FC<{
             <Card className="p-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                     <div>
-                        <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase tracking-wider">Produção Bruta dos Assessores</label>
+                        <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase tracking-wider">Produção Bruta</label>
                         <p className="text-lg font-bold text-text-primary">{formatCurrency(totals.totalGrossProduction)}</p>
                     </div>
                     <div>
                         <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase tracking-wider">Produção Líquida</label>
-                        <p className="text-lg font-bold text-text-primary">{formatCurrency(totals.totalBaseProduction)}</p>
+                        <p className="text-lg font-bold text-text-primary">{formatCurrency(totals.totalNetProduction)}</p>
                     </div>
                     <div>
                         <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase tracking-wider">Comissões Pagas</label>
                         <p className="text-lg font-bold text-primary">{formatCurrency(totals.totalCommissionsPaid)}</p>
                     </div>
                     <div className="bg-primary/5 p-2 rounded border border-primary/20">
-                        <label className="block text-[10px] font-bold text-primary mb-1 uppercase tracking-wider">Resultado do Escritório na Produção</label>
-                        <p className={`text-lg font-bold ${totals.totalOfficeParticipation < 0 ? 'text-danger' : 'text-primary'}`}>
-                            {formatCurrency(totals.totalOfficeParticipation)}
+                        <label className="block text-[10px] font-bold text-primary mb-1 uppercase tracking-wider">Resultado do Escritório</label>
+                        <p className={`text-lg font-bold ${totals.totalOfficeResult < 0 ? 'text-danger' : 'text-primary'}`}>
+                            {formatCurrency(totals.totalOfficeResult)}
                         </p>
                     </div>
                 </div>
@@ -3395,62 +3455,8 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
     
     const strategicIndicators = useMemo(() => {
         const netMargin = totalIncome > 0 ? (resultadoPeriodo / totalIncome) * 100 : null;
-
-        const filteredRevenues = importedRevenues.filter(r => {
-            const date = new Date(r.date);
-            const year = date.getUTCFullYear();
-            const month = date.getUTCMonth();
-            return (selectedYear === 'all' || year === selectedYear) && (selectedMonth === 'all' || month === selectedMonth);
-        });
-
-        // Lógica de Produção Consistente (Agrupada por Assessor/Período)
-        const groups: Record<string, { revenue: number, crm: number, operational: number, isClosed: boolean }> = {};
-        
-        filteredRevenues.forEach(r => {
-            const date = new Date(r.date);
-            const periodKey = `${r.advisorId}-${date.getUTCFullYear()}-${date.getUTCMonth()}`;
-            
-            if (!groups[periodKey]) {
-                groups[periodKey] = { revenue: 0, crm: 0, operational: 0, isClosed: false };
-            }
-            
-            groups[periodKey].revenue += (r.revenueAmount || 0);
-            groups[periodKey].operational += (r.advisorOperationalResult || 0);
-            groups[periodKey].crm += (r.crmCost || 0);
-            
-            if (r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados) {
-                groups[periodKey].isClosed = true;
-            }
-        });
-
-        let totalGrossProduction = 0;
-        let totalOfficeParticipation = 0;
-
-        Object.entries(groups).forEach(([key, data]) => {
-            const [advisorId] = key.split('-');
-            const advisor = advisors.find(a => a.id === advisorId);
-            
-            totalGrossProduction += data.revenue;
-            
-            if (data.isClosed) {
-                totalOfficeParticipation += data.operational;
-            } else {
-                const tax = round(data.revenue * (estimatedTaxRate / 100));
-                const netRevenue = round(data.revenue - tax);
-                const crm = advisor ? Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0)) : 0;
-                const baseProduction = round(netRevenue - crm);
-                const estimatedAdvisorShare = baseProduction > 0 ? round(baseProduction * 0.7) : 0;
-                totalOfficeParticipation += round(baseProduction - estimatedAdvisorShare);
-            }
-        });
-        
-        const productionMargin = totalGrossProduction > 0 ? (totalOfficeParticipation / totalGrossProduction) : 0;
-        const fixedExpenses = round(filteredTransactions.filter(t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PAID && t.nature === ExpenseNature.FIXED).reduce((sum, t) => sum + t.amount, 0));
-
-        const breakEven = productionMargin > 0 ? round(fixedExpenses / productionMargin) : null;
-
-        return { netMargin, breakEven };
-    }, [totalIncome, resultadoPeriodo, importedRevenues, selectedYear, selectedMonth, filteredTransactions, advisors, estimatedTaxRate]);
+        return { netMargin };
+    }, [totalIncome, resultadoPeriodo]);
 
     const upcomingBills = useMemo(() => {
         const thresholdDate = new Date();
@@ -3570,12 +3576,6 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                     <h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Margem Líquida</h3>
                     <p className="text-2xl font-bold text-yellow-400">
                         {strategicIndicators.netMargin !== null ? `${strategicIndicators.netMargin.toFixed(1)}%` : 'Margem indisponível'}
-                    </p>
-                </Card>
-                <Card className="border-l-4 border-purple-400">
-                    <h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Break-even de Produção</h3>
-                    <p className="text-2xl font-bold text-purple-400">
-                        {strategicIndicators.breakEven !== null ? formatCurrency(strategicIndicators.breakEven) : 'Break-even indisponível'}
                     </p>
                 </Card>
                 <Card className="border-l-4 border-blue-400"><h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Metas Atingidas</h3><p className="text-2xl font-bold text-blue-400">{achievedGoals} <span className="text-lg text-text-secondary font-normal">/ {goals.length}</span></p></Card>

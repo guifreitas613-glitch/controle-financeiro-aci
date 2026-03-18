@@ -90,6 +90,14 @@ export interface ImportedRevenue {
     officeNetRevenue?: number;
     totalTaxProvision?: number; // Imposto Assessor + Imposto Escritório
     
+    // Campos de Consolidação (Nível 2)
+    estimatedNetRevenue?: number;
+    totalParcelaAssessor?: number;
+    totalParcelaEscritorio?: number;
+    crmNaoCoberto?: number;
+    resultadoEscritorioReal?: number;
+    advisorNet?: number; // Valor final pago ao assessor
+    
     // Novos campos operacionais
     advisorOperationalResult?: number;
     productionResult?: number;

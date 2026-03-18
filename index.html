@@ -46,12 +46,19 @@
           size: landscape;
           margin: 10mm;
         }
-        .no-print, nav, aside, button, .actions-column, .no-print-area, .sidebar-nav {
+        .no-print, nav, aside, header, footer, button, .actions-column, .no-print-area, .sidebar-nav {
           display: none !important;
         }
-        body {
+        html, body {
+          width: 100% !important;
+          height: auto !important;
+          overflow: visible !important;
+          margin: 0 !important;
+          padding: 0 !important;
           background-color: white !important;
           color: black !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
         }
         .card, .bg-surface, .bg-background {
           background-color: white !important;
@@ -64,12 +71,49 @@
         }
         table {
           width: 100% !important;
+          max-width: none !important;
           border-collapse: collapse !important;
+          table-layout: auto !important;
+          font-size: 3.5pt !important;
+          zoom: 0.45;
+          white-space: normal !important;
         }
+        thead { display: table-header-group !important; }
+        tbody { display: table-row-group !important; }
+        tr { display: table-row !important; }
         th, td {
+          display: table-cell !important;
           border: 1px solid #e2e8f0 !important;
-          padding: 8px !important;
+          padding: 1px !important;
           color: black !important;
+          white-space: normal !important;
+          word-break: break-all !important;
+          line-height: 1.0 !important;
+          max-width: none !important;
+          min-width: 0 !important;
+        }
+        main {
+          padding: 0 !important;
+          margin: 0 !important;
+          width: 100% !important;
+          max-width: none !important;
+          display: block !important;
+          overflow: visible !important;
+        }
+        .overflow-x-auto, .overflow-hidden, .flex-1, .flex-col, .h-screen, .space-y-6, .truncate, .card, .bg-surface, .bg-background {
+          overflow: visible !important;
+          height: auto !important;
+          display: block !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          white-space: normal !important;
+          text-overflow: clip !important;
+          max-width: none !important;
+          width: 100% !important;
+          background-color: white !important;
+          color: black !important;
+          border: none !important;
+          box-shadow: none !important;
         }
         .print-only {
           display: block !important;
