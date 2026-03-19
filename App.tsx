@@ -2328,8 +2328,20 @@ const ImportedRevenuesView: FC<{
         let totalCommissionsPaid = 0;
         let totalOfficeResult = 0;
         let totalSubsidyCost = 0;
-        let minProductionSum = 0;
-        let advisorsWithCrmCount = 0;
+
+        // Encontrar o maior CRM entre os assessores presentes no período para o cálculo da produção mínima
+        const advisorIdsInPeriod = new Set(filteredRevenues.map(r => r.advisorId));
+        let maxCrmInPeriod = 0;
+        advisorIdsInPeriod.forEach(id => {
+            const advisor = advisors.find(a => a.id === id);
+            if (advisor) {
+                const crmCusto = Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0));
+                if (crmCusto > maxCrmInPeriod) maxCrmInPeriod = crmCusto;
+            }
+        });
+
+        const taxFactor = 1 - (estimatedTaxRate / 100);
+        const producaoMinima = taxFactor > 0 ? (maxCrmInPeriod / 0.70) / taxFactor : 0;
 
         Object.entries(groups).forEach(([key, data]) => {
             const [advisorId] = key.split('-');
@@ -2369,15 +2381,6 @@ const ImportedRevenuesView: FC<{
                 totalCommissionsPaid += comissaoLiquidaAssessor;
                 totalOfficeResult += resultadoEscritorioReal;
                 totalSubsidyCost += crmNaoCoberto;
-
-                if (crmCusto > 0) {
-                    const taxFactor = 1 - (estimatedTaxRate / 100);
-                    if (taxFactor > 0) {
-                        const minProd = (crmCusto / 0.70) / taxFactor;
-                        minProductionSum += minProd;
-                        advisorsWithCrmCount++;
-                    }
-                }
             }
         });
 
@@ -2387,9 +2390,9 @@ const ImportedRevenuesView: FC<{
             totalCommissionsPaid,
             totalOfficeResult,
             totalSubsidyCost,
-            avgMinProduction: advisorsWithCrmCount > 0 ? minProductionSum / advisorsWithCrmCount : 0
+            avgMinProduction: producaoMinima
         };
-    }, [filteredRevenues, advisors]);
+    }, [filteredRevenues, advisors, estimatedTaxRate]);
 
     const advisorProfitability = useMemo(() => {
         const targetAdvisors = selectedAdvisorId === 'all' ? advisors : advisors.filter(a => a.id === selectedAdvisorId);
