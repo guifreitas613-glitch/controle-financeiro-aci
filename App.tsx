@@ -2330,28 +2330,21 @@ const ImportedRevenuesView: FC<{
         let totalSubsidyCost = 0;
 
         // Encontrar o maior CRM entre os assessores relevantes para o cálculo da produção mínima
-        let relevantAdvisorIds: string[] = [];
+        // Ignora receitas do período conforme regra de negócio
+        let maxCrmForMinProduction = 0;
         if (selectedAdvisorId !== 'all') {
-            relevantAdvisorIds = [selectedAdvisorId];
-        } else {
-            relevantAdvisorIds = Array.from(new Set(filteredRevenues.map(r => r.advisorId)));
-            if (relevantAdvisorIds.length === 0) {
-                // Se não houver receitas no filtro, mas estivermos em "Todos", usamos todos os assessores cadastrados
-                relevantAdvisorIds = advisors.map(a => a.id);
+            const advisor = advisors.find(a => a.id === selectedAdvisorId);
+            if (advisor) {
+                maxCrmForMinProduction = Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0));
             }
+        } else {
+            // Todos os assessores: pegar o maior CRM entre todos os cadastrados no sistema
+            const allCrms = advisors.map(a => Math.abs((a.costs || []).reduce((acc, c) => acc + c.value, 0)));
+            maxCrmForMinProduction = allCrms.length > 0 ? Math.max(...allCrms) : 0;
         }
 
-        let maxCrmInPeriod = 0;
-        relevantAdvisorIds.forEach(id => {
-            const advisor = advisors.find(a => a.id === id);
-            if (advisor) {
-                const crmCusto = Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0));
-                if (crmCusto > maxCrmInPeriod) maxCrmInPeriod = crmCusto;
-            }
-        });
-
         const taxFactor = 1 - (estimatedTaxRate / 100);
-        const producaoMinima = taxFactor > 0 ? (maxCrmInPeriod / 0.70) / taxFactor : 0;
+        const producaoMinima = taxFactor > 0 ? (maxCrmForMinProduction / 0.70) / taxFactor : 0;
 
         Object.entries(groups).forEach(([key, data]) => {
             const [advisorId] = key.split('-');
