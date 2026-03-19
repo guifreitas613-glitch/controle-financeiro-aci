@@ -4177,6 +4177,7 @@ const App: FC = () => {
                     advisorId: closingData.advisorId,
                     advisorName: closingData.advisorName,
                     revenueAmount: 0,
+                    taxRate: 0,
                     observacao: `Fechamento operacional sem receita - Ref: ${refPeriod}`,
                     status: CommissionStatus.COMPLETED,
                     advisorOperationalResult: closingData.advisorOperationalResult,
@@ -4189,9 +4190,16 @@ const App: FC = () => {
                     advisorTax: 0,
                     officeTax: 0,
                     advisorNetTotal: 0,
-                    officeNetRevenue: 0,
+                    officeNetRevenue: closingData.officeNet,
+                    estimatedNetRevenue: closingData.estimatedNetRevenue,
                     totalTaxProvision: 0,
-                    referralAmount: 0
+                    referralAmount: 0,
+                    advisorNet: closingData.advisorNet,
+                    resultadoEscritorioReal: closingData.resultadoEscritorioReal,
+                    crmNaoCoberto: closingData.crmNaoCoberto,
+                    totalParcelaAssessor: closingData.totalParcelaAssessor,
+                    totalParcelaEscritorio: closingData.totalParcelaEscritorio,
+                    lancamentosRealizados: true
                 };
                 const docRef = await saveImportedRevenue(dummyRevenue as any, user.uid);
                 setImportedRevenues(prev => [{ id: docRef.id, ...dummyRevenue } as ImportedRevenue, ...prev]);
@@ -4217,7 +4225,13 @@ const App: FC = () => {
                         advisorNetTotal: round(closingData.advisorNet * proportion),
                         officeNetRevenue: round(closingData.officeNet * proportion),
                         totalTaxProvision: 0,
-                        referralAmount: round(closingData.referralAmount * proportion)
+                        referralAmount: round(closingData.referralAmount * proportion),
+                        advisorNet: round(closingData.advisorNet * proportion),
+                        resultadoEscritorioReal: round(closingData.resultadoEscritorioReal * proportion),
+                        crmNaoCoberto: round(closingData.crmNaoCoberto * proportion),
+                        totalParcelaAssessor: round(closingData.totalParcelaAssessor * proportion),
+                        totalParcelaEscritorio: round(closingData.totalParcelaEscritorio * proportion),
+                        estimatedNetRevenue: round(closingData.estimatedNetRevenue * proportion)
                     };
 
                     updatedRecords[id] = updateData;
