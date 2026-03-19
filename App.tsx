@@ -2306,7 +2306,9 @@ const ImportedRevenuesView: FC<{
             crm: number, 
             commissionsPaid: number, 
             officeOperationalResult: number, 
-            isClosed: boolean 
+            isClosed: boolean,
+            advisorId: string,
+            advisorName: string
         }> = {};
         
         filteredRevenues.forEach(r => {
@@ -2324,7 +2326,9 @@ const ImportedRevenuesView: FC<{
                     crm: 0, 
                     commissionsPaid: 0, 
                     officeOperationalResult: 0, 
-                    isClosed: false 
+                    isClosed: false,
+                    advisorId: effectiveAdvisorId,
+                    advisorName: r.advisorName || ''
                 };
             }
             
@@ -2365,15 +2369,22 @@ const ImportedRevenuesView: FC<{
         const taxFactor = 1 - (estimatedTaxRate / 100);
         const producaoMinima = taxFactor > 0 ? (maxCrmForMinProduction / 0.70) / taxFactor : 0;
 
-        Object.entries(groups).forEach(([key, data]) => {
-            const [advisorId] = key.split('-');
-            const advisor = advisorId !== 'unknown' ? advisors.find(a => a.id === advisorId) : null;
+        Object.entries(groups).forEach(([periodKey, data]) => {
+            const advisor = advisors.find(a => a.id === data.advisorId)
+                ?? advisors.find(a => a.name === data.advisorName);
             
             totalGrossProduction += data.revenue;
             
             // CRM mensal do perfil do assessor (fonte única de verdade)
             const crmCusto = advisor ? Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0)) : 0;
             
+            console.log('CRM aplicado:', {
+                periodKey,
+                advisorFound: !!advisor,
+                advisorName: advisor?.name,
+                crmCusto
+            });
+
             totalNetProduction += (data.netRevenue - crmCusto);
             
             // Lógica de consolidação solicitada
