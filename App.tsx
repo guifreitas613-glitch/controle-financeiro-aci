@@ -2311,7 +2311,9 @@ const ImportedRevenuesView: FC<{
         
         filteredRevenues.forEach(r => {
             const date = new Date(r.date);
-            const periodKey = `${r.advisorId}-${date.getUTCFullYear()}-${date.getUTCMonth()}`;
+            // Tenta obter o ID do assessor de várias formas para garantir o agrupamento correto
+            const effectiveAdvisorId = r.advisorId || (advisors.find(a => a.name === r.advisorName)?.id) || 'unknown';
+            const periodKey = `${effectiveAdvisorId}-${date.getUTCFullYear()}-${date.getUTCMonth()}`;
             
             if (!groups[periodKey]) {
                 groups[periodKey] = { 
@@ -2365,7 +2367,7 @@ const ImportedRevenuesView: FC<{
 
         Object.entries(groups).forEach(([key, data]) => {
             const [advisorId] = key.split('-');
-            const advisor = advisors.find(a => a.id === advisorId);
+            const advisor = advisorId !== 'unknown' ? advisors.find(a => a.id === advisorId) : null;
             
             totalGrossProduction += data.revenue;
             
@@ -2434,16 +2436,11 @@ const ImportedRevenuesView: FC<{
                 const isClosed = periodRevenues.some(r => r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados);
                 
                 const crmCusto = Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0));
-                let totalParcelaAssessor = 0;
-                
-                if (isClosed) {
-                    totalParcelaAssessor = periodRevenues.reduce((s, r) => s + (r.totalParcelaAssessor || r.advisorShare || 0), 0);
-                } else {
-                    const revSum = periodRevenues.reduce((s, r) => s + (r.revenueAmount || 0), 0);
-                    const tax = round(revSum * (estimatedTaxRate / 100));
-                    const netRevenue = round(revSum - tax);
-                    totalParcelaAssessor = round(netRevenue * 0.70);
-                }
+                // Calcula a parcela do assessor de forma consistente com o totals memo
+                const totalParcelaAssessor = periodRevenues.reduce((s, r) => {
+                    const net = r.estimatedNetRevenue || round((r.revenueAmount || 0) * (1 - (r.taxRate || 0) / 100));
+                    return s + (r.totalParcelaAssessor || r.advisorShare || round(net * 0.70));
+                }, 0);
                 
                 // Resultado Assessor Real conforme solicitado (pode ser negativo)
                 totalResult += (totalParcelaAssessor - crmCusto);
