@@ -2336,7 +2336,15 @@ const ImportedRevenuesView: FC<{
             const advisor = advisors.find(a => a.id === advisorId);
             
             totalGrossProduction += data.revenue;
-            totalNetProduction += data.netRevenue;
+            
+            let currentCrm = 0;
+            if (data.isClosed) {
+                currentCrm = data.crm;
+            } else if (advisor) {
+                currentCrm = Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0));
+            }
+            
+            totalNetProduction += (data.netRevenue - currentCrm);
             
             if (data.isClosed) {
                 totalCommissionsPaid += data.commissionsPaid;
@@ -2420,10 +2428,9 @@ const ImportedRevenuesView: FC<{
                 const isClosed = periodRevenues.some(r => r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados);
                 
                 if (isClosed) {
-                    // No fechamento, guardamos o crmCost e advisorShare (70% da receita líquida)
-                    const totalParcelaAssessor = periodRevenues.reduce((s, r) => s + (r.advisorShare || 0), 0);
-                    const closedRevenue = periodRevenues.find(r => r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados);
-                    const crmCusto = closedRevenue?.crmCost || 0;
+                    // No fechamento, somamos o crmCost e advisorShare (70% da receita líquida)
+                    const totalParcelaAssessor = periodRevenues.reduce((s, r) => s + (r.totalParcelaAssessor || r.advisorShare || 0), 0);
+                    const crmCusto = periodRevenues.reduce((s, r) => s + (r.crmCost || 0), 0);
                     totalResult += (totalParcelaAssessor - crmCusto);
                 } else {
                     const revSum = periodRevenues.reduce((s, r) => s + (r.revenueAmount || 0), 0);
