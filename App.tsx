@@ -3758,16 +3758,10 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                     </select>
                 </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <Card className="border-l-4 border-green-400"><h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Receita Líquida</h3><p className="text-2xl font-bold text-green-400">{formatCurrency(totalIncome)}</p></Card>
                 <Card className="border-l-4 border-danger"><h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Despesa Total</h3><p className="text-2xl font-bold text-danger">{formatCurrency(totalExpense)}</p></Card>
                 <Card className="border-l-4 border-primary"><h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Resultado do Período</h3><p className={`text-2xl font-bold ${resultadoPeriodo >= 0 ? 'text-text-primary' : 'text-danger'}`}>{formatCurrency(resultadoPeriodo)}</p></Card>
-                <Card className="border-l-4 border-yellow-400">
-                    <h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Margem Líquida</h3>
-                    <p className="text-2xl font-bold text-yellow-400">
-                        {strategicIndicators.netMargin !== null ? `${strategicIndicators.netMargin.toFixed(1)}%` : 'Margem indisponível'}
-                    </p>
-                </Card>
                 <Card className="border-l-4 border-blue-400"><h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Metas Atingidas</h3><p className="text-2xl font-bold text-blue-400">{achievedGoals} <span className="text-lg text-text-secondary font-normal">/ {goals.length}</span></p></Card>
             </div>
 
