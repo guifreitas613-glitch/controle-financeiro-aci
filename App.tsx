@@ -2576,7 +2576,7 @@ const ImportedRevenuesView: FC<{
                     const clienteRaw = row['Cliente'] || '';
                     const codAssessorRaw = row['Cod Assessor'] || '';
                     const assessorRaw = row['Assessor Principal'] || '';
-                    const receitaLiquida = parseFloat(String(row['Receita Liquida EQI']).replace(',', '.')) || 0;
+                    const receitaLiquida = parseFloat(String(row['Comissão Líquida'] || row['Receita Liquida EQI'] || 0).replace(',', '.')) || 0;
                     const dataRaw = row['Data'] || row['Data de Referência'] || row['Referência'] || row['Mês/Ano'] || row['Competência'];
 
                     if (!clienteRaw || !assessorRaw) return;
