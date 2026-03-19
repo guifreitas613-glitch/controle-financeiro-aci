@@ -2775,7 +2775,7 @@ const ImportedRevenuesView: FC<{
             </Card>
             
             <div style={{ background: 'transparent', padding: '0', borderRadius: '16px' }}>
-                <div style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.50)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '10px' }}>
+                <div style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.50)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '10px' }} className="!text-[rgba(255,255,255,0.50)]">
                     Produção do período
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '8px', marginBottom: '8px' }}>
@@ -2790,7 +2790,7 @@ const ImportedRevenuesView: FC<{
                         flexDirection: 'column', 
                         justifyContent: 'center' 
                     }}>
-                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.58)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }}>Produção Bruta</label>
+                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.58)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }} className="!text-[rgba(255,255,255,0.58)]">Produção Bruta</label>
                         <p style={{ fontSize: '20px', fontWeight: 600, color: 'rgba(255,255,255,0.88)' }}>{formatCurrency(totals.totalGrossProduction)}</p>
                     </div>
 
@@ -2805,7 +2805,7 @@ const ImportedRevenuesView: FC<{
                         flexDirection: 'column', 
                         justifyContent: 'center' 
                     }}>
-                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.58)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }}>Produção Líquida</label>
+                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.58)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }} className="!text-[rgba(255,255,255,0.58)]">Produção Líquida</label>
                         <p style={{ fontSize: '20px', fontWeight: 600, color: totals.totalNetProduction < 0 ? '#f87171' : 'rgba(255,255,255,0.88)' }}>{formatCurrency(totals.totalNetProduction)}</p>
                     </div>
 
@@ -2820,7 +2820,7 @@ const ImportedRevenuesView: FC<{
                         flexDirection: 'column', 
                         justifyContent: 'center' 
                     }}>
-                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.58)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }}>Comissões Pagas</label>
+                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.58)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }} className="!text-[rgba(255,255,255,0.58)]">Comissões Pagas</label>
                         <p style={{ fontSize: '20px', fontWeight: 600, color: 'rgba(255,255,255,0.88)' }}>{formatCurrency(totals.totalCommissionsPaid)}</p>
                     </div>
 
@@ -2835,7 +2835,7 @@ const ImportedRevenuesView: FC<{
                         flexDirection: 'column', 
                         justifyContent: 'center'
                     }}>
-                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.58)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }}>Resultado do Escritório</label>
+                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.58)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }} className="!text-[rgba(255,255,255,0.58)]">Resultado do Escritório</label>
                         <p style={{ fontSize: '28px', fontWeight: 600, color: totals.totalOfficeResult < 0 ? '#f87171' : '#818cf8' }}>{formatCurrency(totals.totalOfficeResult)}</p>
                     </div>
                 </div>
@@ -2852,9 +2852,9 @@ const ImportedRevenuesView: FC<{
                         flexDirection: 'column', 
                         justifyContent: 'center' 
                     }}>
-                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.58)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }}>Custo de Subsídio</label>
+                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.58)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }} className="!text-[rgba(255,255,255,0.58)]">Custo de Subsídio</label>
                         <p style={{ fontSize: '22px', fontWeight: 600, color: totals.totalSubsidyCost > 0 ? '#f87171' : 'rgba(255,255,255,0.88)' }}>{formatCurrency(totals.totalSubsidyCost)}</p>
-                        <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.42)', marginTop: '5px' }}>CRM não coberto no período</p>
+                        <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.42)', marginTop: '5px' }} className="!text-[rgba(255,255,255,0.42)]">CRM não coberto no período</p>
                     </div>
 
                     {/* Produção Mínima */}
@@ -2868,12 +2868,12 @@ const ImportedRevenuesView: FC<{
                         flexDirection: 'column', 
                         justifyContent: 'center' 
                     }}>
-                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.58)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }}>Produção mínima</label>
+                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.58)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }} className="!text-[rgba(255,255,255,0.58)]">Produção mínima</label>
                         <p style={{ fontSize: '22px', fontWeight: 600, color: '#fbbf24' }}>
                             {formatCurrency(totals.avgMinProduction)}
                             <span style={{ fontSize: '13px', fontWeight: 400, color: 'rgba(255,255,255,0.25)' }}> / mês</span>
                         </p>
-                        <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.42)', marginTop: '5px' }}>mínimo para cobrir CRM e imposto</p>
+                        <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.42)', marginTop: '5px' }} className="!text-[rgba(255,255,255,0.42)]">mínimo para cobrir CRM e imposto</p>
                     </div>
                 </div>
             </div>
@@ -2944,7 +2944,7 @@ const ImportedRevenuesView: FC<{
                                                         <div style={{ 
                                                             background: coverage >= 100 ? '#34d399' : '#f87171', 
                                                             height: '100%', 
-                                                            width: `${Math.min(coverage, 100)}%` 
+                                                            width: `max(${Math.min(coverage, 100)}%, 2px)` 
                                                         }} />
                                                     </div>
                                                     <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.35)', marginTop: '3px' }}>
