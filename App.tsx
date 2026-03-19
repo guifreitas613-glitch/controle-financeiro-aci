@@ -1916,10 +1916,11 @@ const CommissionClosingModal: FC<{
     globalTaxRate: number;
     estimatedTaxRate: number;
     revenueIds: string[];
-}> = ({ isOpen, onClose, onConfirm, advisor, advisors, month, year, generatedRevenue, globalTaxRate, estimatedTaxRate, revenueIds }) => {
+    hasCrmAlreadyApplied: boolean;
+}> = ({ isOpen, onClose, onConfirm, advisor, advisors, month, year, generatedRevenue, globalTaxRate, estimatedTaxRate, revenueIds, hasCrmAlreadyApplied }) => {
     const [hasBrokerPayout, setHasBrokerPayout] = useState(true);
     const [cashEntryAmount, setCashEntryAmount] = useState(generatedRevenue);
-    const initialCrmCost = Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0));
+    const initialCrmCost = hasCrmAlreadyApplied ? 0 : Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0));
     const [crmCost, setCrmCost] = useState(initialCrmCost);
     const [officePercent, setOfficePercent] = useState(30);
     const [advisorPercent, setAdvisorPercent] = useState(70);
@@ -2034,6 +2035,9 @@ const CommissionClosingModal: FC<{
                                 <div>
                                     <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase">Custo CRM (Assessor)</label>
                                     <input type="number" value={crmCost} onChange={e => setCrmCost(Number(e.target.value))} className="w-full p-2 bg-background border border-border-color rounded text-sm" />
+                                    {hasCrmAlreadyApplied && (
+                                        <p className="text-[9px] text-amber-400 italic mt-1">⚠️ CRM já aplicado neste mês.</p>
+                                    )}
                                 </div>
                             </div>
                             <div className="bg-background/50 p-2 rounded border border-dashed border-border-color space-y-2">
@@ -2210,6 +2214,19 @@ const ImportedRevenuesView: FC<{
     const [selectedRevenueIds, setSelectedRevenueIds] = useState<Set<string>>(new Set());
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    const hasCrmAlreadyApplied = useMemo(() => {
+        if (selectedAdvisorId === 'all') return false;
+        const month = selectedMonth === 'all' ? new Date().getUTCMonth() : selectedMonth as number;
+        const year = selectedYear === 'all' ? new Date().getUTCFullYear() : selectedYear as number;
+        
+        return importedRevenues.some(r => 
+            r.advisorId === selectedAdvisorId && 
+            (r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados) &&
+            new Date(r.date).getUTCFullYear() === year &&
+            new Date(r.date).getUTCMonth() === month
+        );
+    }, [importedRevenues, selectedAdvisorId, selectedYear, selectedMonth]);
+
     const availableYears = useMemo(() => {
         const yearsSet = new Set(importedRevenues.map(r => new Date(r.date).getUTCFullYear()));
         const currentYear = new Date().getUTCFullYear();
@@ -2319,7 +2336,7 @@ const ImportedRevenuesView: FC<{
                 groups[periodKey].isClosed = true;
                 groups[periodKey].commissionsPaid += (r.advisorNet || r.responsibleAdvisorNet || 0);
                 groups[periodKey].officeOperationalResult += (r.resultadoEscritorioReal || r.advisorOperationalResult || 0);
-                groups[periodKey].crm += (r.crmCost || 0);
+                // groups[periodKey].crm += (r.crmCost || 0); // Removido para evitar acúmulo por lançamento
             }
         });
 
@@ -2352,23 +2369,24 @@ const ImportedRevenuesView: FC<{
             
             totalGrossProduction += data.revenue;
             
-            let currentCrm = 0;
-            if (data.isClosed) {
-                currentCrm = data.crm;
-            } else if (advisor) {
-                currentCrm = Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0));
-            }
+            // CRM mensal do perfil do assessor (fonte única de verdade)
+            const crmCusto = advisor ? Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0)) : 0;
             
-            totalNetProduction += (data.netRevenue - currentCrm);
+            totalNetProduction += (data.netRevenue - crmCusto);
             
             if (data.isClosed) {
-                totalCommissionsPaid += data.commissionsPaid;
-                totalOfficeResult += data.officeOperationalResult;
-                totalSubsidyCost += (data.crm - data.advisorShare > 0 ? data.crm - data.advisorShare : 0);
+                // Para registros fechados, recalculamos os totais usando o CRM único do mês
+                // Isso ignora o crmCost possivelmente duplicado gravado nos lançamentos
+                const totalParcelaAssessor = data.advisorShare;
+                const comissaoLiquidaAssessor = Math.max(totalParcelaAssessor - crmCusto, 0);
+                const crmNaoCoberto = Math.max(crmCusto - totalParcelaAssessor, 0);
+                const resultadoEscritorioReal = data.officeShare - crmNaoCoberto;
+
+                totalCommissionsPaid += comissaoLiquidaAssessor;
+                totalOfficeResult += resultadoEscritorioReal;
+                totalSubsidyCost += crmNaoCoberto;
             } else if (advisor) {
                 // Estimativa para registros pendentes seguindo a nova lógica
-                const crmCusto = Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0));
-                
                 // totalParcelaAssessor = soma(parcelaAssessor)
                 const totalParcelaAssessor = data.advisorShare;
                 
@@ -2434,10 +2452,10 @@ const ImportedRevenuesView: FC<{
                 const isClosed = periodRevenues.some(r => r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados);
                 
                 if (isClosed) {
-                    // No fechamento, somamos o crmCost e advisorShare (70% da receita líquida)
+                    // No fechamento, usamos o CRM do perfil aplicado uma única vez por mês
+                    const crmCusto = Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0));
                     const totalParcelaAssessor = periodRevenues.reduce((s, r) => s + (r.totalParcelaAssessor || r.advisorShare || 0), 0);
-                    const crmCusto = periodRevenues.reduce((s, r) => s + (r.crmCost || 0), 0);
-                    totalResult += (totalParcelaAssessor - crmCusto);
+                    totalResult += Math.max(totalParcelaAssessor - crmCusto, 0);
                 } else {
                     const revSum = periodRevenues.reduce((s, r) => s + (r.revenueAmount || 0), 0);
                     const tax = round(revSum * (estimatedTaxRate / 100));
@@ -2469,12 +2487,8 @@ const ImportedRevenuesView: FC<{
         const generated = filteredRevenues.filter(r => r.advisorId === selectedAdvisorId);
         const referrals = filteredRevenues.filter(r => r.referralAdvisorId === selectedAdvisorId);
 
-        // Resultado Operacional: soma de todos os advisorOperationalResult do histórico (independente de filtro de data)
-        const allAdvisorClosings = importedRevenues.filter(r => 
-            r.advisorId === selectedAdvisorId && 
-            (r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados)
-        );
-        const operationalResult = allAdvisorClosings.reduce((sum, r) => sum + (r.advisorOperationalResult || 0), 0);
+        // Resultado do Escritório na Produção: calculado a partir dos lançamentos filtrados (respeitando o período)
+        const operationalResult = totals.totalOfficeResult;
 
         return {
             name: advisor.name,
@@ -2483,7 +2497,7 @@ const ImportedRevenuesView: FC<{
             referralsPaid: referrals.reduce((sum, r) => sum + (r.referralAmount || 0), 0),
             operationalResult
         };
-    }, [filteredRevenues, importedRevenues, selectedAdvisorId, advisors]);
+    }, [filteredRevenues, selectedAdvisorId, advisors, totals]);
 
     const getStatusLabel = (status?: CommissionStatus, lancamentosRealizados?: boolean) => {
         if (status === CommissionStatus.COMPLETED || lancamentosRealizados) return { label: 'Lançamento Completo', color: 'text-green-400', bg: 'bg-green-400/10' };
@@ -3104,6 +3118,7 @@ const ImportedRevenuesView: FC<{
                     globalTaxRate={globalTaxRate}
                     estimatedTaxRate={estimatedTaxRate}
                     revenueIds={selectedSummary.ids}
+                    hasCrmAlreadyApplied={hasCrmAlreadyApplied}
                 />
             )}
          </div>
@@ -4130,6 +4145,17 @@ const App: FC = () => {
             const date = new Date(Date.UTC(closingData.year, closingData.month, 1)).toISOString();
             const refPeriod = `${months[closingData.month]}/${closingData.year}`;
 
+            // Verificar se já houve fechamento para este assessor neste mês
+            const alreadyClosedThisMonth = importedRevenues.some(r => 
+                r.advisorId === closingData.advisorId && 
+                (r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados) &&
+                new Date(r.date).getUTCFullYear() === closingData.year &&
+                new Date(r.date).getUTCMonth() === closingData.month
+            );
+
+            // Se já foi aplicado, o CRM deste lote deve ser zero para não duplicar
+            const crmCostToApply = alreadyClosedThisMonth ? 0 : closingData.crmCost;
+
             // 1. Lançamento de Comissão do Assessor (Única despesa automática)
             if (closingData.advisorNet > 0) {
                 const commissionData = {
@@ -4190,7 +4216,7 @@ const App: FC = () => {
                     productionResult: closingData.productionResult || 0,
                     cashResult: closingData.cashResult,
                     cashEntryAmount: closingData.cashEntryAmount,
-                    crmCost: closingData.crmCost,
+                    crmCost: crmCostToApply,
                     advisorShare: 0,
                     officeShare: 0,
                     advisorTax: 0,
@@ -4223,7 +4249,7 @@ const App: FC = () => {
                         productionResult: round((closingData.productionResult || 0) * proportion),
                         cashResult: round(closingData.cashResult * proportion),
                         cashEntryAmount: round(closingData.cashEntryAmount * proportion),
-                        crmCost: round(closingData.crmCost * proportion),
+                        crmCost: round(crmCostToApply * proportion),
                         advisorShare: round(closingData.advisorShare * proportion),
                         officeShare: round(closingData.officeShare * proportion),
                         advisorTax: 0,
