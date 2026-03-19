@@ -2329,10 +2329,20 @@ const ImportedRevenuesView: FC<{
         let totalOfficeResult = 0;
         let totalSubsidyCost = 0;
 
-        // Encontrar o maior CRM entre os assessores presentes no período para o cálculo da produção mínima
-        const advisorIdsInPeriod = new Set(filteredRevenues.map(r => r.advisorId));
+        // Encontrar o maior CRM entre os assessores relevantes para o cálculo da produção mínima
+        let relevantAdvisorIds: string[] = [];
+        if (selectedAdvisorId !== 'all') {
+            relevantAdvisorIds = [selectedAdvisorId];
+        } else {
+            relevantAdvisorIds = Array.from(new Set(filteredRevenues.map(r => r.advisorId)));
+            if (relevantAdvisorIds.length === 0) {
+                // Se não houver receitas no filtro, mas estivermos em "Todos", usamos todos os assessores cadastrados
+                relevantAdvisorIds = advisors.map(a => a.id);
+            }
+        }
+
         let maxCrmInPeriod = 0;
-        advisorIdsInPeriod.forEach(id => {
+        relevantAdvisorIds.forEach(id => {
             const advisor = advisors.find(a => a.id === id);
             if (advisor) {
                 const crmCusto = Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0));
@@ -2392,7 +2402,7 @@ const ImportedRevenuesView: FC<{
             totalSubsidyCost,
             avgMinProduction: producaoMinima
         };
-    }, [filteredRevenues, advisors, estimatedTaxRate]);
+    }, [filteredRevenues, advisors, estimatedTaxRate, selectedAdvisorId]);
 
     const advisorProfitability = useMemo(() => {
         const targetAdvisors = selectedAdvisorId === 'all' ? advisors : advisors.filter(a => a.id === selectedAdvisorId);
