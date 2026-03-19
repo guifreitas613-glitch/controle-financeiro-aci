@@ -2527,10 +2527,6 @@ const ImportedRevenuesView: FC<{
         XLSX.writeFile(wb, fileName);
     };
 
-    const handlePrint = () => {
-        window.print();
-    };
-
     const handleFormSubmit = (data: Partial<ImportedRevenue>) => {
         if (editingRevenue) {
             onUpdate(editingRevenue.id, data);
@@ -2700,9 +2696,6 @@ const ImportedRevenuesView: FC<{
                     <input type="file" ref={fileInputRef} onChange={handleImportFile} accept=".xlsx, .xls, .csv" className="hidden" />
                     <Button onClick={() => fileInputRef.current?.click()} variant="secondary" className="text-sm">
                         <UploadIcon className="w-4 h-4 mr-2"/> Importar Relatório
-                    </Button>
-                    <Button onClick={handlePrint} variant="secondary" className="text-sm">
-                        <PrinterIcon className="w-4 h-4 mr-2"/> Imprimir / PDF
                     </Button>
                     {importedRevenues.length > 0 && (
                         <Button onClick={onClearAll} variant="ghostDanger" className="text-sm">
