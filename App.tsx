@@ -2406,7 +2406,7 @@ const ImportedRevenuesView: FC<{
     const advisorProfitability = useMemo(() => {
         const targetAdvisors = selectedAdvisorId === 'all' ? advisors : advisors.filter(a => a.id === selectedAdvisorId);
         
-        return targetAdvisors.map(advisor => {
+        const results = targetAdvisors.map(advisor => {
             const periods = new Set<string>();
             if (selectedMonth === 'all') {
                 filteredRevenues.forEach(r => {
@@ -2429,6 +2429,8 @@ const ImportedRevenuesView: FC<{
             }
 
             let totalResult = 0;
+            let totalParcelaAssessorAcc = 0;
+            let totalCrmCustoAcc = 0;
             periods.forEach(period => {
                 const [year, month] = period.split('-').map(Number);
                 const periodRevenues = filteredRevenues.filter(r => 
@@ -2436,8 +2438,6 @@ const ImportedRevenuesView: FC<{
                     new Date(r.date).getUTCFullYear() === year && 
                     new Date(r.date).getUTCMonth() === month
                 );
-                
-                const isClosed = periodRevenues.some(r => r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados);
                 
                 const crmCusto = Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0));
                 // Calcula a parcela do assessor de forma consistente com o totals memo
@@ -2448,19 +2448,31 @@ const ImportedRevenuesView: FC<{
                 
                 // Resultado Assessor Real conforme solicitado (pode ser negativo)
                 totalResult += (totalParcelaAssessor - crmCusto);
+                totalParcelaAssessorAcc += totalParcelaAssessor;
+                totalCrmCustoAcc += crmCusto;
             });
 
             let status: 'Lucrativo' | 'Breakeven' | 'Subsidiado' = 'Breakeven';
             if (totalResult > 0.01) status = 'Lucrativo';
             else if (totalResult < -0.01) status = 'Subsidiado';
 
-            return { advisorId: advisor.id, name: advisor.name, result: totalResult, status };
-        }).filter(item => {
-            if (selectedAdvisorId === 'all') {
-                return true;
-            }
-            return true;
-        }).sort((a, b) => b.result - a.result);
+            return { 
+                advisorId: advisor.id, 
+                name: advisor.name, 
+                result: totalResult, 
+                status,
+                totalParcelaAssessor: totalParcelaAssessorAcc,
+                crmCusto: totalCrmCustoAcc
+            };
+        });
+
+        const order = { 'Lucrativo': 0, 'Breakeven': 1, 'Subsidiado': 2 };
+        return results.sort((a, b) => {
+            if (order[a.status] !== order[b.status]) return order[a.status] - order[b.status];
+            if (a.status === 'Lucrativo') return b.result - a.result;
+            if (a.status === 'Subsidiado') return a.result - b.result;
+            return 0;
+        });
     }, [filteredRevenues, advisors, estimatedTaxRate, selectedYear, selectedMonth, selectedAdvisorId]);
 
     const advisorSummary = useMemo(() => {
@@ -2484,7 +2496,10 @@ const ImportedRevenuesView: FC<{
     }, [filteredRevenues, selectedAdvisorId, advisors, totals]);
 
     const getStatusLabel = (status?: CommissionStatus, lancamentosRealizados?: boolean) => {
-        if (status === CommissionStatus.COMPLETED || lancamentosRealizados) return { label: 'Lançamento Completo', color: 'text-green-400', bg: 'bg-green-400/10' };
+        if (status === CommissionStatus.COMPLETED || lancamentosRealizados) return { 
+            label: 'Lançamento Completo', 
+            style: { background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.50)', border: '0.5px solid rgba(255,255,255,0.12)' }
+        };
         if (status === CommissionStatus.COMMISSION_LAUNCHED) return { label: 'Comissão Lançada', color: 'text-blue-400', bg: 'bg-blue-400/10' };
         if (status === CommissionStatus.REVENUE_LAUNCHED) return { label: 'Receita Lançada', color: 'text-indigo-400', bg: 'bg-indigo-400/10' };
         if (status === CommissionStatus.TAX_PROVISIONED) return { label: 'Impostos Provisionados', color: 'text-orange-400', bg: 'bg-orange-400/10' };
@@ -2760,7 +2775,7 @@ const ImportedRevenuesView: FC<{
             </Card>
             
             <div style={{ background: 'transparent', padding: '0', borderRadius: '16px' }}>
-                <div style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '10px' }}>
+                <div style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.50)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '10px' }}>
                     Produção do período
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '8px', marginBottom: '8px' }}>
@@ -2775,7 +2790,7 @@ const ImportedRevenuesView: FC<{
                         flexDirection: 'column', 
                         justifyContent: 'center' 
                     }}>
-                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }}>Produção Bruta</label>
+                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.58)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }}>Produção Bruta</label>
                         <p style={{ fontSize: '20px', fontWeight: 600, color: 'rgba(255,255,255,0.88)' }}>{formatCurrency(totals.totalGrossProduction)}</p>
                     </div>
 
@@ -2790,7 +2805,7 @@ const ImportedRevenuesView: FC<{
                         flexDirection: 'column', 
                         justifyContent: 'center' 
                     }}>
-                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }}>Produção Líquida</label>
+                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.58)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }}>Produção Líquida</label>
                         <p style={{ fontSize: '20px', fontWeight: 600, color: totals.totalNetProduction < 0 ? '#f87171' : 'rgba(255,255,255,0.88)' }}>{formatCurrency(totals.totalNetProduction)}</p>
                     </div>
 
@@ -2805,7 +2820,7 @@ const ImportedRevenuesView: FC<{
                         flexDirection: 'column', 
                         justifyContent: 'center' 
                     }}>
-                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }}>Comissões Pagas</label>
+                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.58)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }}>Comissões Pagas</label>
                         <p style={{ fontSize: '20px', fontWeight: 600, color: 'rgba(255,255,255,0.88)' }}>{formatCurrency(totals.totalCommissionsPaid)}</p>
                     </div>
 
@@ -2820,7 +2835,7 @@ const ImportedRevenuesView: FC<{
                         flexDirection: 'column', 
                         justifyContent: 'center'
                     }}>
-                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }}>Resultado do Escritório</label>
+                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.58)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }}>Resultado do Escritório</label>
                         <p style={{ fontSize: '28px', fontWeight: 600, color: totals.totalOfficeResult < 0 ? '#f87171' : '#818cf8' }}>{formatCurrency(totals.totalOfficeResult)}</p>
                     </div>
                 </div>
@@ -2837,9 +2852,9 @@ const ImportedRevenuesView: FC<{
                         flexDirection: 'column', 
                         justifyContent: 'center' 
                     }}>
-                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }}>Custo de Subsídio</label>
+                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.58)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }}>Custo de Subsídio</label>
                         <p style={{ fontSize: '22px', fontWeight: 600, color: totals.totalSubsidyCost > 0 ? '#f87171' : 'rgba(255,255,255,0.88)' }}>{formatCurrency(totals.totalSubsidyCost)}</p>
-                        <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.20)', marginTop: '5px' }}>CRM não coberto no período</p>
+                        <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.42)', marginTop: '5px' }}>CRM não coberto no período</p>
                     </div>
 
                     {/* Produção Mínima */}
@@ -2853,42 +2868,114 @@ const ImportedRevenuesView: FC<{
                         flexDirection: 'column', 
                         justifyContent: 'center' 
                     }}>
-                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }}>Produção mínima</label>
+                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.58)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }}>Produção mínima</label>
                         <p style={{ fontSize: '22px', fontWeight: 600, color: '#fbbf24' }}>
                             {formatCurrency(totals.avgMinProduction)}
                             <span style={{ fontSize: '13px', fontWeight: 400, color: 'rgba(255,255,255,0.25)' }}> / mês</span>
                         </p>
-                        <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.20)', marginTop: '5px' }}>mínimo para cobrir CRM e imposto</p>
+                        <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.42)', marginTop: '5px' }}>mínimo para cobrir CRM e imposto</p>
                     </div>
                 </div>
             </div>
 
+            <div style={{ borderTop: '0.5px solid rgba(255,255,255,0.07)', margin: '14px 0' }} />
+
             {selectedAdvisorId === 'all' && advisorProfitability.length > 0 && (
-                <Card className="p-4">
-                    <div className="flex items-center gap-2 mb-4">
-                        <TrendingUpIcon className="w-4 h-4 text-primary" />
-                        <h3 className="text-xs font-bold text-text-primary uppercase tracking-wider">Rentabilidade por Assessor</h3>
+                <div style={{ marginBottom: '24px' }}>
+                    <div className="flex items-center justify-between mb-4 px-1">
+                        <div className="flex items-center gap-2">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.50)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+                                <polyline points="16 7 22 7 22 13"></polyline>
+                            </svg>
+                            <h3 style={{ fontSize: '12px', fontWeight: 500, color: 'rgba(255,255,255,0.75)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Rentabilidade por Assessor</h3>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)' }}>
+                            {advisorProfitability.filter(a => a.status === 'Lucrativo').length} lucrativos · {advisorProfitability.filter(a => a.status === 'Subsidiado').length} subsidiados
+                        </div>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                        {advisorProfitability.map(item => (
-                            <div key={item.advisorId} className="bg-background/40 p-3 rounded-lg border border-border-color flex justify-between items-center">
-                                <div className="min-w-0 flex-1 mr-2">
-                                    <p className="text-[10px] text-text-secondary uppercase" style={{ overflowWrap: 'break-word', wordBreak: 'break-word' }}>{item.name}</p>
-                                    <p className={`text-xs font-bold ${item.result < 0 ? 'text-danger' : 'text-green-400'}`}>
-                                        {formatCurrency(item.result)}
-                                    </p>
-                                </div>
-                                <div className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase ${
-                                    item.status === 'Lucrativo' ? 'bg-green-400/10 text-green-400' : 
-                                    item.status === 'Subsidiado' ? 'bg-danger/10 text-danger' : 
-                                    'bg-text-secondary/10 text-text-secondary'
-                                }`}>
-                                    {item.status}
-                                </div>
-                            </div>
-                        ))}
+                    
+                    <div style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: '12px', padding: '4px 16px' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                                <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
+                                    <th style={{ padding: '12px 0', textAlign: 'left', width: '40px' }}></th>
+                                    <th style={{ padding: '12px 0', textAlign: 'left', fontSize: '10px', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 500 }}>Assessor</th>
+                                    <th style={{ padding: '12px 0', textAlign: 'left', fontSize: '10px', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 500 }}>Resultado</th>
+                                    <th style={{ padding: '12px 0', textAlign: 'right', fontSize: '10px', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 500 }}>Cobertura CRM</th>
+                                    <th style={{ padding: '12px 0', textAlign: 'right', fontSize: '10px', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 500 }}>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {advisorProfitability.map((item, index) => {
+                                    const coverage = item.crmCusto > 0 ? (item.totalParcelaAssessor / item.crmCusto) * 100 : 100;
+                                    const isProfitable = item.status === 'Lucrativo';
+                                    const isSubsidized = item.status === 'Subsidiado';
+                                    
+                                    return (
+                                        <tr key={item.advisorId} style={{ borderBottom: index === advisorProfitability.length - 1 ? 'none' : '0.5px solid rgba(255,255,255,0.05)' }} className="hover:bg-white/[0.02] transition-colors">
+                                            <td style={{ padding: '12px 0' }}>
+                                                <div style={{ 
+                                                    width: '30px', 
+                                                    height: '30px', 
+                                                    borderRadius: '50%', 
+                                                    background: isProfitable ? 'rgba(110, 231, 183, 0.1)' : isSubsidized ? 'rgba(252, 165, 165, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+                                                    color: isProfitable ? '#6ee7b7' : isSubsidized ? '#fca5a5' : 'rgba(255, 255, 255, 0.5)',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    fontSize: '11px',
+                                                    fontWeight: 600
+                                                }}>
+                                                    {item.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                                                </div>
+                                            </td>
+                                            <td style={{ padding: '12px 0' }}>
+                                                <span style={{ fontSize: '13px', fontWeight: 500, color: 'rgba(255,255,255,0.82)' }}>{item.name}</span>
+                                            </td>
+                                            <td style={{ padding: '12px 0' }}>
+                                                <span style={{ fontSize: '14px', fontWeight: 600, color: item.result < 0 ? '#f87171' : '#34d399' }}>
+                                                    {formatCurrency(item.result)}
+                                                </span>
+                                            </td>
+                                            <td style={{ padding: '12px 0', textAlign: 'right' }}>
+                                                <div style={{ display: 'inline-block', width: '80px' }}>
+                                                    <div style={{ background: 'rgba(255,255,255,0.06)', height: '4px', borderRadius: '4px', width: '100%', overflow: 'hidden' }}>
+                                                        <div style={{ 
+                                                            background: coverage >= 100 ? '#34d399' : '#f87171', 
+                                                            height: '100%', 
+                                                            width: `${Math.min(coverage, 100)}%` 
+                                                        }} />
+                                                    </div>
+                                                    <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.35)', marginTop: '3px' }}>
+                                                        {Math.round(coverage)}%
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td style={{ padding: '12px 0', textAlign: 'right' }}>
+                                                <div style={{ 
+                                                    display: 'inline-flex', 
+                                                    alignItems: 'center', 
+                                                    gap: '6px',
+                                                    padding: '3px 8px', 
+                                                    border: `0.5px solid ${isProfitable ? 'rgba(52, 211, 153, 0.2)' : isSubsidized ? 'rgba(248, 113, 113, 0.2)' : 'rgba(251, 191, 36, 0.2)'}`,
+                                                    borderRadius: '99px', 
+                                                    background: isProfitable ? 'rgba(52, 211, 153, 0.1)' : isSubsidized ? 'rgba(248, 113, 113, 0.1)' : 'rgba(251, 191, 36, 0.1)',
+                                                    color: isProfitable ? '#34d399' : isSubsidized ? '#f87171' : '#fbbf24',
+                                                    fontSize: '10px',
+                                                    fontWeight: 500
+                                                }}>
+                                                    <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'currentColor' }} />
+                                                    {item.status}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
                     </div>
-                </Card>
+                </div>
             )}
 
             {advisorSummary && (
@@ -3014,7 +3101,10 @@ const ImportedRevenuesView: FC<{
                                     <td className="print-only-cell p-4">{r.observacao || '-'}</td>
                                     <td className="p-4 text-center">
                                         <div className="flex flex-col items-center gap-1">
-                                            <div className={`px-2 py-1 rounded text-[9px] font-bold uppercase ${getStatusLabel(r.status, r.lancamentosRealizados).bg} ${getStatusLabel(r.status, r.lancamentosRealizados).color}`}>
+                                            <div 
+                                                className={`px-2 py-1 rounded text-[9px] font-bold uppercase ${getStatusLabel(r.status, r.lancamentosRealizados).bg || ''} ${getStatusLabel(r.status, r.lancamentosRealizados).color || ''}`}
+                                                style={getStatusLabel(r.status, r.lancamentosRealizados).style}
+                                            >
                                                 {getStatusLabel(r.status, r.lancamentosRealizados).label}
                                             </div>
                                         </div>
