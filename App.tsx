@@ -2377,13 +2377,6 @@ const ImportedRevenuesView: FC<{
             
             // CRM mensal do perfil do assessor (fonte única de verdade)
             const crmCusto = advisor ? Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0)) : 0;
-            
-            console.log('CRM aplicado:', {
-                periodKey,
-                advisorFound: !!advisor,
-                advisorName: advisor?.name,
-                crmCusto
-            });
 
             totalNetProduction += (data.netRevenue - crmCusto);
             
