@@ -1,13 +1,13 @@
 
 import React, { useState, useMemo, FC, ReactNode, useEffect, useRef } from 'react';
 import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType, AdvisorSplit, ImportedRevenue, AdvisorCost, Partner, AdvisorParticipation, CommissionStatus, IncomeCategory, CategoryStructuralType } from './types';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import Login from './Login';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { logoutUser } from './auth';
-import { getTransactions, saveTransaction, updateTransaction, deleteTransaction as deleteTransactionFromDb, getImportedRevenues, saveImportedRevenue, deleteImportedRevenue, getRevenuesByPeriod, deduplicateImportedRevenues, getPartnership, savePartnership, updateImportedRevenue, deleteAllImportedRevenues } from './firestore';
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { getTransactions, saveTransaction, updateTransaction, deleteTransaction as deleteTransactionFromDb, getImportedRevenues, saveImportedRevenue, deleteImportedRevenue, getRevenuesByPeriod, getPartnership, savePartnership, updateImportedRevenue, deleteAllImportedRevenues, getAdvisors, saveAdvisor, updateAdvisor, deleteAdvisor, getGoals, saveGoal, updateGoal, deleteGoal, getSettings, saveSettings } from './firestore';
+import { collection, addDoc, serverTimestamp, onSnapshot, query, orderBy, where, doc } from "firebase/firestore";
 
 // --- UTILITÁRIOS GLOBAIS ---
 const round = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100;
@@ -25,7 +25,6 @@ const TrashIcon: FC<{ className?: string }> = ({ className }) => (<svg className
 const CloseIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>);
 const MenuIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>);
 const ExportIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>);
-const PaidIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2z"/><path d="M8 12.5H2.5a2 2 0 1 0 0-4H8v4z"/><path d="M8 12.5v4"/><path d="M13.5 12.5H16"/><path d="M14 16.5h2"/></svg>);
 const UploadIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>);
 const SearchIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>);
 const LogoutIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>);
@@ -36,7 +35,6 @@ const AlertCircleIcon: FC<{ className?: string }> = ({ className }) => (<svg cla
 const CheckCircleIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>);
 const FileTextIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>);
 const TrendingUpIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline><polyline points="16 7 22 7 22 13"></polyline></svg>);
-const BankIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 22h18"/><path d="M6 18v-7"/><path d="M10 18v-7"/><path d="M14 18v-7"/><path d="M18 18v-7"/><path d="m12 2-10 7h20Z"/></svg>);
 
 const DownloadIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>);
 const PrinterIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>);
@@ -909,19 +907,22 @@ const AdvisorSettingsItem: FC<{
 // --- SETTINGS VIEW COMPONENT ---
 interface SettingsViewProps {
     incomeCategories: IncomeCategory[];
-    setIncomeCategories: React.Dispatch<React.SetStateAction<IncomeCategory[]>>;
+    setIncomeCategories: (val: IncomeCategory[] | ((prev: IncomeCategory[]) => IncomeCategory[])) => void;
     expenseCategories: ExpenseCategory[];
-    setExpenseCategories: React.Dispatch<React.SetStateAction<ExpenseCategory[]>>;
+    setExpenseCategories: (val: ExpenseCategory[] | ((prev: ExpenseCategory[]) => ExpenseCategory[])) => void;
     paymentMethods: string[];
-    setPaymentMethods: React.Dispatch<React.SetStateAction<string[]>>;
+    setPaymentMethods: (val: string[] | ((prev: string[]) => string[])) => void;
     costCenters: CostCenter[];
-    setCostCenters: React.Dispatch<React.SetStateAction<CostCenter[]>>;
+    setCostCenters: (val: CostCenter[] | ((prev: CostCenter[]) => CostCenter[])) => void;
     advisors: Advisor[];
-    setAdvisors: React.Dispatch<React.SetStateAction<Advisor[]>>;
+    setAdvisors: (val: Advisor[] | ((prev: Advisor[]) => Advisor[])) => void;
+    onAddAdvisor?: (adv: Omit<Advisor, 'id'>) => Promise<any>;
+    onUpdateAdvisor?: (adv: Advisor) => Promise<any>;
+    onDeleteAdvisor?: (id: string) => Promise<any>;
     globalTaxRate: number;
-    setGlobalTaxRate: React.Dispatch<React.SetStateAction<number>>;
+    setGlobalTaxRate: (val: number | ((prev: number) => number)) => void;
     estimatedTaxRate: number;
-    setEstimatedTaxRate: React.Dispatch<React.SetStateAction<number>>;
+    setEstimatedTaxRate: (val: number | ((prev: number) => number)) => void;
 }
 
 const SettingsView: FC<SettingsViewProps> = ({ 
@@ -930,6 +931,7 @@ const SettingsView: FC<SettingsViewProps> = ({
     paymentMethods, setPaymentMethods, 
     costCenters, setCostCenters, 
     advisors, setAdvisors,
+    onAddAdvisor, onUpdateAdvisor, onDeleteAdvisor,
     globalTaxRate, setGlobalTaxRate,
     estimatedTaxRate, setEstimatedTaxRate
 }) => {
@@ -1102,9 +1104,21 @@ const SettingsView: FC<SettingsViewProps> = ({
         setEditingCostCenterIdx(null);
     };
 
-    const addAdvisor = () => { if (newAdvisorName) { setAdvisors([...advisors, { id: crypto.randomUUID(), name: newAdvisorName, code: newAdvisorCode, commissionRate: round(parseFloat(newAdvisorRate) || 30), costs: [] }]); setNewAdvisorName(''); setNewAdvisorCode(''); setNewAdvisorRate('30'); } };
-    const removeAdvisor = (id: string) => setAdvisors(advisors.filter(a => a.id !== id));
-    const updateAdvisor = (updated: Advisor) => setAdvisors(advisors.map(a => a.id === updated.id ? updated : a));
+    const addAdvisor = () => { 
+        if (newAdvisorName && onAddAdvisor) { 
+            onAddAdvisor({ 
+                name: newAdvisorName, 
+                code: newAdvisorCode, 
+                commissionRate: round(parseFloat(newAdvisorRate) || 30), 
+                costs: [] 
+            }); 
+            setNewAdvisorName(''); 
+            setNewAdvisorCode(''); 
+            setNewAdvisorRate('30'); 
+        } 
+    };
+    const removeAdvisor = (id: string) => onDeleteAdvisor && onDeleteAdvisor(id);
+    const updateAdvisor = (updated: Advisor) => onUpdateAdvisor && onUpdateAdvisor(updated);
 
     return (
         <div className="space-y-6 animate-fade-in">
@@ -2406,17 +2420,27 @@ const ImportedRevenuesView: FC<{
     const advisorProfitability = useMemo(() => {
         const targetAdvisors = selectedAdvisorId === 'all' ? advisors : advisors.filter(a => a.id === selectedAdvisorId);
         
+        // O(n) grouping of revenues by advisor
+        const revenuesByAdvisor = new Map<string, ImportedRevenue[]>();
+        filteredRevenues.forEach(r => {
+            const list = revenuesByAdvisor.get(r.advisorId) || [];
+            list.push(r);
+            revenuesByAdvisor.set(r.advisorId, list);
+        });
+
         const results = targetAdvisors.map(advisor => {
+            const advisorRevenues = revenuesByAdvisor.get(advisor.id) || [];
             const periods = new Set<string>();
+            
             if (selectedMonth === 'all') {
-                filteredRevenues.forEach(r => {
+                advisorRevenues.forEach(r => {
                     const d = new Date(r.date);
                     periods.add(`${d.getUTCFullYear()}-${d.getUTCMonth()}`);
                 });
             } else if (selectedYear !== 'all') {
                 periods.add(`${selectedYear}-${selectedMonth}`);
             } else {
-                filteredRevenues.forEach(r => {
+                advisorRevenues.forEach(r => {
                     const d = new Date(r.date);
                     if (d.getUTCMonth() === selectedMonth) {
                         periods.add(`${d.getUTCFullYear()}-${d.getUTCMonth()}`);
@@ -2431,22 +2455,20 @@ const ImportedRevenuesView: FC<{
             let totalResult = 0;
             let totalParcelaAssessorAcc = 0;
             let totalCrmCustoAcc = 0;
+            
             periods.forEach(period => {
                 const [year, month] = period.split('-').map(Number);
-                const periodRevenues = filteredRevenues.filter(r => 
-                    r.advisorId === advisor.id && 
+                const periodRevenues = advisorRevenues.filter(r => 
                     new Date(r.date).getUTCFullYear() === year && 
                     new Date(r.date).getUTCMonth() === month
                 );
                 
                 const crmCusto = Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0));
-                // Calcula a parcela do assessor de forma consistente com o totals memo
                 const totalParcelaAssessor = periodRevenues.reduce((s, r) => {
                     const net = r.estimatedNetRevenue || round((r.revenueAmount || 0) * (1 - (r.taxRate || 0) / 100));
                     return s + (r.totalParcelaAssessor || r.advisorShare || round(net * 0.70));
                 }, 0);
                 
-                // Resultado Assessor Real conforme solicitado (pode ser negativo)
                 totalResult += (totalParcelaAssessor - crmCusto);
                 totalParcelaAssessorAcc += totalParcelaAssessor;
                 totalCrmCustoAcc += crmCusto;
@@ -3667,7 +3689,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         return data.map(d => ({ ...d, value: round((d.amount / total) * 100), percent: round((d.amount / total) * 100) })).filter(d => d.amount > 0);
     }, [filteredTransactions]);
 
-    const cashFlowData = useMemo(() => { 
+    const historyCashFlow = useMemo(() => {
         const now = new Date();
         const endOfCurrentMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59));
         
@@ -3676,7 +3698,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
             .sort((a, b) => (new Date(a.date).getTime()) - (new Date(b.date).getTime()));
         
         let bankBalance = 0;
-        const history = realInScope.map(t => { 
+        return realInScope.map(t => { 
             if (t.type === TransactionType.INCOME) {
                 bankBalance = round(bankBalance + t.amount); 
             } else if (t.status === ExpenseStatus.PAID) {
@@ -3686,9 +3708,12 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         }).reduce((acc: any[], item) => {
             if (acc.length && acc[acc.length-1].date === item.date) acc[acc.length-1].balance = item.balance; else acc.push(item); return acc;
         }, []);
+    }, [transactions]);
 
-        if (!showProjection) return history;
+    const cashFlowData = useMemo(() => { 
+        if (!showProjection) return historyCashFlow;
 
+        const now = new Date();
         const curM = now.getUTCMonth();
         const curY = now.getUTCFullYear();
         
@@ -3706,6 +3731,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         });
         const monthlyFixedTotal = round(fixedInCurrent.reduce((sum, t) => sum + t.amount, 0));
 
+        const bankBalance = historyCashFlow.length > 0 ? historyCashFlow[historyCashFlow.length - 1].balance : 0;
         let projectedBalance = bankBalance;
         const projectionPoints = [];
         for (let i = 1; i <= 12; i++) {
@@ -3718,8 +3744,8 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
             });
         }
 
-        return [...history, ...projectionPoints];
-    }, [transactions, showProjection]);
+        return [...historyCashFlow, ...projectionPoints];
+    }, [historyCashFlow, showProjection, transactions]);
 
     const handlePayClick = (bill: Transaction) => { setEditingTransaction({ ...bill, status: ExpenseStatus.PAID }); setIsModalOpen(true); };
     const handleFormSubmit = (data: TransactionFormValues) => { if (editingTransaction) onEdit(editingTransaction.id, data); setIsModalOpen(false); setEditingTransaction(null); };
@@ -3860,16 +3886,16 @@ const App: FC = () => {
     const [activeView, setActiveView] = useState<View>('dashboard');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     
-    const [incomeCategories, setIncomeCategories] = useLocalStorage<IncomeCategory[]>('incomeCategories', initialIncomeCategories);
-    const [expenseCategories, setExpenseCategories] = useLocalStorage<ExpenseCategory[]>('expenseCategories', initialExpenseCategories);
-    const [paymentMethods, setPaymentMethods] = useLocalStorage('paymentMethods', initialPaymentMethods);
-    const [costCenters, setCostCenters] = useLocalStorage('costCenters', initialCostCenters);
-    const [advisors, setAdvisors] = useLocalStorage('advisors', initialAdvisors);
-    const [globalTaxRate, setGlobalTaxRate] = useLocalStorage('globalTaxRate', 6);
-    const [estimatedTaxRate, setEstimatedTaxRate] = useLocalStorage('estimatedTaxRate', 16.5);
-    const [goals, setGoals] = useLocalStorage('goals', getInitialGoals());
+    const [incomeCategories, setIncomeCategories] = useState<IncomeCategory[]>(initialIncomeCategories);
+    const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>(initialExpenseCategories);
+    const [paymentMethods, setPaymentMethods] = useState<string[]>(initialPaymentMethods);
+    const [costCenters, setCostCenters] = useState<CostCenter[]>(initialCostCenters);
+    const [advisors, setAdvisors] = useState<Advisor[]>(initialAdvisors);
+    const [globalTaxRate, setGlobalTaxRate] = useState<number>(6);
+    const [estimatedTaxRate, setEstimatedTaxRate] = useState<number>(16.5);
+    const [goals, setGoals] = useState<Goal[]>(getInitialGoals());
 
-    const [partners, setPartners] = useLocalStorage<Partner[]>('partners', []);
+    const [partners, setPartners] = useState<Partner[]>([]);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [importedRevenues, setImportedRevenues] = useState<ImportedRevenue[]>([]);
 
@@ -3937,97 +3963,144 @@ const App: FC = () => {
     }, [incomeCategories, expenseCategories, setIncomeCategories, setExpenseCategories]);
 
     useEffect(() => {
-        if (user) {
-            setLoadingData(true);
-            Promise.all([getTransactions(), getImportedRevenues(), getPartnership()]).then(([transSnap, revSnap, partSnap]) => {
-                if (transSnap && transSnap.docs) {
-                    let transData = transSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Transaction));
-                    
-                    const now = new Date();
-                    const firstDayNextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-                    
-                    const legacyFutureFixed = transData.filter(t => 
-                        t.type === TransactionType.EXPENSE && 
-                        t.nature === ExpenseNature.FIXED && 
-                        new Date(t.date) >= firstDayNextMonth
-                    );
+        if (!user) return;
+        setLoadingData(true);
 
-                    if (legacyFutureFixed.length > 0) {
-                        legacyFutureFixed.forEach(t => deleteTransactionFromDb(t.id));
-                        transData = transData.filter(t => !legacyFutureFixed.some(l => l.id === t.id));
-                    }
+        const unsubTransactions = onSnapshot(query(collection(db, "transacoes"), where("tipoInterno", "==", "transacao"), orderBy("date", "desc")), (snap) => {
+            const transData = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
+            setTransactions(transData);
+            
+            // Instanciação automática de gastos fixos para o mês atual
+            const now = new Date();
+            const currentYear = now.getUTCFullYear();
+            const currentMonth = now.getUTCMonth();
+            const refDate = new Date(Date.UTC(currentYear, currentMonth - 1, 1));
+            const refYear = refDate.getUTCFullYear();
+            const refMonth = refDate.getUTCMonth();
 
-                    // Instanciação automática de gastos fixos para o mês atual
-                    const currentYear = now.getUTCFullYear();
-                    const currentMonth = now.getUTCMonth();
-                    
-                    const refDate = new Date(Date.UTC(currentYear, currentMonth - 1, 1));
-                    const refYear = refDate.getUTCFullYear();
-                    const refMonth = refDate.getUTCMonth();
-
-                    const baseFixedExpenses = transData.filter(t => {
-                        const d = new Date(t.date);
-                        return t.type === TransactionType.EXPENSE &&
-                               t.nature === ExpenseNature.FIXED &&
-                               d.getUTCFullYear() === refYear &&
-                               d.getUTCMonth() === refMonth;
-                    });
-
-                    const instantiateMissing = async () => {
-                        for (const f of baseFixedExpenses) {
-                            const alreadyExists = transData.some(item => 
-                                item.description === f.description && 
-                                item.category === f.category && 
-                                item.nature === ExpenseNature.FIXED &&
-                                new Date(item.date).getUTCFullYear() === currentYear &&
-                                new Date(item.date).getUTCMonth() === currentMonth
-                            );
-
-                            if (!alreadyExists) {
-                                const day = new Date(f.date).getUTCDate();
-                                const lastDayOfTarget = new Date(Date.UTC(currentYear, currentMonth + 1, 0)).getUTCDate();
-                                const targetDay = Math.min(day, lastDayOfTarget);
-                                const projectedDate = new Date(Date.UTC(currentYear, currentMonth, targetDay, 12, 0, 0)).toISOString();
-                                
-                                const newData = {
-                                    ...f,
-                                    date: projectedDate,
-                                    status: ExpenseStatus.PENDING,
-                                    reconciled: false,
-                                    isProjection: false
-                                };
-                                delete (newData as any).id;
-                                
-                                try {
-                                    const docRef = await saveTransaction(newData as any, user.uid);
-                                    setTransactions(prev => {
-                                        if (prev.some(t => t.id === docRef.id)) return prev;
-                                        return [...prev, { id: docRef.id, ...newData } as Transaction];
-                                    });
-                                } catch (e) {
-                                    console.error("Erro ao instanciar gasto fixo:", e);
-                                }
-                            }
-                        }
-                    };
-
-                    instantiateMissing();
-                    setTransactions(transData);
-                }
-                
-                if (revSnap && revSnap.docs) {
-                    const revData = revSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as ImportedRevenue));
-                    setImportedRevenues(revData);
-                }
-
-                if (partSnap && partSnap.exists()) {
-                    setPartners(partSnap.data().socios || []);
-                }
-            }).finally(() => {
-                setLoadingData(false);
+            const baseFixedExpenses = transData.filter(t => {
+                const d = new Date(t.date);
+                return t.type === TransactionType.EXPENSE &&
+                       t.nature === ExpenseNature.FIXED &&
+                       d.getUTCFullYear() === refYear &&
+                       d.getUTCMonth() === refMonth;
             });
-        }
-    }, [user, setPartners]);
+
+            const instantiateMissing = async () => {
+                const missingExpenses = baseFixedExpenses.filter(f => {
+                    return !transData.some(item => 
+                        item.description === f.description && 
+                        item.category === f.category && 
+                        item.nature === ExpenseNature.FIXED &&
+                        new Date(item.date).getUTCFullYear() === currentYear &&
+                        new Date(item.date).getUTCMonth() === currentMonth
+                    );
+                });
+
+                if (missingExpenses.length === 0) return;
+
+                await Promise.all(missingExpenses.map(async (f) => {
+                    const day = new Date(f.date).getUTCDate();
+                    const lastDayOfTarget = new Date(Date.UTC(currentYear, currentMonth + 1, 0)).getUTCDate();
+                    const targetDay = Math.min(day, lastDayOfTarget);
+                    const projectedDate = new Date(Date.UTC(currentYear, currentMonth, targetDay, 12, 0, 0)).toISOString();
+                    
+                    const newData = {
+                        ...f,
+                        date: projectedDate,
+                        status: ExpenseStatus.PENDING,
+                        reconciled: false,
+                        isProjection: false
+                    };
+                    delete (newData as any).id;
+                    await saveTransaction(newData as any, user.uid);
+                }));
+            };
+            instantiateMissing();
+        });
+
+        const unsubRevenues = onSnapshot(query(collection(db, "transacoes"), where("tipoInterno", "==", "receita_importada"), orderBy("date", "desc")), (snap) => {
+            const revData = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ImportedRevenue));
+            setImportedRevenues(revData);
+        });
+
+        const unsubPartners = onSnapshot(doc(db, "partnerships", "aci"), (snap) => {
+            if (snap.exists()) {
+                setPartners(snap.data().socios || []);
+            } else {
+                // Migration from localStorage if Firestore is empty
+                const localPartners = localStorage.getItem('partners');
+                if (localPartners) {
+                    const parsed = JSON.parse(localPartners);
+                    savePartnership(parsed);
+                }
+            }
+        });
+
+        const unsubAdvisors = onSnapshot(collection(db, "assessores"), (snap) => {
+            if (!snap.empty) {
+                setAdvisors(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Advisor)));
+            } else {
+                const localAdvisors = localStorage.getItem('advisors');
+                if (localAdvisors) {
+                    const parsed = JSON.parse(localAdvisors);
+                    parsed.forEach((a: any) => {
+                        const { id, ...rest } = a;
+                        saveAdvisor(rest);
+                    });
+                }
+            }
+        });
+
+        const unsubGoals = onSnapshot(collection(db, "metas"), (snap) => {
+            if (!snap.empty) {
+                setGoals(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Goal)));
+            } else {
+                const localGoals = localStorage.getItem('goals');
+                if (localGoals) {
+                    const parsed = JSON.parse(localGoals);
+                    parsed.forEach((g: any) => {
+                        const { id, ...rest } = g;
+                        saveGoal(rest);
+                    });
+                }
+            }
+        });
+
+        const unsubSettings = onSnapshot(doc(db, "configuracoes", "geral"), (snap) => {
+            if (snap.exists()) {
+                const data = snap.data();
+                if (data.incomeCategories) setIncomeCategories(data.incomeCategories);
+                if (data.expenseCategories) setExpenseCategories(data.expenseCategories);
+                if (data.paymentMethods) setPaymentMethods(data.paymentMethods);
+                if (data.costCenters) setCostCenters(data.costCenters);
+                if (data.globalTaxRate !== undefined) setGlobalTaxRate(data.globalTaxRate);
+                if (data.estimatedTaxRate !== undefined) setEstimatedTaxRate(data.estimatedTaxRate);
+            } else {
+                // Initial save of defaults/localStorage to Firestore
+                const settings = {
+                    incomeCategories: JSON.parse(localStorage.getItem('incomeCategories') || JSON.stringify(initialIncomeCategories)),
+                    expenseCategories: JSON.parse(localStorage.getItem('expenseCategories') || JSON.stringify(initialExpenseCategories)),
+                    paymentMethods: JSON.parse(localStorage.getItem('paymentMethods') || JSON.stringify(initialPaymentMethods)),
+                    costCenters: JSON.parse(localStorage.getItem('costCenters') || JSON.stringify(initialCostCenters)),
+                    globalTaxRate: JSON.parse(localStorage.getItem('globalTaxRate') || '6'),
+                    estimatedTaxRate: JSON.parse(localStorage.getItem('estimatedTaxRate') || '16.5')
+                };
+                saveSettings(settings);
+            }
+        });
+
+        setLoadingData(false);
+
+        return () => {
+            unsubTransactions();
+            unsubRevenues();
+            unsubPartners();
+            unsubAdvisors();
+            unsubGoals();
+            unsubSettings();
+        };
+    }, [user]);
 
     const handleAddTransaction = async (data: TransactionFormValues) => {
         if (!user) return;
@@ -4304,9 +4377,9 @@ const App: FC = () => {
                 const docRef = await saveImportedRevenue(dummyRevenue as any, user.uid);
                 setImportedRevenues(prev => [{ id: docRef.id, ...dummyRevenue } as ImportedRevenue, ...prev]);
             } else {
-                for (const id of closingData.revenueIds) {
+                const updatePromises = closingData.revenueIds.map(async (id: string) => {
                     const record = importedRevenues.find(r => r.id === id);
-                    if (!record) continue;
+                    if (!record) return null;
                     
                     const proportion = totalRevenueInBatch > 0 ? (record.revenueAmount / totalRevenueInBatch) : (1 / closingData.revenueIds.length);
                     
@@ -4334,9 +4407,14 @@ const App: FC = () => {
                         estimatedNetRevenue: round(closingData.estimatedNetRevenue * proportion)
                     };
 
-                    updatedRecords[id] = updateData;
                     await handleUpdateImportedRevenue(id, updateData);
-                }
+                    return { id, updateData };
+                });
+
+                const results = await Promise.all(updatePromises);
+                results.forEach(res => {
+                    if (res) updatedRecords[res.id] = res.updateData;
+                });
             }
 
             // Atualizar estado local
@@ -4380,9 +4458,75 @@ const App: FC = () => {
                                     expenseCategories={expenseCategories}
                                 />
                             )}
-                            {activeView === 'goals' && <GoalsView goals={goals} onAdd={v => setGoals([...goals, { ...v, id: crypto.randomUUID(), currentAmount: round(0) }])} onUpdateProgress={(id, amount) => setGoals(goals.map(g => g.id === id ? { ...g, currentAmount: round((Number(g.currentAmount) || 0) + (Number(amount) || 0)) } : g))} onDelete={id => setGoals(goals.filter(g => g.id !== id))} />}
+                            {activeView === 'goals' && (
+                                <GoalsView 
+                                    goals={goals} 
+                                    onAdd={async v => {
+                                        const newGoal = { ...v, currentAmount: round(0) };
+                                        await saveGoal(newGoal);
+                                    }} 
+                                    onUpdateProgress={async (id, amount) => {
+                                        const goal = goals.find(g => g.id === id);
+                                        if (goal) {
+                                            await updateGoal(id, { 
+                                                currentAmount: round((Number(goal.currentAmount) || 0) + (Number(amount) || 0)) 
+                                            });
+                                        }
+                                    }} 
+                                    onDelete={async id => await deleteGoal(id)} 
+                                />
+                            )}
                             {activeView === 'partnership' && <PartnershipView partners={partners} onSave={handleSavePartnership} />}
-                            {activeView === 'settings' && <SettingsView incomeCategories={incomeCategories} setIncomeCategories={setIncomeCategories} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} paymentMethods={paymentMethods} setPaymentMethods={setPaymentMethods} costCenters={costCenters} setCostCenters={setCostCenters} advisors={advisors} setAdvisors={setAdvisors} globalTaxRate={globalTaxRate} setGlobalTaxRate={setGlobalTaxRate} estimatedTaxRate={estimatedTaxRate} setEstimatedTaxRate={setEstimatedTaxRate} />}
+                            {activeView === 'settings' && (
+                                <SettingsView 
+                                    incomeCategories={incomeCategories} 
+                                    setIncomeCategories={async (val) => {
+                                        const next = typeof val === 'function' ? (val as any)(incomeCategories) : val;
+                                        await saveSettings({ incomeCategories: next });
+                                    }} 
+                                    expenseCategories={expenseCategories} 
+                                    setExpenseCategories={async (val) => {
+                                        const next = typeof val === 'function' ? (val as any)(expenseCategories) : val;
+                                        await saveSettings({ expenseCategories: next });
+                                    }} 
+                                    paymentMethods={paymentMethods} 
+                                    setPaymentMethods={async (val) => {
+                                        const next = typeof val === 'function' ? (val as any)(paymentMethods) : val;
+                                        await saveSettings({ paymentMethods: next });
+                                    }} 
+                                    costCenters={costCenters} 
+                                    setCostCenters={async (val) => {
+                                        const next = typeof val === 'function' ? (val as any)(costCenters) : val;
+                                        await saveSettings({ costCenters: next });
+                                    }} 
+                                    advisors={advisors} 
+                                    setAdvisors={async (val) => {
+                                        const next = typeof val === 'function' ? (val as any)(advisors) : val;
+                                        // For advisors, we handle them individually or as a batch in settings
+                                        // The current SettingsView expects setAdvisors to handle the whole list
+                                        // We'll update the whole list for simplicity in settings reordering
+                                        // But for add/delete/update we should ideally use the specific functions
+                                        // However, to keep SettingsView working as is, we'll just save the whole list if it's a reorder
+                                        // Actually, let's just use saveSettings for the whole list for now to match the existing logic
+                                        // But wait, advisors are in their own collection.
+                                        // I'll update SettingsView to use the specific functions instead.
+                                        setAdvisors(next); // Optimistic
+                                    }}
+                                    onAddAdvisor={async (adv) => await saveAdvisor(adv)}
+                                    onUpdateAdvisor={async (adv) => await updateAdvisor(adv.id, adv)}
+                                    onDeleteAdvisor={async (id) => await deleteAdvisor(id)}
+                                    globalTaxRate={globalTaxRate} 
+                                    setGlobalTaxRate={async (val) => {
+                                        const next = typeof val === 'function' ? (val as any)(globalTaxRate) : val;
+                                        await saveSettings({ globalTaxRate: next });
+                                    }} 
+                                    estimatedTaxRate={estimatedTaxRate} 
+                                    setEstimatedTaxRate={async (val) => {
+                                        const next = typeof val === 'function' ? (val as any)(estimatedTaxRate) : val;
+                                        await saveSettings({ estimatedTaxRate: next });
+                                    }} 
+                                />
+                            )}
                         </>
                     )}
                 </main>

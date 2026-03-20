@@ -60,6 +60,60 @@ export function savePartnership(socios: Partner[]) {
   return setDoc(doc(db, "partnerships", "aci"), { socios });
 }
 
+// --- Assessores ---
+
+export function getAdvisors() {
+  const advisorsCol = collection(db, "assessores");
+  return getDocs(advisorsCol);
+}
+
+export function saveAdvisor(data: any) {
+  const advisorsCol = collection(db, "assessores");
+  return addDoc(advisorsCol, data);
+}
+
+export function updateAdvisor(id: string, data: any) {
+  const advisorDoc = doc(db, "assessores", id);
+  return updateDoc(advisorDoc, data);
+}
+
+export function deleteAdvisor(id: string) {
+  const advisorDoc = doc(db, "assessores", id);
+  return deleteDoc(advisorDoc);
+}
+
+// --- Metas ---
+
+export function getGoals() {
+  const goalsCol = collection(db, "metas");
+  return getDocs(goalsCol);
+}
+
+export function saveGoal(data: any) {
+  const goalsCol = collection(db, "metas");
+  return addDoc(goalsCol, data);
+}
+
+export function updateGoal(id: string, data: any) {
+  const goalDoc = doc(db, "metas", id);
+  return updateDoc(goalDoc, data);
+}
+
+export function deleteGoal(id: string) {
+  const goalDoc = doc(db, "metas", id);
+  return deleteDoc(goalDoc);
+}
+
+// --- Configurações Gerais ---
+
+export function getSettings() {
+  return getDoc(doc(db, "configuracoes", "geral"));
+}
+
+export function saveSettings(data: any) {
+  return setDoc(doc(db, "configuracoes", "geral"), data, { merge: true });
+}
+
 // --- Receitas Importadas ---
 
 export function saveImportedRevenue(data: any, userId: string) {
