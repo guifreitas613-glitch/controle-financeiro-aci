@@ -2324,6 +2324,27 @@ const ImportedRevenuesView: FC<{
             advisorId: string,
             advisorName: string
         }> = {};
+
+        // Inicializar grupos para o período selecionado se for específico
+        // Isso garante que o CRM seja contado mesmo se não houver receitas
+        if (selectedYear !== 'all' && selectedMonth !== 'all') {
+            const targetAdvisors = selectedAdvisorId === 'all' ? advisors : advisors.filter(a => a.id === selectedAdvisorId);
+            targetAdvisors.forEach(advisor => {
+                const periodKey = `${advisor.id}-${selectedYear}-${selectedMonth}`;
+                groups[periodKey] = { 
+                    revenue: 0, 
+                    netRevenue: 0,
+                    advisorShare: 0, 
+                    officeShare: 0, 
+                    crm: 0, 
+                    commissionsPaid: 0, 
+                    officeOperationalResult: 0, 
+                    isClosed: false,
+                    advisorId: advisor.id,
+                    advisorName: advisor.name
+                };
+            });
+        }
         
         filteredRevenues.forEach(r => {
             const date = new Date(r.date);
@@ -2356,7 +2377,6 @@ const ImportedRevenuesView: FC<{
                 groups[periodKey].isClosed = true;
                 groups[periodKey].commissionsPaid += (r.advisorNet || r.responsibleAdvisorNet || 0);
                 groups[periodKey].officeOperationalResult += (r.resultadoEscritorioReal || r.advisorOperationalResult || 0);
-                // groups[periodKey].crm += (r.crmCost || 0); // Removido para evitar acúmulo por lançamento
             }
         });
 
@@ -2511,8 +2531,20 @@ const ImportedRevenuesView: FC<{
         return {
             name: advisor.name,
             generatedRevenue: generated.reduce((sum, r) => sum + (r.revenueAmount || 0), 0),
-            totalCommission: generated.reduce((sum, r) => sum + (r.advisorNetTotal || 0), 0),
-            referralsPaid: referrals.reduce((sum, r) => sum + (r.referralAmount || 0), 0),
+            totalCommission: generated.reduce((sum, r) => {
+                const commission = r.advisorNetTotal || r.advisorNet || r.responsibleAdvisorNet;
+                if (commission !== undefined) return sum + commission;
+                
+                // Fallback para receitas pendentes
+                const net = r.estimatedNetRevenue || round((r.revenueAmount || 0) * (1 - (r.taxRate || 0) / 100));
+                const share = r.totalParcelaAssessor || r.advisorShare || round(net * 0.70);
+                return sum + share;
+            }, 0),
+            referralsPaid: referrals.reduce((sum, r) => {
+                if (r.referralAmount !== undefined) return sum + r.referralAmount;
+                if (r.referralPercentage) return sum + round((r.revenueAmount || 0) * (r.referralPercentage / 100));
+                return sum + 0;
+            }, 0),
             operationalResult
         };
     }, [filteredRevenues, selectedAdvisorId, advisors, totals]);
