@@ -12,6 +12,21 @@ import { collection, addDoc, serverTimestamp, onSnapshot, query, orderBy, where,
 // --- UTILITÁRIOS GLOBAIS ---
 const round = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100;
 
+const months = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+];
+
+// Helper para normalização de nomes (remover acentos, espaços extras e case-insensitive)
+const normalizeName = (name: string | undefined | null) => {
+    if (!name) return '';
+    return name.toString()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim();
+};
+
 // --- ÍCONES ---
 const DashboardIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>);
 const TransactionsIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>);
@@ -22,6 +37,7 @@ const PartnershipIcon: FC<{ className?: string }> = ({ className }) => (<svg cla
 const PlusIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>);
 const EditIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>);
 const TrashIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>);
+const RefreshCwIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>);
 const CloseIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>);
 const MenuIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>);
 const ExportIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>);
@@ -1942,11 +1958,6 @@ const CommissionClosingModal: FC<{
     const [referralAdvisorId, setReferralAdvisorId] = useState('');
     const [referralPercentage, setReferralPercentage] = useState(0);
 
-    const months = [
-        "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
-    ];
-
     const estimatedTax = round(generatedRevenue * (estimatedTaxRate / 100));
     const estimatedNetRevenue = round(generatedRevenue - estimatedTax);
     
@@ -2228,6 +2239,38 @@ const ImportedRevenuesView: FC<{
     const [selectedRevenueIds, setSelectedRevenueIds] = useState<Set<string>>(new Set());
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    const handleSyncAdvisorLinks = async () => {
+        if (!userId) return;
+        const toUpdate = importedRevenues.filter(r => {
+            const advisorByName = advisors.find(a => normalizeName(a.name) === normalizeName(r.advisorName));
+            return advisorByName && r.advisorId !== advisorByName.id;
+        });
+
+        if (toUpdate.length === 0) {
+            alert("Todos os lançamentos já estão com vínculos corretos.");
+            return;
+        }
+
+        if (!confirm(`Encontrados ${toUpdate.length} lançamentos com vínculos desatualizados. Deseja sincronizá-los agora?`)) {
+            return;
+        }
+
+        try {
+            let count = 0;
+            for (const r of toUpdate) {
+                const advisorByName = advisors.find(a => normalizeName(a.name) === normalizeName(r.advisorName));
+                if (advisorByName) {
+                    await onUpdate(r.id, { advisorId: advisorByName.id });
+                    count++;
+                }
+            }
+            alert(`${count} lançamentos sincronizados com sucesso!`);
+        } catch (error) {
+            console.error(error);
+            alert("Erro ao sincronizar lançamentos.");
+        }
+    };
+
     const hasCrmAlreadyApplied = useMemo(() => {
         if (selectedAdvisorId === 'all') return false;
         const month = selectedMonth === 'all' ? new Date().getUTCMonth() : selectedMonth as number;
@@ -2248,11 +2291,6 @@ const ImportedRevenuesView: FC<{
         return Array.from(yearsSet).sort((a: number, b: number) => b - a);
     }, [importedRevenues]);
 
-    const months = [
-        "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
-    ];
-
     const filteredRevenues = useMemo(() => {
         const selectedAdvisor = advisors.find(a => a.id === selectedAdvisorId);
         return importedRevenues.filter(r => {
@@ -2267,7 +2305,7 @@ const ImportedRevenuesView: FC<{
             const advisorMatch = selectedAdvisorId === 'all' || 
                 r.advisorId === selectedAdvisorId || 
                 r.referralAdvisorId === selectedAdvisorId ||
-                (selectedAdvisor && r.advisorName === selectedAdvisor.name);
+                (selectedAdvisor && normalizeName(r.advisorName) === normalizeName(selectedAdvisor.name));
                 
             const clientMatch = !clientSearch || 
                 (r.cliente && r.cliente.toLowerCase().includes(clientSearch.toLowerCase())) ||
@@ -2349,7 +2387,7 @@ const ImportedRevenuesView: FC<{
         filteredRevenues.forEach(r => {
             const date = new Date(r.date);
             // Tenta obter o ID do assessor de várias formas para garantir o agrupamento correto
-            const effectiveAdvisorId = r.advisorId || (advisors.find(a => a.name === r.advisorName)?.id) || 'unknown';
+            const effectiveAdvisorId = r.advisorId || (advisors.find(a => normalizeName(a.name) === normalizeName(r.advisorName))?.id) || 'unknown';
             const periodKey = `${effectiveAdvisorId}-${date.getUTCFullYear()}-${date.getUTCMonth()}`;
             
             if (!groups[periodKey]) {
@@ -2443,9 +2481,10 @@ const ImportedRevenuesView: FC<{
         // O(n) grouping of revenues by advisor
         const revenuesByAdvisor = new Map<string, ImportedRevenue[]>();
         filteredRevenues.forEach(r => {
-            const list = revenuesByAdvisor.get(r.advisorId) || [];
+            const effectiveId = r.advisorId || (advisors.find(a => normalizeName(a.name) === normalizeName(r.advisorName))?.id) || 'unknown';
+            const list = revenuesByAdvisor.get(effectiveId) || [];
             list.push(r);
-            revenuesByAdvisor.set(r.advisorId, list);
+            revenuesByAdvisor.set(effectiveId, list);
         });
 
         const results = targetAdvisors.map(advisor => {
@@ -2468,8 +2507,15 @@ const ImportedRevenuesView: FC<{
                 });
             }
 
-            if (periods.size === 0 && selectedYear !== 'all' && selectedMonth !== 'all') {
-                periods.add(`${selectedYear}-${selectedMonth}`);
+            if (periods.size === 0 && selectedYear !== 'all') {
+                if (selectedMonth !== 'all') {
+                    periods.add(`${selectedYear}-${selectedMonth}`);
+                } else {
+                    // Se for o ano todo e não houver receitas, mostrar o mês atual (se for o ano atual) ou janeiro
+                    const currentYear = new Date().getUTCFullYear();
+                    const monthToAdd = selectedYear === currentYear ? new Date().getUTCMonth() : 0;
+                    periods.add(`${selectedYear}-${monthToAdd}`);
+                }
             }
 
             let totalResult = 0;
@@ -2522,8 +2568,14 @@ const ImportedRevenuesView: FC<{
         const advisor = advisors.find(a => a.id === selectedAdvisorId);
         if (!advisor) return null;
 
-        const generated = filteredRevenues.filter(r => r.advisorId === selectedAdvisorId);
-        const referrals = filteredRevenues.filter(r => r.referralAdvisorId === selectedAdvisorId);
+        const generated = filteredRevenues.filter(r => 
+            r.advisorId === selectedAdvisorId || 
+            (advisor && normalizeName(r.advisorName) === normalizeName(advisor.name))
+        );
+        const referrals = filteredRevenues.filter(r => 
+            r.referralAdvisorId === selectedAdvisorId || 
+            (advisor && normalizeName(r.referralAdvisorName) === normalizeName(advisor.name))
+        );
 
         // Resultado do Escritório na Produção: calculado a partir dos lançamentos filtrados (respeitando o período)
         const operationalResult = totals.totalOfficeResult;
@@ -2653,7 +2705,7 @@ const ImportedRevenuesView: FC<{
                     // Busca assessor por código primeiro, depois por nome
                     const advisor = advisors.find(a => 
                         (a.code && String(a.code) === String(group.codAssessor)) || 
-                        (a.name.toLowerCase() === group.assessorName.toLowerCase())
+                        (normalizeName(a.name) === normalizeName(group.assessorName))
                     );
                     
                     // Formata a data para extrair Mês/Ano
@@ -2765,9 +2817,14 @@ const ImportedRevenuesView: FC<{
                         <UploadIcon className="w-4 h-4 mr-2"/> Importar Relatório
                     </Button>
                     {importedRevenues.length > 0 && (
-                        <Button onClick={onClearAll} variant="ghostDanger" className="text-sm">
-                            <TrashIcon className="w-4 h-4 mr-2"/> Limpar Lançamentos
-                        </Button>
+                        <>
+                            <Button onClick={handleSyncAdvisorLinks} variant="secondary" className="px-2" title="Sincronizar vínculos de assessores">
+                                <RefreshCwIcon className="w-4 h-4"/>
+                            </Button>
+                            <Button onClick={onClearAll} variant="ghostDanger" className="text-sm">
+                                <TrashIcon className="w-4 h-4 mr-2"/> Limpar Lançamentos
+                            </Button>
+                        </>
                     )}
                     <Button onClick={() => { setEditingRevenue(null); setIsEntryModalOpen(true); }} className="text-sm">
                         <PlusIcon className="w-4 h-4 mr-2"/> Nova Receita
@@ -4311,10 +4368,6 @@ const App: FC = () => {
     const handleBatchCommissionClosing = async (closingData: any) => {
         if (!user) return;
         try {
-            const months = [
-                "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-                "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
-            ];
             const date = new Date(Date.UTC(closingData.year, closingData.month, 1)).toISOString();
             const refPeriod = `${months[closingData.month]}/${closingData.year}`;
 
