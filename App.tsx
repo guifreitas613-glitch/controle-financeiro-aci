@@ -1864,10 +1864,14 @@ const ImportedRevenueForm: FC<ImportedRevenueFormProps> = ({ onSubmit, onClose, 
     const [revenueAmount, setRevenueAmount] = useState(initialData?.revenueAmount || 0);
     const [taxRate, setTaxRate] = useState(initialData?.taxRate || globalTaxRate);
     const [observacao, setObservacao] = useState(initialData?.observacao || '');
+    const [hasReferral, setHasReferral] = useState(initialData?.hasReferral || false);
+    const [referralAdvisorId, setReferralAdvisorId] = useState(initialData?.referralAdvisorId || '');
+    const [referralPercentage, setReferralPercentage] = useState(initialData?.referralPercentage || 0);
     
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const advisor = advisors.find(a => a.id === advisorId);
+        const referralAdvisor = advisors.find(a => a.id === referralAdvisorId);
 
         onSubmit({
             date: new Date(date).toISOString(),
@@ -1878,7 +1882,11 @@ const ImportedRevenueForm: FC<ImportedRevenueFormProps> = ({ onSubmit, onClose, 
             revenueAmount,
             taxRate,
             observacao,
-            status: CommissionStatus.PENDING
+            status: CommissionStatus.PENDING,
+            hasReferral,
+            referralAdvisorId: hasReferral ? referralAdvisorId : '',
+            referralAdvisorName: hasReferral ? referralAdvisor?.name : '',
+            referralPercentage: hasReferral ? referralPercentage : 0
         });
     };
 
@@ -1919,6 +1927,38 @@ const ImportedRevenueForm: FC<ImportedRevenueFormProps> = ({ onSubmit, onClose, 
                 </div>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label className="block text-sm font-medium text-text-secondary">Houve Indicação?</label>
+                    <select value={hasReferral ? 'yes' : 'no'} onChange={e => setHasReferral(e.target.value === 'yes')} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary">
+                        <option value="no">Não</option>
+                        <option value="yes">Sim</option>
+                    </select>
+                </div>
+                {hasReferral && (
+                    <div>
+                        <label className="block text-sm font-medium text-text-secondary">Assessor Indicador</label>
+                        <select 
+                            value={referralAdvisorId} 
+                            onChange={(e) => setReferralAdvisorId(e.target.value)}
+                            className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                            required={hasReferral}
+                        >
+                            <option value="">Selecione...</option>
+                            {advisors.filter(a => a.id !== advisorId).map(adv => (
+                                <option key={adv.id} value={adv.id}>{adv.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
+                {hasReferral && (
+                    <div>
+                        <label className="block text-sm font-medium text-sm text-text-secondary">% de Repasse</label>
+                        <input type="number" value={referralPercentage} onChange={(e) => setReferralPercentage(parseFloat(e.target.value) || 0)} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" required={hasReferral} />
+                    </div>
+                )}
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label className="block text-sm font-medium text-text-secondary">Observação (Opcional)</label>
@@ -1946,86 +1986,155 @@ const CommissionClosingModal: FC<{
     globalTaxRate: number;
     estimatedTaxRate: number;
     revenueIds: string[];
+    selectedRecords: ImportedRevenue[];
     hasCrmAlreadyApplied: boolean;
-}> = ({ isOpen, onClose, onConfirm, advisor, advisors, month, year, generatedRevenue, globalTaxRate, estimatedTaxRate, revenueIds, hasCrmAlreadyApplied }) => {
+    allImportedRevenues: ImportedRevenue[];
+}> = ({ isOpen, onClose, onConfirm, advisor, advisors, month, year, generatedRevenue, globalTaxRate, estimatedTaxRate, revenueIds, selectedRecords, hasCrmAlreadyApplied, allImportedRevenues }) => {
     const [hasBrokerPayout, setHasBrokerPayout] = useState(true);
-    const [cashEntryAmount, setCashEntryAmount] = useState(generatedRevenue);
     const initialCrmCost = hasCrmAlreadyApplied ? 0 : Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0));
     const [crmCost, setCrmCost] = useState(initialCrmCost);
     const [officePercent, setOfficePercent] = useState(30);
     const [advisorPercent, setAdvisorPercent] = useState(70);
-    const [hasReferral, setHasReferral] = useState(false);
-    const [referralAdvisorId, setReferralAdvisorId] = useState('');
-    const [referralPercentage, setReferralPercentage] = useState(0);
 
-    const estimatedTax = round(generatedRevenue * (estimatedTaxRate / 100));
-    const estimatedNetRevenue = round(generatedRevenue - estimatedTax);
-    
-    // Nível 2 — Por assessor/mês (agrupamento obrigatório)
-    // totalParcelaAssessor = soma(parcelaAssessor)
-    // totalParcelaEscritorio = soma(parcelaEscritorio)
-    const totalParcelaAssessor = round(estimatedNetRevenue * (advisorPercent / 100));
-    const totalParcelaEscritorio = round(estimatedNetRevenue * (officePercent / 100));
-    
-    // comissaoLiquidaAssessor = max(totalParcelaAssessor - crmCusto, 0)
-    const comissaoLiquidaAssessor = Math.max(totalParcelaAssessor - crmCost, 0);
-    
-    // crmNaoCoberto = max(crmCusto - totalParcelaAssessor, 0)
-    const crmNaoCoberto = Math.max(crmCost - totalParcelaAssessor, 0);
-    
-    // resultadoEscritorioReal = totalParcelaEscritorio - crmNaoCoberto
-    const resultadoEscritorioReal = totalParcelaEscritorio - crmNaoCoberto;
+    // 1. Produção Própria (Onde o assessor é o principal)
+    const productionRecords = selectedRecords.filter(r => r.advisorId === advisor.id || (advisor && normalizeName(r.advisorName) === normalizeName(advisor.name)));
+    const totalProductionGross = productionRecords.reduce((sum, r) => sum + (r.revenueAmount || 0), 0);
+    const totalProductionNet = productionRecords.reduce((sum, r) => {
+        const net = r.estimatedNetRevenue || round((r.revenueAmount || 0) * (1 - (r.taxRate || globalTaxRate) / 100));
+        return sum + net;
+    }, 0);
+    const totalProductionTax = totalProductionGross - totalProductionNet;
+    const totalProductionAdvisorShare = round(totalProductionNet * (advisorPercent / 100));
+    const totalProductionOfficeShare = totalProductionNet - totalProductionAdvisorShare;
 
-    // Indicação (aplicar após comissão)
-    let referralAmount = 0;
-    if (hasReferral && referralPercentage > 0) {
-        referralAmount = round(comissaoLiquidaAssessor * (referralPercentage / 100));
-    }
+    // 2. Dedução de CRM (Aplicado sobre a produção própria)
+    const comissaoLiquidaAssessor = Math.max(totalProductionAdvisorShare - crmCost, 0);
+    const crmNaoCoberto = Math.max(crmCost - totalProductionAdvisorShare, 0);
+    const resultadoEscritorioReal = totalProductionOfficeShare - crmNaoCoberto;
+
+    // 3. Repasse de Indicação (Dedução da comissão líquida do assessor principal)
+    let totalReferralOutAmount = 0;
+    const referralOutBreakdown: { advisorId: string, advisorName: string, amount: number }[] = [];
+
+    productionRecords.forEach(record => {
+        if (record.hasReferral && record.referralPercentage && record.referralPercentage > 0) {
+            let amount = 0;
+            // Se o valor já foi "travado" por um fechamento anterior (do indicador ou do próprio principal em outro lote)
+            if (record.referralAmountLocked && record.referralAmount && record.referralAmount > 0) {
+                amount = record.referralAmount;
+            } else {
+                const net = record.estimatedNetRevenue || round((record.revenueAmount || 0) * (1 - (record.taxRate || globalTaxRate) / 100));
+                const recordAdvisorShare = round(net * (advisorPercent / 100));
+                // Pro-rata CRM para este registro específico
+                const proRataCrm = totalProductionAdvisorShare > 0 ? (crmCost * (recordAdvisorShare / totalProductionAdvisorShare)) : 0;
+                const recordNetCommission = Math.max(recordAdvisorShare - proRataCrm, 0);
+                amount = round(recordNetCommission * (record.referralPercentage / 100));
+            }
+            
+            totalReferralOutAmount += amount;
+
+            if (record.referralAdvisorId) {
+                const existing = referralOutBreakdown.find(b => b.advisorId === record.referralAdvisorId);
+                if (existing) {
+                    existing.amount = round(existing.amount + amount);
+                } else {
+                    referralOutBreakdown.push({
+                        advisorId: record.referralAdvisorId,
+                        advisorName: record.referralAdvisorName || 'Assessor Indicador',
+                        amount
+                    });
+                }
+            }
+        }
+    });
+
+    // 4. Indicações Recebidas (Crédito para o assessor indicador)
+    const referralIncomeRecords = selectedRecords.filter(r => r.referralAdvisorId === advisor.id || (advisor && normalizeName(r.referralAdvisorName) === normalizeName(advisor.name)));
+    let totalReferralInAmount = 0;
+    referralIncomeRecords.forEach(record => {
+        if (record.hasReferral && record.referralPercentage && record.referralPercentage > 0) {
+            // Se o valor já foi calculado e salvo pelo principal, usamos ele (Fonte da Verdade)
+            if (record.referralAmountLocked && record.referralAmount && record.referralAmount > 0) {
+                totalReferralInAmount += record.referralAmount;
+            } else {
+                // Se o principal ainda não fechou, calculamos exatamente como ele faria (Passo C)
+                // 1. Localizar o assessor principal e seus registros no mês
+                const pAdvisor = advisors.find(a => a.id === record.advisorId);
+                if (pAdvisor) {
+                    const pRecords = allImportedRevenues.filter(r => 
+                        r.advisorId === pAdvisor.id && 
+                        new Date(r.date).getUTCMonth() === month && 
+                        new Date(r.date).getUTCFullYear() === year
+                    );
+                    
+                    // 2. Calcular a parcela bruta total do principal no mês
+                    const pTotalAdvisorShare = pRecords.reduce((sum, r) => {
+                        const net = r.estimatedNetRevenue || round((r.revenueAmount || 0) * (1 - (r.taxRate || globalTaxRate) / 100));
+                        return sum + round(net * 0.70); // Assumimos 70% como padrão se não fechou
+                    }, 0);
+                    
+                    // 3. Verificar se o principal já aplicou CRM em outro fechamento deste mês
+                    const pAlreadyClosed = allImportedRevenues.some(r => 
+                        r.advisorId === pAdvisor.id && 
+                        (r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados) &&
+                        new Date(r.date).getUTCFullYear() === year &&
+                        new Date(r.date).getUTCMonth() === month
+                    );
+                    
+                    const pCrmCost = pAlreadyClosed ? 0 : Math.abs((pAdvisor.costs || []).reduce((acc, c) => acc + c.value, 0));
+                    
+                    // 4. Calcular o valor deste registro específico seguindo o Passo C
+                    const net = record.estimatedNetRevenue || round((record.revenueAmount || 0) * (1 - (record.taxRate || globalTaxRate) / 100));
+                    const recordAdvisorShare = round(net * 0.70);
+                    const proRataCrm = pTotalAdvisorShare > 0 ? (pCrmCost * (recordAdvisorShare / pTotalAdvisorShare)) : 0;
+                    const recordNetCommission = Math.max(recordAdvisorShare - proRataCrm, 0);
+                    const amount = round(recordNetCommission * (record.referralPercentage / 100));
+                    
+                    totalReferralInAmount += amount;
+                }
+            }
+        }
+    });
     
-    // assessorLiquidoFinal = comissaoLiquidaAssessor - indicacao
-    const advisorNet = round(comissaoLiquidaAssessor - referralAmount);
+    // 5. Líquido Final
+    const advisorNetFinal = round(comissaoLiquidaAssessor - totalReferralOutAmount + totalReferralInAmount);
     
-    const officeNet = resultadoEscritorioReal;
-    
-    // Resultado Operacional Assessor = totalParcelaAssessor - crmCusto
-    const advisorOperationalResult = round(totalParcelaAssessor - crmCost);
-    
-    // Resultado de Caixa = Entrada no Caixa da Corretora − Comissões Pagas
-    const cashResult = round(cashEntryAmount - advisorNet - referralAmount);
+    // Resultado de Caixa = Entrada no Caixa da Corretora (Receita Líquida Total) − Comissões Pagas - CRM Não Coberto
+    // Entrada no Caixa = totalProductionNet + (referralIncomeRecords Net? No, referralIncomeRecords are produced by others)
+    // Na verdade, o resultado de caixa deste fechamento específico:
+    const cashEntryAmountVal = totalProductionNet;
+    const cashResult = round(cashEntryAmountVal - advisorNetFinal - totalReferralOutAmount - crmNaoCoberto);
 
     const handleConfirm = () => {
-        const referralAdvisor = advisors.find(a => a.id === referralAdvisorId);
         onConfirm({
             advisorId: advisor.id,
             advisorName: advisor.name,
             month,
             year,
-            generatedRevenue,
-            estimatedTax,
-            estimatedNetRevenue,
-            baseProduction: totalParcelaAssessor, // Mantendo campo para compatibilidade
-            productionResult: totalParcelaAssessor, // Novo campo para evitar erro de undefined
-            cashEntryAmount: cashEntryAmount,
-            hasBrokerPayout,
+            generatedRevenue: totalProductionGross,
+            estimatedTax: totalProductionTax,
+            estimatedNetRevenue: totalProductionNet,
+            baseProduction: totalProductionAdvisorShare,
+            productionResult: totalProductionAdvisorShare,
+            cashEntryAmount: totalProductionNet,
             crmCost,
-            crmNaoCoberto, // Novo campo
-            totalParcelaAssessor, // Novo campo
-            totalParcelaEscritorio, // Novo campo
+            crmNaoCoberto,
+            totalParcelaAssessor: totalProductionAdvisorShare,
+            totalParcelaEscritorio: totalProductionOfficeShare,
             officePercent,
             advisorPercent,
-            advisorShare: totalParcelaAssessor, // Mantendo campo para compatibilidade
-            officeShare: totalParcelaEscritorio, // Mantendo campo para compatibilidade
-            advisorNet,
-            officeNet,
-            advisorOperationalResult,
-            resultadoEscritorioReal, // Novo campo
+            advisorShare: totalProductionAdvisorShare,
+            officeShare: totalProductionOfficeShare,
+            advisorNet: advisorNetFinal,
+            officeNet: resultadoEscritorioReal,
+            advisorOperationalResult: round(totalProductionAdvisorShare - crmCost),
+            resultadoEscritorioReal,
             cashResult,
-            hasReferral,
-            referralAdvisorId: hasReferral ? referralAdvisorId : undefined,
-            referralAdvisorName: hasReferral ? referralAdvisor?.name : undefined,
-            referralPercentage: hasReferral ? referralPercentage : undefined,
-            referralAmount: hasReferral ? referralAmount : 0,
-            revenueIds
+            hasReferral: totalReferralOutAmount > 0,
+            referralAmount: totalReferralOutAmount,
+            referralBreakdown: referralOutBreakdown,
+            totalReferralInAmount,
+            revenueIds: selectedRecords.map(r => r.id)
         });
         onClose();
     };
@@ -2059,20 +2168,28 @@ const CommissionClosingModal: FC<{
                                 </div>
                                 <div>
                                     <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase">Custo CRM (Assessor)</label>
-                                    <input type="number" value={crmCost} onChange={e => setCrmCost(Number(e.target.value))} className="w-full p-2 bg-background border border-border-color rounded text-sm" />
+                                    <input 
+                                        type="number" 
+                                        value={crmCost} 
+                                        onChange={e => setCrmCost(Number(e.target.value))} 
+                                        disabled={hasCrmAlreadyApplied}
+                                        className={`w-full p-2 bg-background border border-border-color rounded text-sm ${hasCrmAlreadyApplied ? 'opacity-50 cursor-not-allowed' : ''}`} 
+                                    />
                                     {hasCrmAlreadyApplied && (
-                                        <p className="text-[9px] text-amber-400 italic mt-1">⚠️ CRM já aplicado neste mês.</p>
+                                        <p className="text-[9px] text-amber-400 font-bold mt-1 flex items-center gap-1">
+                                            <span>⚠️</span> CRM já aplicado neste mês.
+                                        </p>
                                     )}
                                 </div>
                             </div>
                             <div className="bg-background/50 p-2 rounded border border-dashed border-border-color space-y-2">
                                 <div className="flex justify-between text-xs">
                                     <span className="text-text-secondary">Parcela Assessor ({advisorPercent}%):</span>
-                                    <span className="font-bold text-text-primary">{formatCurrency(totalParcelaAssessor)}</span>
+                                    <span className="font-bold text-text-primary">{formatCurrency(totalProductionAdvisorShare)}</span>
                                 </div>
                                 <div className="flex justify-between text-xs">
                                     <span className="text-text-secondary">Parcela Escritório ({officePercent}%):</span>
-                                    <span className="font-bold text-text-primary">{formatCurrency(totalParcelaEscritorio)}</span>
+                                    <span className="font-bold text-text-primary">{formatCurrency(totalProductionOfficeShare)}</span>
                                 </div>
                             </div>
                         </div>
@@ -2096,36 +2213,6 @@ const CommissionClosingModal: FC<{
                         </div>
 
                         <div className="space-y-3">
-                            <p className="text-[10px] font-bold text-text-secondary uppercase border-b border-border-color pb-1">Indicação de Assessor</p>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase">Houve Indicação?</label>
-                                    <select value={hasReferral ? 'yes' : 'no'} onChange={e => setHasReferral(e.target.value === 'yes')} className="w-full p-2 bg-background border border-border-color rounded text-sm">
-                                        <option value="no">Sem indicação</option>
-                                        <option value="yes">Com indicação</option>
-                                    </select>
-                                </div>
-                                {hasReferral && (
-                                    <div>
-                                        <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase">Assessor Indicador</label>
-                                        <select value={referralAdvisorId} onChange={e => setReferralAdvisorId(e.target.value)} className="w-full p-2 bg-background border border-border-color rounded text-sm">
-                                            <option value="">Selecione...</option>
-                                            {advisors.filter(a => a.id !== advisor.id).map(adv => (
-                                                <option key={adv.id} value={adv.id}>{adv.name}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                )}
-                                {hasReferral && (
-                                    <div>
-                                        <label className="block text-[10px] font-medium text-text-secondary mb-1 uppercase">% da Indicação</label>
-                                        <input type="number" value={referralPercentage} onChange={e => setReferralPercentage(Number(e.target.value))} className="w-full p-2 bg-background border border-border-color rounded text-sm" />
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="space-y-3">
                             <p className="text-[10px] font-bold text-text-secondary uppercase border-b border-border-color pb-1">Configurações de Divisão</p>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
@@ -2145,60 +2232,59 @@ const CommissionClosingModal: FC<{
                             <h4 className="text-xs font-bold uppercase text-primary border-b border-primary/10 pb-1">Resumo do Fechamento</h4>
                             <div className="space-y-2">
                                 <div className="flex justify-between text-xs">
-                                    <span className="text-text-secondary">Receita Gerada:</span>
-                                    <span className="font-bold">{formatCurrency(generatedRevenue)}</span>
+                                    <span className="text-text-secondary">Produção Própria (Bruta):</span>
+                                    <span className="font-bold">{formatCurrency(totalProductionGross)}</span>
                                 </div>
                                 <div className="flex justify-between text-xs">
-                                    <span className="text-text-secondary">Imposto Estimado ({estimatedTaxRate}%):</span>
-                                    <span className="text-danger">-{formatCurrency(estimatedTax)}</span>
+                                    <span className="text-text-secondary">Impostos Provisionados ({estimatedTaxRate}%):</span>
+                                    <span className="text-danger">-{formatCurrency(totalProductionTax)}</span>
                                 </div>
                                 <div className="flex justify-between text-xs font-medium border-t border-border-color/10 pt-1">
-                                    <span className="text-text-secondary">Receita Líquida Estimada:</span>
-                                    <span className="text-primary">{formatCurrency(estimatedNetRevenue)}</span>
+                                    <span className="text-text-secondary">Parcela Assessor (Bruta):</span>
+                                    <span className="font-bold">{formatCurrency(totalProductionAdvisorShare)}</span>
                                 </div>
-                                
+                                <div className="flex justify-between text-xs">
+                                    <span className="text-text-secondary">Custo CRM Mensal:</span>
+                                    <span className="text-danger">-{formatCurrency(crmCost)}</span>
+                                </div>
+                                <div className="flex justify-between text-xs font-bold border-t border-border-color/10 pt-1">
+                                    <span className="text-text-primary uppercase">Comissão Líquida:</span>
+                                    <span className="text-primary">{formatCurrency(comissaoLiquidaAssessor)}</span>
+                                </div>
+
+                                {totalReferralOutAmount > 0 && (
+                                    <div className="flex justify-between text-xs">
+                                        <span className="text-text-secondary">Repasse de Indicação (Dedução):</span>
+                                        <span className="text-yellow-500">-{formatCurrency(totalReferralOutAmount)}</span>
+                                    </div>
+                                )}
+
+                                {totalReferralInAmount > 0 && (
+                                    <div className="flex justify-between text-xs">
+                                        <span className="text-text-secondary">Indicações Recebidas (Crédito):</span>
+                                        <span className="text-green-400">+{formatCurrency(totalReferralInAmount)}</span>
+                                    </div>
+                                )}
+
+                                <div className="flex justify-between text-sm font-bold border-t-2 border-primary/30 pt-2 mt-2">
+                                    <span className="text-primary uppercase">Líquido Final a Pagar:</span>
+                                    <span className="text-primary text-lg">{formatCurrency(advisorNetFinal)}</span>
+                                </div>
+
                                 <div className="pt-2 mt-2 border-t border-border-color/30 space-y-2">
                                     <div className="flex justify-between text-xs">
-                                        <span className="text-text-secondary">Parcela Assessor ({advisorPercent}%):</span>
-                                        <span className="font-bold">{formatCurrency(totalParcelaAssessor)}</span>
+                                        <span className="text-text-secondary">Parcela Escritório ({officePercent}%):</span>
+                                        <span className="font-bold">{formatCurrency(totalProductionOfficeShare)}</span>
                                     </div>
                                     <div className="flex justify-between text-xs">
-                                        <span className="text-text-secondary">Custo CRM Mensal:</span>
-                                        <span className="text-danger">-{formatCurrency(crmCost)}</span>
+                                        <span className="text-text-secondary">Déficit CRM (Não Coberto):</span>
+                                        <span className="text-danger">-{formatCurrency(crmNaoCoberto)}</span>
                                     </div>
                                     <div className="flex justify-between text-xs font-bold border-t border-border-color/10 pt-1">
-                                        <span className="text-text-primary uppercase">Comissão Líquida:</span>
-                                        <span className="text-primary">{formatCurrency(comissaoLiquidaAssessor)}</span>
-                                    </div>
-
-                                    {hasReferral && referralAmount > 0 && (
-                                        <>
-                                            <div className="flex justify-between text-xs">
-                                                <span className="text-text-secondary">Repasse Indicação ({referralPercentage}%):</span>
-                                                <span className="text-yellow-500">-{formatCurrency(referralAmount)}</span>
-                                            </div>
-                                            <div className="flex justify-between text-xs font-medium border-t border-border-color/10 pt-1">
-                                                <span className="text-text-secondary">Assessor Líquido Final:</span>
-                                                <span className="font-bold text-primary">{formatCurrency(advisorNet)}</span>
-                                            </div>
-                                        </>
-                                    )}
-
-                                    <div className="pt-2 mt-2 border-t border-border-color/30 space-y-2">
-                                        <div className="flex justify-between text-xs">
-                                            <span className="text-text-secondary">Parcela Escritório ({officePercent}%):</span>
-                                            <span className="font-bold">{formatCurrency(totalParcelaEscritorio)}</span>
-                                        </div>
-                                        <div className="flex justify-between text-xs">
-                                            <span className="text-text-secondary">Déficit CRM (Não Coberto):</span>
-                                            <span className="text-danger">-{formatCurrency(crmNaoCoberto)}</span>
-                                        </div>
-                                        <div className="flex justify-between text-xs font-bold border-t border-border-color/10 pt-1">
-                                            <span className="text-text-primary uppercase">Resultado Escritório Real:</span>
-                                            <span className={`font-bold ${resultadoEscritorioReal < 0 ? 'text-danger' : 'text-green-400'}`}>
-                                                {formatCurrency(resultadoEscritorioReal)}
-                                            </span>
-                                        </div>
+                                        <span className="text-text-primary uppercase">Resultado Escritório Real:</span>
+                                        <span className={`font-bold ${resultadoEscritorioReal < 0 ? 'text-danger' : 'text-green-400'}`}>
+                                            {formatCurrency(resultadoEscritorioReal)}
+                                        </span>
                                     </div>
                                 </div>
                             </div>
@@ -2344,7 +2430,8 @@ const ImportedRevenuesView: FC<{
         return {
             revenueAmount: selected.reduce((sum, r) => sum + (r.revenueAmount || 0), 0),
             count: selected.length,
-            ids: selected.map(r => r.id)
+            ids: selected.map(r => r.id),
+            records: selected
         };
     }, [filteredRevenues, selectedRevenueIds]);
 
@@ -2761,7 +2848,10 @@ const ImportedRevenuesView: FC<{
                         advisorName: advisor?.name || group.assessorName,
                         revenueAmount: group.totalRevenue,
                         taxRate: globalTaxRate,
-                        observacao: `Importação Automática. Assessor: ${group.codAssessor} ${group.assessorName}`
+                        observacao: `Importação Automática. Assessor: ${group.codAssessor} ${group.assessorName}`,
+                        hasReferral: false,
+                        referralAdvisorId: '',
+                        referralPercentage: 0
                     };
                 });
 
@@ -3248,13 +3338,16 @@ const ImportedRevenuesView: FC<{
                         </ul>
                     </div>
                     
-                    <div className="max-h-60 overflow-y-auto border border-border-color rounded-md">
+                    <div className="max-h-80 overflow-y-auto border border-border-color rounded-md">
                         <table className="w-full text-left text-[10px]">
                             <thead className="bg-background sticky top-0">
                                 <tr>
                                     <th className="p-2 border-b border-border-color">Referência</th>
                                     <th className="p-2 border-b border-border-color">Assessor</th>
                                     <th className="p-2 border-b border-border-color text-right">Valor</th>
+                                    <th className="p-2 border-b border-border-color">Indicação?</th>
+                                    <th className="p-2 border-b border-border-color">Indicador</th>
+                                    <th className="p-2 border-b border-border-color w-16">%</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border-color/30">
@@ -3263,6 +3356,51 @@ const ImportedRevenuesView: FC<{
                                         <td className="p-2">{r.cliente}</td>
                                         <td className="p-2">{r.advisorName}</td>
                                         <td className="p-2 text-right font-bold">{formatCurrency(r.revenueAmount)}</td>
+                                        <td className="p-2">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={r.hasReferral} 
+                                                onChange={(e) => {
+                                                    const newRecords = [...importSummary.records];
+                                                    newRecords[i].hasReferral = e.target.checked;
+                                                    setImportSummary({ ...importSummary, records: newRecords });
+                                                }}
+                                            />
+                                        </td>
+                                        <td className="p-2">
+                                            {r.hasReferral && (
+                                                <select 
+                                                    value={r.referralAdvisorId} 
+                                                    onChange={(e) => {
+                                                        const newRecords = [...importSummary.records];
+                                                        newRecords[i].referralAdvisorId = e.target.value;
+                                                        const adv = advisors.find(a => a.id === e.target.value);
+                                                        newRecords[i].referralAdvisorName = adv?.name || '';
+                                                        setImportSummary({ ...importSummary, records: newRecords });
+                                                    }}
+                                                    className="bg-background border border-border-color rounded text-[10px] p-1 w-full"
+                                                >
+                                                    <option value="">Selecione...</option>
+                                                    {advisors.filter(a => a.id !== r.advisorId).map(adv => (
+                                                        <option key={adv.id} value={adv.id}>{adv.name}</option>
+                                                    ))}
+                                                </select>
+                                            )}
+                                        </td>
+                                        <td className="p-2">
+                                            {r.hasReferral && (
+                                                <input 
+                                                    type="number" 
+                                                    value={r.referralPercentage} 
+                                                    onChange={(e) => {
+                                                        const newRecords = [...importSummary.records];
+                                                        newRecords[i].referralPercentage = Number(e.target.value);
+                                                        setImportSummary({ ...importSummary, records: newRecords });
+                                                    }}
+                                                    className="bg-background border border-border-color rounded text-[10px] p-1 w-full"
+                                                />
+                                            )}
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -3303,7 +3441,9 @@ const ImportedRevenuesView: FC<{
                     globalTaxRate={globalTaxRate}
                     estimatedTaxRate={estimatedTaxRate}
                     revenueIds={selectedSummary.ids}
+                    selectedRecords={selectedSummary.records}
                     hasCrmAlreadyApplied={hasCrmAlreadyApplied}
+                    allImportedRevenues={importedRevenues}
                 />
             )}
          </div>
@@ -3370,7 +3510,7 @@ const ReportsView: FC<{
             .reduce((sum, t) => sum + t.amount, 0);
         
         const importedOpRevenue = importedRevenues
-            .filter(r => filterFn(r.date) && !r.lancamentosRealizados)
+            .filter(r => filterFn(r.date))
             .reduce((sum, r) => sum + (r.officeNetRevenue || 0), 0);
             
         const receitaBruta = round(manualOpRevenue + importedOpRevenue);
@@ -3503,13 +3643,12 @@ const ReportsView: FC<{
                 }, 0));
 
                 const resultadoOperacionalMes = round(data.opRevenue - data.opExpense);
-                const lla = round(resultadoOperacionalMes + caixaNoMes); 
                 const valuation = calcularValuation(resultadoOperacionalMes); // Using operational result for valuation
                 
                 const date = new Date(year, month - 1, 1, 12, 0, 0);
                 return {
                     monthYear: date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
-                    lla,
+                    resultadoOperacionalMes,
                     valuation,
                     key: monthKey
                 };
@@ -3600,8 +3739,8 @@ const ReportsView: FC<{
                             {valuationMonthlyData.map(item => (
                                 <tr key={item.key} className="hover:bg-background/50 transition-colors">
                                     <td className="p-3 font-bold capitalize">{item.monthYear}</td>
-                                    <td className={`p-3 text-right ${item.lla >= 0 ? 'text-green-400' : 'text-danger'}`}>
-                                        {formatCurrency(item.lla)}
+                                    <td className={`p-3 text-right ${item.resultadoOperacionalMes >= 0 ? 'text-green-400' : 'text-danger'}`}>
+                                        {formatCurrency(item.resultadoOperacionalMes)}
                                     </td>
                                     <td className={`p-3 text-right font-bold ${item.valuation >= 0 ? 'text-primary' : 'text-danger'}`}>
                                         {formatCurrency(item.valuation)}
@@ -4051,6 +4190,8 @@ const App: FC = () => {
         if (updatedExpense) setExpenseCategories(migratedExpense);
     }, [incomeCategories, expenseCategories, setIncomeCategories, setExpenseCategories]);
 
+    const fixedExpensesInstantiated = useRef(false);
+
     useEffect(() => {
         if (!user) return;
         setLoadingData(true);
@@ -4105,7 +4246,11 @@ const App: FC = () => {
                     await saveTransaction(newData as any, user.uid);
                 }));
             };
-            instantiateMissing();
+            
+            if (!fixedExpensesInstantiated.current && transData.length > 0) {
+                fixedExpensesInstantiated.current = true;
+                instantiateMissing();
+            }
         });
 
         const unsubRevenues = onSnapshot(query(collection(db, "transacoes"), where("tipoInterno", "==", "receita_importada"), orderBy("date", "desc")), (snap) => {
@@ -4368,6 +4513,7 @@ const App: FC = () => {
     const handleBatchCommissionClosing = async (closingData: any) => {
         if (!user) return;
         try {
+            const batchRevenues = importedRevenues.filter(r => closingData.revenueIds.includes(r.id));
             const date = new Date(Date.UTC(closingData.year, closingData.month, 1)).toISOString();
             const refPeriod = `${months[closingData.month]}/${closingData.year}`;
 
@@ -4383,6 +4529,7 @@ const App: FC = () => {
             const crmCostToApply = alreadyClosedThisMonth ? 0 : closingData.crmCost;
 
             // 1. Lançamento de Comissão do Assessor (Única despesa automática)
+            let commissionTransactionId = '';
             if (closingData.advisorNet > 0) {
                 const commissionData = {
                     date,
@@ -4398,26 +4545,74 @@ const App: FC = () => {
                     advisorId: closingData.advisorId
                 };
                 const docRef = await saveTransaction(commissionData as any, user.uid);
+                commissionTransactionId = docRef.id;
                 setTransactions(prev => [{ id: docRef.id, ...commissionData } as unknown as Transaction, ...prev]);
             }
 
-            // 2. Lançamento de Indicação (Também é uma comissão paga a assessor)
-            if (closingData.hasReferral && closingData.referralAmount > 0) {
-                const referralData = {
-                    date,
-                    description: `Repasse Indicação: ${closingData.referralAdvisorName} - Ref: ${closingData.advisorName} - ${refPeriod}`,
-                    amount: closingData.referralAmount,
-                    type: TransactionType.EXPENSE,
-                    category: 'Remuneração de Assessores',
-                    clientSupplier: closingData.referralAdvisorName,
-                    paymentMethod: 'Transferência Bancária',
-                    status: ExpenseStatus.PENDING,
-                    nature: ExpenseNature.VARIABLE,
-                    costCenter: 'conta-pj',
-                    advisorId: closingData.referralAdvisorId
-                };
-                const docRef = await saveTransaction(referralData as any, user.uid);
-                setTransactions(prev => [{ id: docRef.id, ...referralData } as unknown as Transaction, ...prev]);
+            // 2. Lançamento de Indicação (Pode haver múltiplos indicadores no mesmo lote)
+            // Usamos a flag referralLaunched para evitar duplicidade se o indicador também fechar
+            const referralTransactionIds: Record<string, string> = {}; // indicatorId -> transactionId
+            if (closingData.hasReferral && closingData.referralBreakdown && closingData.referralBreakdown.length > 0) {
+                for (const referral of closingData.referralBreakdown) {
+                    // Verificar se para este indicador ainda existem registros não lançados no lote atual
+                    const unlaunchedForThisIndicator = batchRevenues.filter(r => 
+                        r.referralAdvisorId === referral.advisorId && 
+                        !r.referralLaunched &&
+                        r.advisorId === closingData.advisorId // Garante que estamos olhando para a produção deste principal
+                    );
+
+                    if (referral.amount > 0 && unlaunchedForThisIndicator.length > 0) {
+                        const referralData = {
+                            date,
+                            description: `Repasse Indicação: ${referral.advisorName} - Ref: ${closingData.advisorName} - ${refPeriod}`,
+                            amount: referral.amount,
+                            type: TransactionType.EXPENSE,
+                            category: 'Remuneração de Assessores',
+                            clientSupplier: referral.advisorName,
+                            paymentMethod: 'Transferência Bancária',
+                            status: ExpenseStatus.PENDING,
+                            nature: ExpenseNature.VARIABLE,
+                            costCenter: 'conta-pj',
+                            advisorId: referral.advisorId
+                        };
+                        const docRef = await saveTransaction(referralData as any, user.uid);
+                        referralTransactionIds[referral.advisorId] = docRef.id;
+                        setTransactions(prev => [{ id: docRef.id, ...referralData } as unknown as Transaction, ...prev]);
+                    }
+                }
+            }
+
+            // 2.1 Lançamento de Indicação Recebida (Item 5 do pedido)
+            // Usamos a flag referralIncomeLaunched para evitar duplicidade se o principal já fechou
+            let referralIncomeTransactionId = '';
+            if (closingData.totalReferralInAmount && closingData.totalReferralInAmount > 0) {
+                // Só geramos se houver registros onde a indicação ainda não foi lançada
+                // Buscamos nos importedRevenues completos para garantir o escopo correto
+                const recordsAsIndicator = importedRevenues.filter(r => 
+                    r.referralAdvisorId === closingData.advisorId && 
+                    !r.referralIncomeLaunched &&
+                    new Date(r.date).getUTCFullYear() === closingData.year &&
+                    new Date(r.date).getUTCMonth() === closingData.month
+                );
+                
+                if (recordsAsIndicator.length > 0) {
+                    const referralIncomeData = {
+                        date,
+                        description: `Receita de Indicação: ${closingData.advisorName} - ${refPeriod}`,
+                        amount: closingData.totalReferralInAmount,
+                        type: TransactionType.EXPENSE, // É uma despesa para o escritório pagar ao assessor
+                        category: 'Remuneração de Assessores',
+                        clientSupplier: closingData.advisorName,
+                        paymentMethod: 'Transferência Bancária',
+                        status: ExpenseStatus.PENDING,
+                        nature: ExpenseNature.VARIABLE,
+                        costCenter: 'conta-pj',
+                        advisorId: closingData.advisorId
+                    };
+                    const docRef = await saveTransaction(referralIncomeData as any, user.uid);
+                    referralIncomeTransactionId = docRef.id;
+                    setTransactions(prev => [{ id: docRef.id, ...referralIncomeData } as unknown as Transaction, ...prev]);
+                }
             }
 
             // OBS: CRM e Impostos não geram lançamentos financeiros automáticos conforme regra de negócio.
@@ -4468,9 +4663,50 @@ const App: FC = () => {
                     
                     const proportion = totalRevenueInBatch > 0 ? (record.revenueAmount / totalRevenueInBatch) : (1 / closingData.revenueIds.length);
                     
+                    // Cálculo da indicação específica deste registro
+                    let recordReferralAmount = 0;
+                    if (record.hasReferral && record.referralPercentage && record.referralPercentage > 0) {
+                        const net = record.estimatedNetRevenue || round((record.revenueAmount || 0) * (1 - (record.taxRate || globalTaxRate) / 100));
+                        const recordAdvisorShare = round(net * (closingData.advisorPercent / 100));
+                        const proRataCrm = closingData.totalParcelaAssessor > 0 ? (crmCostToApply * (recordAdvisorShare / closingData.totalParcelaAssessor)) : 0;
+                        const recordNetCommission = Math.max(recordAdvisorShare - proRataCrm, 0);
+                        recordReferralAmount = round(recordNetCommission * (record.referralPercentage / 100));
+                    }
+
+                    const isPrincipalClosing = record.advisorId === closingData.advisorId;
+                    const isIndicatorClosing = record.referralAdvisorId === closingData.advisorId;
+                    
+                    let newStatus = record.status || CommissionStatus.PENDING;
+                    if (isPrincipalClosing) {
+                        newStatus = CommissionStatus.COMPLETED;
+                    } else if (isIndicatorClosing && newStatus !== CommissionStatus.COMPLETED) {
+                        newStatus = CommissionStatus.REFERRAL_SETTLED;
+                    }
+
+                    // Gerenciar IDs de transação (suporte a array e compatibilidade com string)
+                    const currentReferralIds = Array.isArray(record.transactionIds?.referral) 
+                        ? record.transactionIds?.referral 
+                        : (record.transactionIds?.referral ? [record.transactionIds.referral] : []);
+                    
+                    const newReferralIds = [...currentReferralIds];
+                    if (isPrincipalClosing && record.referralAdvisorId && referralTransactionIds[record.referralAdvisorId]) {
+                        newReferralIds.push(referralTransactionIds[record.referralAdvisorId]);
+                    }
+                    if (isIndicatorClosing && referralIncomeTransactionId) {
+                        newReferralIds.push(referralIncomeTransactionId);
+                    }
+
                     const updateData = { 
-                        status: CommissionStatus.COMPLETED,
-                        lancamentosRealizados: true,
+                        status: newStatus,
+                        lancamentosRealizados: newStatus === CommissionStatus.COMPLETED,
+                        referralAmountLocked: record.hasReferral ? true : false,
+                        referralLaunched: record.hasReferral ? (record.referralLaunched || isPrincipalClosing) : false,
+                        referralIncomeLaunched: record.hasReferral ? (record.referralIncomeLaunched || isIndicatorClosing) : false,
+                        transactionIds: {
+                            ...record.transactionIds,
+                            commission: isPrincipalClosing ? commissionTransactionId : record.transactionIds?.commission,
+                            referral: newReferralIds.length > 0 ? newReferralIds : record.transactionIds?.referral
+                        },
                         advisorOperationalResult: round(closingData.advisorOperationalResult * proportion),
                         productionResult: round((closingData.productionResult || 0) * proportion),
                         cashResult: round(closingData.cashResult * proportion),
@@ -4480,11 +4716,11 @@ const App: FC = () => {
                         officeShare: round(closingData.officeShare * proportion),
                         advisorTax: 0,
                         officeTax: 0,
-                        advisorNetTotal: round(closingData.advisorNet * proportion),
+                        advisorNetTotal: round((closingData.advisorNet + closingData.referralAmount) * proportion) - recordReferralAmount, // Ajuste para bater o total
                         officeNetRevenue: round(closingData.officeNet * proportion),
                         totalTaxProvision: 0,
-                        referralAmount: round(closingData.referralAmount * proportion),
-                        advisorNet: round(closingData.advisorNet * proportion),
+                        referralAmount: recordReferralAmount,
+                        advisorNet: round((closingData.advisorNet + closingData.referralAmount) * proportion) - recordReferralAmount,
                         resultadoEscritorioReal: round(closingData.resultadoEscritorioReal * proportion),
                         crmNaoCoberto: round(closingData.crmNaoCoberto * proportion),
                         totalParcelaAssessor: round(closingData.totalParcelaAssessor * proportion),

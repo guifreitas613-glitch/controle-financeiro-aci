@@ -60,6 +60,7 @@ export enum CommissionStatus {
     COMMISSION_LAUNCHED = 'comissao_lancada',
     REVENUE_LAUNCHED = 'receita_lancada',
     TAX_PROVISIONED = 'imposto_provisionado',
+    REFERRAL_SETTLED = 'indicacao_quitada', // Indicação fechada, comissão principal ainda pendente
     COMPLETED = 'completo'
 }
 
@@ -75,9 +76,13 @@ export interface ImportedRevenue {
     observacao: string;
     
     // Indicação
+    hasReferral?: boolean;
     referralAdvisorId?: string;
     referralAdvisorName?: string;
     referralPercentage?: number;
+    referralAmountLocked?: boolean; // Indica que referralAmount foi travado pelo primeiro fechamento e não deve ser recalculado
+    referralLaunched?: boolean; // Flag to indicate if the referral expense was already generated
+    referralIncomeLaunched?: boolean; // Flag to indicate if the referral income was already generated for the indicator
 
     // Campos Calculados
     advisorShare?: number; // 70%
@@ -111,7 +116,7 @@ export interface ImportedRevenue {
         commission?: string;
         revenue?: string;
         tax?: string;
-        referral?: string;
+        referral?: string[]; // Suporte a múltiplos indicadores por registro no futuro
     };
     // Deprecated
     lancamentosRealizados?: boolean;
@@ -123,7 +128,8 @@ export interface AdvisorSplit {
     revenueAmount: number;
     percentage: number;
     // Computed fields optionally stored
-    crmCost?: number; // Mantido para compatibilidade, mas agora representa a soma dos custos
+    totalAdvisorCosts?: number; // Soma de todos os custos do assessor (CRM + outros)
+    crmCost?: number; // @deprecated - mantido apenas para compatibilidade com registros antigos
     netPayout?: number;
     additionalCost?: number; // Campo local para custo adicional na tela de rateio
     // Fix: Added missing optional properties to resolve type errors in App.tsx
