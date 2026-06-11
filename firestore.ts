@@ -18,16 +18,47 @@ import { Transaction, Partner, ImportedRevenue } from './types';
 
 type TransactionData = Omit<Transaction, 'id'>;
 
+function sanitizeFirestoreData<T>(data: T): T {
+  if (data === null || data === undefined) {
+    return data;
+  }
+  
+  if (Array.isArray(data)) {
+    return data.map(sanitizeFirestoreData) as unknown as T;
+  }
+  
+  if (typeof data === "object") {
+    const proto = Object.getPrototypeOf(data);
+    if (proto !== null && proto !== Object.prototype) {
+      return data;
+    }
+    const cleanObj: any = {};
+    for (const [key, val] of Object.entries(data)) {
+      if (val === undefined) {
+        continue;
+      }
+      if (typeof val === "number" && isNaN(val)) {
+        cleanObj[key] = 0;
+        continue;
+      }
+      cleanObj[key] = sanitizeFirestoreData(val);
+    }
+    return cleanObj as T;
+  }
+  
+  return data;
+}
+
 // --- Transações Manuais ---
 
 export function saveTransaction(data: TransactionData, userId: string) {
   const transactionsCol = collection(db, "transacoes");
-  return addDoc(transactionsCol, {
+  return addDoc(transactionsCol, sanitizeFirestoreData({
     ...data,
     tipoInterno: 'transacao',
     criadoPor: userId,
     criadoEm: serverTimestamp()
-  });
+  }));
 }
 
 export function getTransactions() {
@@ -42,7 +73,7 @@ export function getTransactions() {
 
 export function updateTransaction(id: string, data: Partial<TransactionData>) {
     const transactionDoc = doc(db, "transacoes", id);
-    return updateDoc(transactionDoc, data);
+    return updateDoc(transactionDoc, sanitizeFirestoreData(data));
 }
 
 export function deleteTransaction(id: string) {
@@ -118,12 +149,12 @@ export function saveSettings(data: any) {
 
 export function saveImportedRevenue(data: any, userId: string) {
   const transactionsCol = collection(db, "transacoes");
-  return addDoc(transactionsCol, {
+  return addDoc(transactionsCol, sanitizeFirestoreData({
     ...data,
     tipoInterno: 'receita_importada',
     criadoPor: userId,
     criadoEm: serverTimestamp()
-  });
+  }));
 }
 
 export function getImportedRevenues() {
@@ -143,7 +174,7 @@ export function deleteImportedRevenue(id: string) {
 
 export function updateImportedRevenue(id: string, data: Partial<ImportedRevenue>) {
     const docRef = doc(db, "transacoes", id);
-    return updateDoc(docRef, data);
+    return updateDoc(docRef, sanitizeFirestoreData(data));
 }
 
 export function getRevenuesByPeriod(startIso: string, endIso: string) {
