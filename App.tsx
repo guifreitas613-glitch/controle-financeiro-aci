@@ -27,6 +27,16 @@ const normalizeName = (name: string | undefined | null) => {
         .trim();
 };
 
+function deduplicateById<T extends { id?: string }>(array: T[]): T[] {
+    const seen = new Set<string>();
+    return array.filter(item => {
+        if (!item.id) return true;
+        if (seen.has(item.id)) return false;
+        seen.add(item.id);
+        return true;
+    });
+}
+
 // --- ÍCONES ---
 const DashboardIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>);
 const TransactionsIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>);
@@ -2379,7 +2389,7 @@ const ImportedRevenuesView: FC<{
 
     const filteredRevenues = useMemo(() => {
         const selectedAdvisor = advisors.find(a => a.id === selectedAdvisorId);
-        return importedRevenues.filter(r => {
+        const filtered = importedRevenues.filter(r => {
             const date = new Date(r.date);
             const year = date.getUTCFullYear();
             const month = date.getUTCMonth();
@@ -2399,6 +2409,7 @@ const ImportedRevenuesView: FC<{
             
             return yearMatch && monthMatch && advisorMatch && clientMatch;
         });
+        return deduplicateById(filtered);
     }, [importedRevenues, selectedYear, selectedMonth, selectedAdvisorId, clientSearch, advisors]);
 
     // Limpar seleção ao mudar filtros
@@ -4458,7 +4469,7 @@ const App: FC = () => {
         Promise.all(data.map(item => {
              const { tempId, selected, ...rest } = item;
              return saveTransaction(rest, user.uid).then(docRef => ({ id: docRef.id, ...rest } as Transaction));
-        })).then(newItems => setTransactions([...newItems, ...transactions]));
+        })).then(newItems => setTransactions(prev => deduplicateById([...newItems, ...prev])));
     };
 
     const handleImportRevenues = (data: any[]) => {
@@ -4466,7 +4477,7 @@ const App: FC = () => {
          const importPromises = data.map(item => saveImportedRevenue(item, user.uid).then(docRef => ({ id: docRef.id, ...item } as ImportedRevenue)).catch(() => null));
          Promise.all(importPromises).then((results) => {
              const newRevenues = results.filter((r): r is ImportedRevenue => r !== null);
-             setImportedRevenues(prev => [...newRevenues, ...prev]);
+             setImportedRevenues(prev => deduplicateById([...newRevenues, ...prev]));
          });
     };
 
@@ -4474,7 +4485,7 @@ const App: FC = () => {
         if (!user) return;
         try {
             const docRef = await saveImportedRevenue(data, user.uid);
-            setImportedRevenues(prev => [{ id: docRef.id, ...data } as ImportedRevenue, ...prev]);
+            setImportedRevenues(prev => deduplicateById([{ id: docRef.id, ...data } as ImportedRevenue, ...prev]));
         } catch (error) {
             console.error(error);
             alert("Erro ao salvar receita.");
@@ -4546,7 +4557,7 @@ const App: FC = () => {
                 };
                 const docRef = await saveTransaction(commissionData as any, user.uid);
                 commissionTransactionId = docRef.id;
-                setTransactions(prev => [{ id: docRef.id, ...commissionData } as unknown as Transaction, ...prev]);
+                setTransactions(prev => deduplicateById([{ id: docRef.id, ...commissionData } as unknown as Transaction, ...prev]));
             }
 
             // 2. Lançamento de Indicação (Pode haver múltiplos indicadores no mesmo lote)
@@ -4577,7 +4588,7 @@ const App: FC = () => {
                         };
                         const docRef = await saveTransaction(referralData as any, user.uid);
                         referralTransactionIds[referral.advisorId] = docRef.id;
-                        setTransactions(prev => [{ id: docRef.id, ...referralData } as unknown as Transaction, ...prev]);
+                        setTransactions(prev => deduplicateById([{ id: docRef.id, ...referralData } as unknown as Transaction, ...prev]));
                     }
                 }
             }
@@ -4611,7 +4622,7 @@ const App: FC = () => {
                     };
                     const docRef = await saveTransaction(referralIncomeData as any, user.uid);
                     referralIncomeTransactionId = docRef.id;
-                    setTransactions(prev => [{ id: docRef.id, ...referralIncomeData } as unknown as Transaction, ...prev]);
+                    setTransactions(prev => deduplicateById([{ id: docRef.id, ...referralIncomeData } as unknown as Transaction, ...prev]));
                 }
             }
 
@@ -4655,7 +4666,7 @@ const App: FC = () => {
                     lancamentosRealizados: true
                 };
                 const docRef = await saveImportedRevenue(dummyRevenue as any, user.uid);
-                setImportedRevenues(prev => [{ id: docRef.id, ...dummyRevenue } as ImportedRevenue, ...prev]);
+                setImportedRevenues(prev => deduplicateById([{ id: docRef.id, ...dummyRevenue } as ImportedRevenue, ...prev]));
             } else {
                 const updatePromises = closingData.revenueIds.map(async (id: string) => {
                     const record = importedRevenues.find(r => r.id === id);
