@@ -2177,7 +2177,8 @@ const ImportedRevenueForm: FC<ImportedRevenueFormProps> = ({ onSubmit, onClose, 
             revenueAmount,
             taxRate,
             observacao,
-            status: CommissionStatus.PENDING,
+            status: initialData?.status || CommissionStatus.PENDING,
+            lancamentosRealizados: initialData?.lancamentosRealizados || false,
             hasReferral,
             referralAdvisorId: hasReferral ? referralAdvisorId : '',
             referralAdvisorName: hasReferral ? referralAdvisor?.name : '',
@@ -3078,14 +3079,35 @@ const ImportedRevenuesView: FC<{
         };
     }, [filteredRevenues, selectedAdvisorId, advisors, totals]);
 
-    const getStatusLabel = (status?: CommissionStatus) => {
-        if (status === CommissionStatus.COMPLETED) return { 
+    const getEffectiveStatus = (status?: any, lancamentosRealizados?: boolean): CommissionStatus => {
+        if (status === 'completo' || status === 'completed' || lancamentosRealizados === true) {
+            return CommissionStatus.COMPLETED;
+        }
+        if (status === 'comissao_lancada' || status === 'commission_launched') {
+            return CommissionStatus.COMMISSION_LAUNCHED;
+        }
+        if (status === 'receita_lancada' || status === 'revenue_launched') {
+            return CommissionStatus.REVENUE_LAUNCHED;
+        }
+        if (status === 'imposto_provisionado' || status === 'tax_provisioned') {
+            return CommissionStatus.TAX_PROVISIONED;
+        }
+        if (status === 'indicacao_quitada' || status === 'referral_settled') {
+            return CommissionStatus.REFERRAL_SETTLED;
+        }
+        return CommissionStatus.PENDING;
+    };
+
+    const getStatusLabel = (status?: any, lancamentosRealizados?: boolean) => {
+        const effective = getEffectiveStatus(status, lancamentosRealizados);
+        if (effective === CommissionStatus.COMPLETED) return { 
             label: 'Lançamento Completo', 
             style: { background: 'rgba(16,185,129,0.1)', color: 'rgba(16,185,129,1)', border: '0.5px solid rgba(16,185,129,0.3)' }
         };
-        if (status === CommissionStatus.COMMISSION_LAUNCHED) return { label: 'Comissão Lançada', color: 'text-blue-400', bg: 'bg-blue-400/10' };
-        if (status === CommissionStatus.REVENUE_LAUNCHED) return { label: 'Receita Lançada', color: 'text-indigo-400', bg: 'bg-indigo-400/10' };
-        if (status === CommissionStatus.TAX_PROVISIONED) return { label: 'Impostos Provisionados', color: 'text-orange-400', bg: 'bg-orange-400/10' };
+        if (effective === CommissionStatus.COMMISSION_LAUNCHED) return { label: 'Comissão Lançada', color: 'text-blue-400', bg: 'bg-blue-400/10' };
+        if (effective === CommissionStatus.REVENUE_LAUNCHED) return { label: 'Receita Lançada', color: 'text-indigo-400', bg: 'bg-indigo-400/10' };
+        if (effective === CommissionStatus.TAX_PROVISIONED) return { label: 'Impostos Provisionados', color: 'text-orange-400', bg: 'bg-orange-400/10' };
+        if (effective === CommissionStatus.REFERRAL_SETTLED) return { label: 'Indicação Quitada (Parcial)', color: 'text-teal-400', bg: 'bg-teal-400/10' };
         return { label: 'Pendente de Lançamento', color: 'text-text-secondary', bg: 'bg-background' };
     };
 
@@ -3112,7 +3134,7 @@ const ImportedRevenuesView: FC<{
             'Valor Indicação': r.referralAmount || 0,
             'Líquido Assessor': r.responsibleAdvisorNet || 0,
             'Resultado Escritório': r.advisorOperationalResult || 0,
-            'Status': getStatusLabel(r.status).label
+            'Status': getStatusLabel(r.status, r.lancamentosRealizados).label
         }));
 
         const ws = XLSX.utils.json_to_sheet(exportData);
@@ -3755,9 +3777,9 @@ const ImportedRevenuesView: FC<{
                                     <td className="p-4 text-center">
                                         <div className="flex flex-col items-center gap-1">
                                             <select 
-                                                className={`px-2 py-1 rounded text-[9px] font-bold uppercase cursor-pointer text-center select-none border border-white/5 focus:outline-none focus:ring-1 focus:ring-primary/40 ${getStatusLabel(r.status).bg || 'bg-background'} ${getStatusLabel(r.status).color || 'text-text-secondary'}`}
-                                                style={{...getStatusLabel(r.status).style, WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none', textAlignLast: 'center'}}
-                                                value={r.status || CommissionStatus.PENDING}
+                                                className={`px-2 py-1 rounded text-[9px] font-bold uppercase cursor-pointer text-center select-none border border-white/5 focus:outline-none focus:ring-1 focus:ring-primary/40 ${getStatusLabel(r.status, r.lancamentosRealizados).bg || 'bg-background'} ${getStatusLabel(r.status, r.lancamentosRealizados).color || 'text-text-secondary'}`}
+                                                style={{...getStatusLabel(r.status, r.lancamentosRealizados).style, WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none', textAlignLast: 'center'}}
+                                                value={getEffectiveStatus(r.status, r.lancamentosRealizados)}
                                                 onChange={async (e) => {
                                                     const val = e.target.value as CommissionStatus;
                                                     const lancamentosRealizados = val === CommissionStatus.COMPLETED;
@@ -3768,7 +3790,8 @@ const ImportedRevenuesView: FC<{
                                                 <option className="bg-[#1e293b] text-blue-400" value={CommissionStatus.COMMISSION_LAUNCHED}>Comissão Lançada</option>
                                                 <option className="bg-[#1e293b] text-indigo-400" value={CommissionStatus.REVENUE_LAUNCHED}>Receita Lançada</option>
                                                 <option className="bg-[#1e293b] text-orange-400" value={CommissionStatus.TAX_PROVISIONED}>Impostos Provisionados</option>
-                                                <option className="bg-[#1e293b] text-green-400" value={CommissionStatus.COMPLETED}>Lançamento Completo</option>
+                                                <option className="bg-[#1e293b] text-teal-400" value={CommissionStatus.REFERRAL_SETTLED}>Indicação Quitada (Parcial)</option>
+                                                 <option className="bg-[#1e293b] text-green-400" value={CommissionStatus.COMPLETED}>Lançamento Completo</option>
                                             </select>
                                         </div>
                                     </td>
