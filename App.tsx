@@ -3757,31 +3757,18 @@ const ImportedRevenuesView: FC<{
                                             <select 
                                                 className={`px-2 py-1 rounded text-[9px] font-bold uppercase cursor-pointer text-center select-none border border-white/5 focus:outline-none focus:ring-1 focus:ring-primary/40 ${getStatusLabel(r.status).bg || 'bg-background'} ${getStatusLabel(r.status).color || 'text-text-secondary'}`}
                                                 style={{...getStatusLabel(r.status).style, WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none', textAlignLast: 'center'}}
-                                                value={r.status || 'pending'}
+                                                value={r.status || CommissionStatus.PENDING}
                                                 onChange={async (e) => {
-                                                    const val = e.target.value;
-                                                    let statusVal: CommissionStatus = CommissionStatus.PENDING;
-                                                    let lancamentosRealizados = false;
-                                                    if (val === 'completed') {
-                                                        statusVal = CommissionStatus.COMPLETED;
-                                                        lancamentosRealizados = true;
-                                                    } else if (val === 'commission_launched') {
-                                                        statusVal = CommissionStatus.COMMISSION_LAUNCHED;
-                                                    } else if (val === 'revenue_launched') {
-                                                        statusVal = CommissionStatus.REVENUE_LAUNCHED;
-                                                    } else if (val === 'tax_provisioned') {
-                                                        statusVal = CommissionStatus.TAX_PROVISIONED;
-                                                    } else {
-                                                        statusVal = CommissionStatus.PENDING;
-                                                    }
-                                                    await onUpdate(r.id, { status: statusVal, lancamentosRealizados });
+                                                    const val = e.target.value as CommissionStatus;
+                                                    const lancamentosRealizados = val === CommissionStatus.COMPLETED;
+                                                    await onUpdate(r.id, { status: val, lancamentosRealizados });
                                                 }}
                                             >
-                                                <option className="bg-[#1e293b] text-text-secondary" value="pending">Pendente de Lançamento</option>
-                                                <option className="bg-[#1e293b] text-blue-400" value="commission_launched">Comissão Lançada</option>
-                                                <option className="bg-[#1e293b] text-indigo-400" value="revenue_launched">Receita Lançada</option>
-                                                <option className="bg-[#1e293b] text-orange-400" value="tax_provisioned">Impostos Provisionados</option>
-                                                <option className="bg-[#1e293b] text-green-400" value="completed">Lançamento Completo</option>
+                                                <option className="bg-[#1e293b] text-text-secondary" value={CommissionStatus.PENDING}>Pendente de Lançamento</option>
+                                                <option className="bg-[#1e293b] text-blue-400" value={CommissionStatus.COMMISSION_LAUNCHED}>Comissão Lançada</option>
+                                                <option className="bg-[#1e293b] text-indigo-400" value={CommissionStatus.REVENUE_LAUNCHED}>Receita Lançada</option>
+                                                <option className="bg-[#1e293b] text-orange-400" value={CommissionStatus.TAX_PROVISIONED}>Impostos Provisionados</option>
+                                                <option className="bg-[#1e293b] text-green-400" value={CommissionStatus.COMPLETED}>Lançamento Completo</option>
                                             </select>
                                         </div>
                                     </td>
