@@ -63,6 +63,12 @@ const FileTextIcon: FC<{ className?: string }> = ({ className }) => (<svg classN
 const TrendingUpIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline><polyline points="16 7 22 7 22 13"></polyline></svg>);
 
 const DownloadIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>);
+const WalletIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg>);
+const ArrowUpRightIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg>);
+const ArrowDownRightIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="7" y1="7" x2="17" y2="17"></line><polyline points="17 7 17 17 7 17"></polyline></svg>);
+const ScaleIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m16 16 3-8 3 8c-.87.65-2.24 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-2.24 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h18"/></svg>);
+const TargetIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>);
+
 const PrinterIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>);
 
 // --- DECLARAÇÕES DE BIBLIOTECAS GLOBAIS ---
@@ -212,7 +218,7 @@ const initialCostCenters: CostCenter[] = [
 const initialAdvisors: Advisor[] = [];
 
 // --- COMPONENTES DE UI REUTILIZÁVEIS ---
-const Card: FC<{ children: ReactNode; className?: string; title?: string }> = ({ children, className = '', title }) => (<div className={`bg-surface rounded-xl shadow-lg p-4 sm:p-6 ${className}`}>{children}</div>);
+const Card: FC<{ children: ReactNode; className?: string; title?: string }> = ({ children, className = '', title }) => (<div className={`bg-surface border border-border-color/65 rounded-xl shadow-md shadow-[#010204]/40 p-5 md:p-6 ${className}`}>{children}</div>);
 const Button: FC<{ onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void; children: ReactNode; variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'ghostDanger' | 'success'; className?: string; type?: "button" | "submit" | "reset"; disabled?: boolean; as?: 'button' | 'label'; htmlFor?: string; title?: string }> = ({ onClick, children, variant = 'primary', className = '', type = 'button', disabled = false, as = 'button', htmlFor, title }) => {
   const baseClasses = 'px-4 py-2 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transform';
   const variantClasses = {
@@ -268,6 +274,7 @@ interface TransactionFormValues {
     status?: ExpenseStatus;
     nature?: ExpenseNature;
     costCenter?: string;
+    origin?: 'manual' | 'importado' | 'comissoes';
     taxAmount?: number;
     grossAmount?: number;
     commissionAmount?: number;
@@ -316,6 +323,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
         paymentMethod: initialData?.paymentMethod || (paymentMethods.length > 0 ? paymentMethods[0] : ''),
         status: initialData?.status || ExpenseStatus.PENDING,
         costCenter: initialData?.costCenter || 'conta-pj',
+        origin: initialData?.origin || 'manual',
     });
     
     const [applyTax, setApplyTax] = useState(true);
@@ -391,7 +399,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        const { description, grossAmount, date, category, paymentMethod, status, costCenter, clientSupplier } = formData;
+        const { description, grossAmount, date, category, paymentMethod, status, costCenter, clientSupplier, origin } = formData;
         
         if (!description || !grossAmount || !date || !category) {
             alert("Por favor, preencha todos os campos obrigatórios.");
@@ -421,6 +429,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
             clientSupplier,
             paymentMethod,
             costCenter,
+            origin: origin as any,
         };
         
         if (type === TransactionType.INCOME) {
@@ -441,7 +450,7 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                     <label className="block text-sm font-medium text-text-secondary">Tipo</label>
                     <select value={type} onChange={(e) => setType(e.target.value as TransactionType)} name="type" disabled={!!initialData || isAddingFromTab} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary disabled:opacity-70 disabled:cursor-not-allowed">
@@ -450,8 +459,16 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
                     </select>
                 </div>
                 <div>
+                    <label className="block text-sm font-medium text-text-secondary">Origem da Transação</label>
+                    <select value={formData.origin || 'manual'} onChange={handleChange} name="origin" className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary h-[38px]">
+                        <option value="manual">Manual/Faturamento Padrão</option>
+                        <option value="comissoes">Comissão Conciliada (Sincronizado)</option>
+                        <option value="importado">Importado Extrato</option>
+                    </select>
+                </div>
+                <div>
                     <label className="block text-sm font-medium text-text-secondary">Data</label>
-                    <input type="date" name="date" value={formData.date} onChange={handleChange} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" required />
+                    <input type="date" name="date" value={formData.date} onChange={handleChange} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary h-[38px]" required />
                 </div>
             </div>
              <div>
@@ -961,6 +978,29 @@ const SettingsView: FC<SettingsViewProps> = ({
     globalTaxRate, setGlobalTaxRate,
     estimatedTaxRate, setEstimatedTaxRate
 }) => {
+    const [activeSettingsTab, setActiveSettingsTab] = useState<'categorias' | 'assessores' | 'impostos' | 'centros' | 'pagamentos'>('categorias');
+
+    const getStructuralBadgeColorAndLabel = (tipo: CategoryStructuralType | string) => {
+        switch (tipo) {
+            case CategoryStructuralType.RECEITA_OPERACIONAL:
+                return { label: 'Receita Operacional', classes: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' };
+            case CategoryStructuralType.RECEITA_NAO_OPERACIONAL:
+                return { label: 'Receita Não Operacional', classes: 'bg-blue-500/10 text-blue-400 border border-blue-500/20' };
+            case CategoryStructuralType.CUSTO:
+                return { label: 'Custo', classes: 'bg-amber-500/10 text-amber-300 border border-amber-500/20' };
+            case CategoryStructuralType.DESPESA_OPERACIONAL:
+                return { label: 'Despesa Operacional', classes: 'bg-orange-500/10 text-orange-400 border border-orange-500/20' };
+            case CategoryStructuralType.DEDUCAO_RECEITA:
+                return { label: 'Dedução de Receita', classes: 'bg-rose-500/15 text-rose-400 border border-rose-500/20' };
+            case CategoryStructuralType.INVESTIMENTO:
+                return { label: 'Investimento', classes: 'bg-purple-500/10 text-purple-400 border border-purple-500/20' };
+            case CategoryStructuralType.SOCIETARIO:
+                return { label: 'Societário', classes: 'bg-slate-400/10 text-slate-300 border border-slate-500/20' };
+            default:
+                return { label: (tipo || '').replace('_', ' '), classes: 'bg-neutral-500/10 text-neutral-400 border border-neutral-500/20' };
+        }
+    };
+
     const [newIncomeCat, setNewIncomeCat] = useState('');
     const [newIncomeCatStructuralType, setNewIncomeCatStructuralType] = useState<CategoryStructuralType>(CategoryStructuralType.RECEITA_OPERACIONAL);
     const [newIncomeCatImpactaDRE, setNewIncomeCatImpactaDRE] = useState(true);
@@ -1147,273 +1187,470 @@ const SettingsView: FC<SettingsViewProps> = ({
     const updateAdvisor = (updated: Advisor) => onUpdateAdvisor && onUpdateAdvisor(updated);
 
     return (
-        <div className="space-y-6 animate-fade-in">
-            <h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Configurações</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* CATEGORIAS DE RECEITA */}
-                <Card>
-                    <h3 className="font-bold mb-4 text-primary text-sm uppercase">Categorias de Receita</h3>
-                    <div className="flex flex-col gap-2 mb-4">
-                        <input type="text" value={newIncomeCat} onChange={e => setNewIncomeCat(e.target.value)} className="bg-background border border-border-color rounded px-3 py-2 text-sm" placeholder="Nome da categoria" />
-                        <div className="grid grid-cols-1 gap-2">
-                            <div>
-                                <label className="block text-[10px] text-text-secondary uppercase mb-1">Tipo Estrutural</label>
-                                <select value={newIncomeCatStructuralType} onChange={e => setNewIncomeCatStructuralType(e.target.value as CategoryStructuralType)} className="w-full bg-background border border-border-color rounded px-3 py-2 text-sm">
-                                    <option value={CategoryStructuralType.RECEITA_OPERACIONAL}>Receita Operacional</option>
-                                    <option value={CategoryStructuralType.RECEITA_NAO_OPERACIONAL}>Receita Não Operacional</option>
-                                    <option value={CategoryStructuralType.SOCIETARIO}>Societário</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div className="flex items-center justify-between bg-background/30 p-2 rounded border border-border-color/50">
-                            <div className="flex items-center gap-2">
-                                <span className="text-xs font-medium">Impacta no DRE?</span>
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${newIncomeCatImpactaDRE ? 'bg-green-400/20 text-green-400' : 'bg-danger/20 text-danger'}`}>
-                                    {newIncomeCatImpactaDRE ? 'SIM' : 'NÃO'}
-                                </span>
-                            </div>
-                            <Button onClick={addIncomeCategory} variant="secondary" className="py-2 px-4"><PlusIcon className="w-4 h-4 mr-2"/> Adicionar</Button>
-                        </div>
-                    </div>
-                    <ul className="space-y-2">
-                        {incomeCategories.map((cat, idx) => (
-                            <li key={idx} className="flex flex-col bg-background/50 p-2 rounded text-sm group gap-2">
-                                <div className="flex justify-between items-center">
-                                    <div className="flex items-center gap-2">
-                                        <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button onClick={() => moveItem(incomeCategories, setIncomeCategories, idx, 'up')} className="text-text-secondary hover:text-primary"><ArrowUpIcon className="w-3 h-3" /></button>
-                                            <button onClick={() => moveItem(incomeCategories, setIncomeCategories, idx, 'down')} className="text-text-secondary hover:text-primary"><ArrowDownIcon className="w-3 h-3" /></button>
-                                        </div>
-                                        {editingIncomeIdx === idx ? (
-                                            <input type="text" value={tempIncomeVal} onChange={e => setTempIncomeVal(e.target.value)} className="bg-background border border-border-color rounded px-2 py-0.5 text-xs w-32" />
-                                        ) : (
-                                            <span className="font-bold">{cat.name}</span>
-                                        )}
-                                    </div>
-                                    <div className="flex gap-2">
-                                        {editingIncomeIdx !== idx && <button onClick={() => startEditIncome(idx)} className="text-text-secondary hover:text-primary"><EditIcon className="w-4 h-4"/></button>}
-                                        <button onClick={() => removeIncomeCategory(cat.name)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>
-                                    </div>
-                                </div>
-                                
-                                {editingIncomeIdx === idx ? (
-                                    <div className="flex flex-col gap-2 bg-background p-2 rounded border border-primary/30">
-                                        <select value={tempIncomeStructuralType} onChange={e => setTempIncomeStructuralType(e.target.value as CategoryStructuralType)} className="w-full bg-background border border-border-color rounded px-2 py-1 text-xs">
+        <div className="space-y-6 animate-fade-in text-text-primary">
+            {/* CABEÇALHO */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border-color/60 pb-4 mb-2">
+                <div>
+                    <h2 className="text-2xl font-bold bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent uppercase tracking-tight">Configurações</h2>
+                    <p className="text-text-secondary text-xs sm:text-sm">Customize categorizações, assessores, impostos e deparações financeiras</p>
+                </div>
+            </div>
+
+            {/* ABA NAV BAR */}
+            <div className="flex flex-wrap gap-1 bg-surface/50 p-1 rounded-lg border border-border-color/30">
+                <button
+                    onClick={() => setActiveSettingsTab('categorias')}
+                    className={`flex-1 min-w-[110px] text-center px-3 py-2 text-xs font-semibold rounded-md transition-all ${
+                        activeSettingsTab === 'categorias' 
+                        ? 'bg-primary text-background font-bold shadow' 
+                        : 'text-text-secondary hover:text-text-primary hover:bg-background/40'
+                    }`}
+                >
+                    Categorias DRE
+                </button>
+                <button
+                    onClick={() => setActiveSettingsTab('assessores')}
+                    className={`flex-1 min-w-[110px] text-center px-3 py-2 text-xs font-semibold rounded-md transition-all ${
+                        activeSettingsTab === 'assessores' 
+                        ? 'bg-primary text-background font-bold shadow' 
+                        : 'text-text-secondary hover:text-text-primary hover:bg-background/40'
+                    }`}
+                >
+                    Assessores & CRM
+                </button>
+                <button
+                    onClick={() => setActiveSettingsTab('impostos')}
+                    className={`flex-1 min-w-[110px] text-center px-3 py-2 text-xs font-semibold rounded-md transition-all ${
+                        activeSettingsTab === 'impostos' 
+                        ? 'bg-primary text-background font-bold shadow' 
+                        : 'text-text-secondary hover:text-text-primary hover:bg-background/40'
+                    }`}
+                >
+                    Impostos & Alíquotas
+                </button>
+                <button
+                    onClick={() => setActiveSettingsTab('centros')}
+                    className={`flex-1 min-w-[110px] text-center px-3 py-2 text-xs font-semibold rounded-md transition-all ${
+                        activeSettingsTab === 'centros' 
+                        ? 'bg-primary text-background font-bold shadow' 
+                        : 'text-text-secondary hover:text-text-primary hover:bg-background/40'
+                    }`}
+                >
+                    Centros de Custo
+                </button>
+                <button
+                    onClick={() => setActiveSettingsTab('pagamentos')}
+                    className={`flex-1 min-w-[110px] text-center px-3 py-2 text-xs font-semibold rounded-md transition-all ${
+                        activeSettingsTab === 'pagamentos' 
+                        ? 'bg-primary text-background font-bold shadow' 
+                        : 'text-text-secondary hover:text-text-primary hover:bg-background/40'
+                    }`}
+                >
+                    Formas de Pagamento
+                </button>
+            </div>
+
+            {/* TAB CONTENTS */}
+            <div className="mt-4">
+                {activeSettingsTab === 'categorias' && (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* CATEGORIAS DE RECEITA */}
+                        <Card className="hover:border-border-color transition-colors">
+                            <h3 className="font-bold mb-4 text-primary text-sm uppercase tracking-wider flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                Categorias de Receita
+                            </h3>
+                            <div className="flex flex-col gap-3 mb-4 bg-background/25 p-3 rounded-lg border border-border-color/30">
+                                <input 
+                                    type="text" 
+                                    value={newIncomeCat} 
+                                    onChange={e => setNewIncomeCat(e.target.value)} 
+                                    className="bg-background border border-border-color/60 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none" 
+                                    placeholder="Nome da categoria de receita" 
+                                />
+                                <div className="grid grid-cols-1 gap-2">
+                                    <div>
+                                        <label className="block text-[10px] text-text-secondary uppercase mb-1 font-semibold">Tipo Estrutural DRE</label>
+                                        <select 
+                                            value={newIncomeCatStructuralType} 
+                                            onChange={e => setNewIncomeCatStructuralType(e.target.value as CategoryStructuralType)} 
+                                            className="w-full bg-background border border-border-color/60 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                                        >
                                             <option value={CategoryStructuralType.RECEITA_OPERACIONAL}>Receita Operacional</option>
                                             <option value={CategoryStructuralType.RECEITA_NAO_OPERACIONAL}>Receita Não Operacional</option>
                                             <option value={CategoryStructuralType.SOCIETARIO}>Societário</option>
                                         </select>
-                                        <div className="flex justify-between items-center">
-                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${tempIncomeImpactaDRE ? 'bg-green-400/20 text-green-400' : 'bg-danger/20 text-danger'}`}>
-                                                DRE: {tempIncomeImpactaDRE ? 'SIM' : 'NÃO'}
-                                            </span>
-                                            <button onClick={saveEditIncome} className="bg-primary text-white px-3 py-1 rounded text-xs font-bold">SALVAR</button>
-                                        </div>
                                     </div>
-                                ) : (
-                                    <div className="flex gap-2 items-center pl-5">
-                                        <span className="text-[10px] text-text-secondary uppercase">{cat.tipoEstrutural?.replace('_', ' ')}</span>
-                                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${cat.impactaDRE ? 'bg-green-400/10 text-green-400' : 'bg-danger/10 text-danger'}`}>
-                                            {cat.impactaDRE ? 'DRE' : 'NÃO DRE'}
+                                </div>
+                                <div className="flex items-center justify-between border-t border-border-color/30 pt-3">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-semibold text-text-secondary">Impacto no DRE por Padrão:</span>
+                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${newIncomeCatImpactaDRE ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-neutral-500/10 text-neutral-400 border-neutral-500/20'}`}>
+                                            {newIncomeCatImpactaDRE ? 'Impacta DRE' : 'Não impacta DRE'}
                                         </span>
                                     </div>
-                                )}
-                            </li>
-                        ))}
-                    </ul>
-                </Card>
-
-                {/* CATEGORIAS DE DESPESA */}
-                <Card>
-                    <h3 className="font-bold mb-4 text-primary text-sm uppercase">Categorias de Despesa</h3>
-                    <div className="flex flex-col gap-2 mb-4">
-                        <input type="text" value={newExpenseCatName} onChange={e => setNewExpenseCatName(e.target.value)} className="bg-background border border-border-color rounded px-3 py-2 text-sm" placeholder="Nome da categoria" />
-                        <div className="grid grid-cols-2 gap-2">
-                            <div>
-                                <label className="block text-[10px] text-text-secondary uppercase mb-1">Tipo Natureza</label>
-                                <select value={newExpenseCatType} onChange={e => setNewExpenseCatType(e.target.value as ExpenseType)} className="w-full bg-background border border-border-color rounded px-3 py-2 text-sm">
-                                    <option value={ExpenseType.COST}>Custo</option>
-                                    <option value={ExpenseType.EXPENSE}>Despesa</option>
-                                    <option value={ExpenseType.NON_OPERATIONAL}>Despesa não Operacional</option>
-                                </select>
+                                    <Button onClick={addIncomeCategory} variant="secondary" className="py-1 px-3 text-xs flex items-center gap-1.5"><PlusIcon className="w-3.5 h-3.5"/> Adicionar</Button>
+                                </div>
                             </div>
-                            <div>
-                                <label className="block text-[10px] text-text-secondary uppercase mb-1">Tipo Estrutural</label>
-                                <select value={newExpenseCatStructuralType} onChange={e => setNewExpenseCatStructuralType(e.target.value as CategoryStructuralType)} className="w-full bg-background border border-border-color rounded px-3 py-2 text-sm">
-                                    <option value={CategoryStructuralType.CUSTO}>Custo</option>
-                                    <option value={CategoryStructuralType.DESPESA_OPERACIONAL}>Despesa Operacional</option>
-                                    <option value={CategoryStructuralType.DEDUCAO_RECEITA}>Dedução de Receita</option>
-                                    <option value={CategoryStructuralType.INVESTIMENTO}>Investimento</option>
-                                    <option value={CategoryStructuralType.SOCIETARIO}>Societário</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div className="flex items-center justify-between bg-background/30 p-2 rounded border border-border-color/50">
-                            <div className="flex items-center gap-2">
-                                <span className="text-xs font-medium">Impacta no DRE?</span>
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${newExpenseCatImpactaDRE ? 'bg-green-400/20 text-green-400' : 'bg-danger/20 text-danger'}`}>
-                                    {newExpenseCatImpactaDRE ? 'SIM' : 'NÃO'}
-                                </span>
-                            </div>
-                            <Button onClick={addExpenseCategory} variant="secondary" className="py-2 px-4"><PlusIcon className="w-4 h-4 mr-2"/> Adicionar</Button>
-                        </div>
-                    </div>
-                    <ul className="space-y-2">
-                        {expenseCategories.map((cat, idx) => (
-                            <li key={idx} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm group">
-                                <div className="flex items-center gap-2">
-                                    <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button onClick={() => moveItem(expenseCategories, setExpenseCategories, idx, 'up')} className="text-text-secondary hover:text-primary"><ArrowUpIcon className="w-3 h-3" /></button>
-                                        <button onClick={() => moveItem(expenseCategories, setExpenseCategories, idx, 'down')} className="text-text-secondary hover:text-primary"><ArrowDownIcon className="w-3 h-3" /></button>
-                                    </div>
-                                    {editingExpenseIdx === idx ? (
-                                        <div className="flex flex-col gap-2 bg-background p-2 rounded border border-primary/30">
-                                            <input type="text" value={tempExpenseName} onChange={e => setTempExpenseName(e.target.value)} className="bg-background border border-border-color rounded px-2 py-1 text-xs w-full" />
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <select value={tempExpenseType} onChange={e => setTempExpenseType(e.target.value as ExpenseType)} className="bg-background border border-border-color rounded px-1 py-1 text-[10px]">
-                                                    <option value={ExpenseType.COST}>Custo</option>
-                                                    <option value={ExpenseType.EXPENSE}>Despesa</option>
-                                                    <option value={ExpenseType.NON_OPERATIONAL}>Despesa não Operacional</option>
-                                                </select>
-                                                <select value={tempExpenseStructuralType} onChange={e => setTempExpenseStructuralType(e.target.value as CategoryStructuralType)} className="bg-background border border-border-color rounded px-1 py-1 text-[10px]">
-                                                    <option value={CategoryStructuralType.CUSTO}>Custo</option>
-                                                    <option value={CategoryStructuralType.DESPESA_OPERACIONAL}>Despesa Operacional</option>
-                                                    <option value={CategoryStructuralType.DEDUCAO_RECEITA}>Dedução de Receita</option>
-                                                    <option value={CategoryStructuralType.INVESTIMENTO}>Investimento</option>
-                                                    <option value={CategoryStructuralType.SOCIETARIO}>Societário</option>
-                                                </select>
-                                            </div>
+                            <ul className="space-y-2">
+                                {incomeCategories.map((cat, idx) => {
+                                    const badgeInfo = getStructuralBadgeColorAndLabel(cat.tipoEstrutural || CategoryStructuralType.RECEITA_OPERACIONAL);
+                                    return (
+                                        <li key={idx} className="flex flex-col bg-background/40 hover:bg-background/80 p-3 rounded-lg text-sm group gap-2 border border-border-color/20 transition-all">
                                             <div className="flex justify-between items-center">
-                                                <span className={`text-[9px] font-bold ${tempExpenseImpactaDRE ? 'text-green-400' : 'text-danger'}`}>DRE: {tempExpenseImpactaDRE ? 'SIM' : 'NÃO'}</span>
-                                                <button onClick={saveEditExpense} className="bg-green-500 text-white px-3 py-1 rounded text-[10px] font-bold">SALVAR</button>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button onClick={() => moveItem(incomeCategories, setIncomeCategories, idx, 'up')} className="text-text-secondary hover:text-primary" title="Mover para cima"><ArrowUpIcon className="w-3 h-3" /></button>
+                                                        <button onClick={() => moveItem(incomeCategories, setIncomeCategories, idx, 'down')} className="text-text-secondary hover:text-primary" title="Mover para baixo"><ArrowDownIcon className="w-3 h-3" /></button>
+                                                    </div>
+                                                    {editingIncomeIdx === idx ? (
+                                                        <input type="text" value={tempIncomeVal} onChange={e => setTempIncomeVal(e.target.value)} className="bg-background border border-border-color rounded px-2 py-1 text-xs w-36 focus:ring-1 focus:ring-primary outline-none" />
+                                                    ) : (
+                                                        <span className="font-bold text-text-primary">{cat.name}</span>
+                                                    )}
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    {editingIncomeIdx !== idx && <button onClick={() => startEditIncome(idx)} className="text-text-secondary hover:text-primary" title="Editar"><EditIcon className="w-4 h-4"/></button>}
+                                                    <button onClick={() => removeIncomeCategory(cat.name)} className="text-text-secondary hover:text-danger" title="Excluir"><TrashIcon className="w-4 h-4"/></button>
+                                                </div>
                                             </div>
-                                        </div>
-                                    ) : (
-                                        <div className="flex flex-col">
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-bold">{cat.name}</span>
-                                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${cat.impactaDRE ? 'bg-green-400/10 text-green-400' : 'bg-danger/10 text-danger'}`}>
-                                                    {cat.impactaDRE ? 'DRE' : 'NÃO DRE'}
-                                                </span>
-                                            </div>
-                                            <div className="flex gap-2 text-[9px] text-text-secondary uppercase font-medium mt-0.5">
-                                                <span>{cat.type === ExpenseType.COST ? 'Custo' : cat.type === ExpenseType.EXPENSE ? 'Despesa' : 'Não Operacional'}</span>
-                                                <span>•</span>
-                                                <span>{cat.tipoEstrutural?.replace('_', ' ')}</span>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="flex gap-2">
-                                    {editingExpenseIdx !== idx && <button onClick={() => startEditExpense(idx)} className="text-text-secondary hover:text-primary"><EditIcon className="w-4 h-4"/></button>}
-                                    <button onClick={() => removeExpenseCategory(cat.name)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>
-                                </div>
-                            </li>
-                        ))}
-                    </ul>
-                </Card>
+                                            
+                                            {editingIncomeIdx === idx ? (
+                                                <div className="flex flex-col gap-2 bg-background p-2 rounded border border-primary/30 mt-1">
+                                                    <select value={tempIncomeStructuralType} onChange={e => setTempIncomeStructuralType(e.target.value as CategoryStructuralType)} className="w-full bg-background border border-border-color rounded px-2 py-1 text-xs">
+                                                        <option value={CategoryStructuralType.RECEITA_OPERACIONAL}>Receita Operacional</option>
+                                                        <option value={CategoryStructuralType.RECEITA_NAO_OPERACIONAL}>Receita Não Operacional</option>
+                                                        <option value={CategoryStructuralType.SOCIETARIO}>Societário</option>
+                                                    </select>
+                                                    <div className="flex justify-between items-center">
+                                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${tempIncomeImpactaDRE ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-neutral-500/10 text-neutral-400 border-neutral-500/20'}`}>
+                                                            {tempIncomeImpactaDRE ? 'Impacta DRE' : 'Não impacta DRE'}
+                                                        </span>
+                                                        <button onClick={saveEditIncome} className="bg-primary text-background px-3 py-1 rounded text-xs font-bold shadow hover:opacity-90">SALVAR</button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="flex flex-wrap gap-2 items-center pl-5">
+                                                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${badgeInfo.classes}`}>
+                                                        {badgeInfo.label}
+                                                    </span>
+                                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${cat.impactaDRE ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-neutral-500/10 text-neutral-400 border-neutral-500/20'}`}>
+                                                        {cat.impactaDRE ? 'Impacta DRE' : 'Não impacta DRE'}
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                        </Card>
 
-                {/* FORMAS DE PAGAMENTO */}
-                <Card>
-                    <h3 className="font-bold mb-4 text-primary text-sm uppercase">Formas de Pagamento</h3>
-                    <div className="flex gap-2 mb-4">
-                        <input type="text" value={newPaymentMethod} onChange={e => setNewPaymentMethod(e.target.value)} className="flex-1 bg-background border border-border-color rounded px-3 py-2 text-sm" placeholder="Ex: Cartão de Crédito" />
-                        <Button onClick={addPaymentMethod} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button>
-                    </div>
-                    <ul className="space-y-2">
-                        {paymentMethods.map((pm, idx) => (
-                            <li key={idx} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm group">
-                                <div className="flex items-center gap-2">
-                                    <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button onClick={() => moveItem(paymentMethods, setPaymentMethods, idx, 'up')} className="text-text-secondary hover:text-primary"><ArrowUpIcon className="w-3 h-3" /></button>
-                                        <button onClick={() => moveItem(paymentMethods, setPaymentMethods, idx, 'down')} className="text-text-secondary hover:text-primary"><ArrowDownIcon className="w-3 h-3" /></button>
+                        {/* CATEGORIAS DE DESPESA */}
+                        <Card className="hover:border-border-color transition-colors">
+                            <h3 className="font-bold mb-4 text-primary text-sm uppercase tracking-wider flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+                                Categorias de Despesa
+                            </h3>
+                            <div className="flex flex-col gap-3 mb-4 bg-background/25 p-3 rounded-lg border border-border-color/30">
+                                <input 
+                                    type="text" 
+                                    value={newExpenseCatName} 
+                                    onChange={e => setNewExpenseCatName(e.target.value)} 
+                                    className="bg-background border border-border-color/60 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none" 
+                                    placeholder="Nome da categoria de despesa" 
+                                />
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label className="block text-[10px] text-text-secondary uppercase mb-1 font-semibold">Tipo Natureza</label>
+                                        <select 
+                                            value={newExpenseCatType} 
+                                            onChange={e => setNewExpenseCatType(e.target.value as ExpenseType)} 
+                                            className="w-full bg-background border border-border-color/60 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                                        >
+                                            <option value={ExpenseType.COST}>Custo</option>
+                                            <option value={ExpenseType.EXPENSE}>Despesa</option>
+                                            <option value={ExpenseType.NON_OPERATIONAL}>Despesa não Operacional</option>
+                                        </select>
                                     </div>
-                                    {editingPaymentIdx === idx ? (
-                                        <div className="flex gap-1 items-center">
-                                            <input type="text" value={tempPaymentVal} onChange={e => setTempPaymentVal(e.target.value)} className="bg-background border border-border-color rounded px-2 py-0.5 text-xs w-32" />
-                                            <button onClick={saveEditPayment} className="text-green-400 hover:text-green-300 font-bold text-xs">OK</button>
-                                        </div>
-                                    ) : (
-                                        <span>{pm}</span>
-                                    )}
-                                </div>
-                                <div className="flex gap-2">
-                                    {editingPaymentIdx !== idx && <button onClick={() => startEditPayment(idx)} className="text-text-secondary hover:text-primary"><EditIcon className="w-4 h-4"/></button>}
-                                    <button onClick={() => removePaymentMethod(pm)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>
-                                </div>
-                            </li>
-                        ))}
-                    </ul>
-                </Card>
-
-                {/* ASSESSORES E COMISSÕES */}
-                <Card>
-                    <h3 className="font-bold mb-4 text-primary text-sm uppercase">Assessores e Comissões</h3>
-                    <div className="flex flex-col gap-2 mb-4">
-                        <div className="flex gap-2">
-                            <input type="text" value={newAdvisorCode} onChange={e => setNewAdvisorCode(e.target.value)} className="w-24 bg-background border border-border-color rounded px-3 py-2 text-sm" placeholder="Cód." />
-                            <input type="text" value={newAdvisorName} onChange={e => setNewAdvisorName(e.target.value)} className="flex-1 bg-background border border-border-color rounded px-3 py-2 text-sm" placeholder="Nome do Assessor" />
-                        </div>
-                        <div className="flex gap-2">
-                            <input type="number" value={newAdvisorRate} onChange={e => setNewAdvisorRate(e.target.value)} className="flex-1 bg-background border border-border-color rounded px-3 py-2 text-sm" placeholder="% Comissão" />
-                            <Button onClick={addAdvisor} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button>
-                        </div>
-                    </div>
-                    <ul className="space-y-4">
-                        {advisors.map((adv, idx) => (
-                            <AdvisorSettingsItem key={adv.id} advisor={adv} onDelete={() => removeAdvisor(adv.id)} onUpdate={updateAdvisor} onMove={(dir) => moveItem(advisors, setAdvisors, idx, dir)} />
-                        ))}
-                    </ul>
-                </Card>
-
-                {/* IMPOSTOS E TAXAS */}
-                <Card>
-                    <h3 className="font-bold mb-4 text-primary text-sm uppercase">Impostos e Taxas</h3>
-                    <div className="space-y-4">
-                        <div>
-                            <label className="block text-xs text-text-secondary mb-1">Alíquota Padrão de Impostos (%) - Real</label>
-                            <input type="number" step="0.1" value={globalTaxRate} onChange={e => setGlobalTaxRate(parseFloat(e.target.value) || 0)} className="w-full bg-background border border-border-color rounded px-3 py-2 text-sm" />
-                        </div>
-                        <div>
-                            <label className="block text-xs text-text-secondary mb-1">Alíquota de Imposto Estimada (%) - Produção</label>
-                            <input type="number" step="0.1" value={estimatedTaxRate} onChange={e => setEstimatedTaxRate(parseFloat(e.target.value) || 0)} className="w-full bg-background border border-border-color rounded px-3 py-2 text-sm" />
-                            <p className="text-[10px] text-text-secondary mt-1 italic">Utilizada apenas para cálculo da base de comissão dos assessores.</p>
-                        </div>
-                    </div>
-                </Card>
-
-                {/* CENTROS DE CUSTO */}
-                <Card>
-                    <h3 className="font-bold mb-4 text-primary text-sm uppercase">Centros de Custo</h3>
-                    <div className="flex gap-2 mb-4">
-                        <input type="text" value={newCostCenterName} onChange={e => setNewCostCenterName(e.target.value)} className="flex-1 bg-background border border-border-color rounded px-3 py-2 text-sm" placeholder="Ex: Marketing" />
-                        <Button onClick={addCostCenter} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4"/></Button>
-                    </div>
-                    <ul className="space-y-2">
-                        {costCenters.map((cc, idx) => (
-                            <li key={cc.id} className="flex justify-between items-center bg-background/50 p-2 rounded text-sm group">
-                                <div className="flex items-center gap-2">
-                                    <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button onClick={() => moveItem(costCenters, setCostCenters, idx, 'up')} className="text-text-secondary hover:text-primary"><ArrowUpIcon className="w-3 h-3" /></button>
-                                        <button onClick={() => moveItem(costCenters, setCostCenters, idx, 'down')} className="text-text-secondary hover:text-primary"><ArrowDownIcon className="w-3 h-3" /></button>
+                                    <div>
+                                        <label className="block text-[10px] text-text-secondary uppercase mb-1 font-semibold">Tipo Estrutural DRE</label>
+                                        <select 
+                                            value={newExpenseCatStructuralType} 
+                                            onChange={e => setNewExpenseCatStructuralType(e.target.value as CategoryStructuralType)} 
+                                            className="w-full bg-background border border-border-color/60 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                                        >
+                                            <option value={CategoryStructuralType.CUSTO}>Custo</option>
+                                            <option value={CategoryStructuralType.DESPESA_OPERACIONAL}>Despesa Operacional</option>
+                                            <option value={CategoryStructuralType.DEDUCAO_RECEITA}>Dedução de Receita</option>
+                                            <option value={CategoryStructuralType.INVESTIMENTO}>Investimento</option>
+                                            <option value={CategoryStructuralType.SOCIETARIO}>Societário</option>
+                                        </select>
                                     </div>
-                                    {editingCostCenterIdx === idx ? (
-                                        <div className="flex gap-1 items-center">
-                                            <input type="text" value={tempCostCenterName} onChange={e => setTempCostCenterName(e.target.value)} className="bg-background border border-border-color rounded px-2 py-0.5 text-xs w-32" />
-                                            <button onClick={saveEditCostCenter} className="text-green-400 hover:text-green-300 font-bold text-xs">OK</button>
+                                </div>
+                                <div className="flex items-center justify-between border-t border-border-color/30 pt-3">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-semibold text-text-secondary">Impacto no DRE por Padrão:</span>
+                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${newExpenseCatImpactaDRE ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-neutral-500/10 text-neutral-400 border-neutral-500/20'}`}>
+                                            {newExpenseCatImpactaDRE ? 'Impacta DRE' : 'Não impacta DRE'}
+                                        </span>
+                                    </div>
+                                    <Button onClick={addExpenseCategory} variant="secondary" className="py-1 px-3 text-xs flex items-center gap-1.5"><PlusIcon className="w-3.5 h-3.5"/> Adicionar</Button>
+                                </div>
+                            </div>
+                            <ul className="space-y-2">
+                                {expenseCategories.map((cat, idx) => {
+                                    const badgeInfo = getStructuralBadgeColorAndLabel(cat.tipoEstrutural || CategoryStructuralType.DESPESA_OPERACIONAL);
+                                    return (
+                                        <li key={idx} className="flex flex-col bg-background/40 hover:bg-background/80 p-3 rounded-lg text-sm group gap-2 border border-border-color/20 transition-all">
+                                            <div className="flex justify-between items-center">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button onClick={() => moveItem(expenseCategories, setExpenseCategories, idx, 'up')} className="text-text-secondary hover:text-primary" title="Mover para cima"><ArrowUpIcon className="w-3 h-3" /></button>
+                                                        <button onClick={() => moveItem(expenseCategories, setExpenseCategories, idx, 'down')} className="text-text-secondary hover:text-primary" title="Mover para baixo"><ArrowDownIcon className="w-3 h-3" /></button>
+                                                    </div>
+                                                    {editingExpenseIdx === idx ? (
+                                                        <div className="flex flex-col gap-2 bg-background p-2 rounded border border-primary/30 w-full">
+                                                            <input type="text" value={tempExpenseName} onChange={e => setTempExpenseName(e.target.value)} className="bg-background border border-border-color rounded px-2 py-1 text-xs w-full focus:ring-1 focus:ring-primary outline-none" />
+                                                            <div className="grid grid-cols-2 gap-2">
+                                                                <select value={tempExpenseType} onChange={e => setTempExpenseType(e.target.value as ExpenseType)} className="bg-background border border-border-color rounded px-1 py-1 text-[10px]">
+                                                                    <option value={ExpenseType.COST}>Custo</option>
+                                                                    <option value={ExpenseType.EXPENSE}>Despesa</option>
+                                                                    <option value={ExpenseType.NON_OPERATIONAL}>Despesa não Operacional</option>
+                                                                </select>
+                                                                <select value={tempExpenseStructuralType} onChange={e => setTempExpenseStructuralType(e.target.value as CategoryStructuralType)} className="bg-background border border-border-color rounded px-1 py-1 text-[10px]">
+                                                                    <option value={CategoryStructuralType.CUSTO}>Custo</option>
+                                                                    <option value={CategoryStructuralType.DESPESA_OPERACIONAL}>Despesa Operacional</option>
+                                                                    <option value={CategoryStructuralType.DEDUCAO_RECEITA}>Dedução de Receita</option>
+                                                                    <option value={CategoryStructuralType.INVESTIMENTO}>Investimento</option>
+                                                                    <option value={CategoryStructuralType.SOCIETARIO}>Societário</option>
+                                                                </select>
+                                                            </div>
+                                                            <div className="flex justify-between items-center border-t border-border-color/10 pt-2">
+                                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${tempExpenseImpactaDRE ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-neutral-500/10 text-neutral-400 border-neutral-500/20'}`}>
+                                                                    {tempExpenseImpactaDRE ? 'Impacta DRE' : 'Não impacta DRE'}
+                                                                </span>
+                                                                <button onClick={saveEditExpense} className="bg-primary text-background px-3 py-1 rounded text-xs font-bold shadow hover:opacity-90">SALVAR</button>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="font-bold text-text-primary text-base">{cat.name}</span>
+                                                    )}
+                                                </div>
+                                                {editingExpenseIdx !== idx && (
+                                                    <div className="flex gap-2">
+                                                        <button onClick={() => startEditExpense(idx)} className="text-text-secondary hover:text-primary" title="Editar"><EditIcon className="w-4 h-4"/></button>
+                                                        <button onClick={() => removeExpenseCategory(cat.name)} className="text-text-secondary hover:text-danger" title="Excluir"><TrashIcon className="w-4 h-4"/></button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            
+                                            {editingExpenseIdx !== idx && (
+                                                <div className="flex flex-wrap gap-2 items-center pl-5">
+                                                    <span className="text-[10px] uppercase font-semibold text-text-secondary bg-surface px-1.5 py-0.5 rounded border border-border-color/30">
+                                                        {cat.type === ExpenseType.COST ? 'Natureza: Custo' : cat.type === ExpenseType.EXPENSE ? 'Natureza: Despesa' : 'Natureza: Não Operacional'}
+                                                    </span>
+                                                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${badgeInfo.classes}`}>
+                                                        {badgeInfo.label}
+                                                    </span>
+                                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${cat.impactaDRE ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-neutral-500/10 text-neutral-400 border-neutral-500/20'}`}>
+                                                        {cat.impactaDRE ? 'Impacta DRE' : 'Não impacta DRE'}
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                        </Card>
+                    </div>
+                )}
+
+                {activeSettingsTab === 'assessores' && (
+                    <div className="max-w-3xl mx-auto">
+                        {/* ASSESSORES E COMISSÕES */}
+                        <Card className="hover:border-border-color transition-colors">
+                            <h3 className="font-bold mb-4 text-primary text-sm uppercase tracking-wider flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                                Assessores e Comissões
+                            </h3>
+                            <div className="flex flex-col gap-3 mb-6 bg-background/20 p-4 rounded-lg border border-border-color/30">
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    <input 
+                                        type="text" 
+                                        value={newAdvisorCode} 
+                                        onChange={e => setNewAdvisorCode(e.target.value)} 
+                                        className="bg-background border border-border-color/60 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-primary outline-none" 
+                                        placeholder="Cód. Assessor" 
+                                    />
+                                    <input 
+                                        type="text" 
+                                        value={newAdvisorName} 
+                                        onChange={e => setNewAdvisorName(e.target.value)} 
+                                        className="sm:col-span-2 bg-background border border-border-color/60 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-primary outline-none" 
+                                        placeholder="Nome Completo do Assessor" 
+                                    />
+                                </div>
+                                <div className="flex justify-between items-center border-t border-border-color/20 pt-3">
+                                    <div className="flex items-center gap-2 max-w-xs">
+                                        <span className="text-xs text-text-secondary font-semibold">Comissão Padrão (%):</span>
+                                        <input 
+                                            type="number" 
+                                            value={newAdvisorRate} 
+                                            onChange={e => setNewAdvisorRate(e.target.value)} 
+                                            className="w-16 bg-background border border-border-color rounded px-2 py-1 text-xs text-center focus:ring-1 focus:ring-primary outline-none" 
+                                            placeholder="30" 
+                                        />
+                                    </div>
+                                    <Button onClick={addAdvisor} variant="secondary" className="py-1 px-4 text-xs flex items-center gap-1.5"><PlusIcon className="w-3.5 h-3.5"/> Adicionar</Button>
+                                </div>
+                            </div>
+                            <ul className="space-y-4">
+                                {advisors.map((adv, idx) => (
+                                    <AdvisorSettingsItem 
+                                        key={adv.id} 
+                                        advisor={adv} 
+                                        onDelete={() => removeAdvisor(adv.id)} 
+                                        onUpdate={updateAdvisor} 
+                                        onMove={(dir) => moveItem(advisors, setAdvisors, idx, dir)} 
+                                    />
+                                ))}
+                                {advisors.length === 0 && (
+                                    <li className="text-center p-6 text-text-secondary text-xs italic">Nenhum assessor cadastrado ainda.</li>
+                                )}
+                            </ul>
+                        </Card>
+                    </div>
+                )}
+
+                {activeSettingsTab === 'impostos' && (
+                    <div className="max-w-2xl mx-auto">
+                        {/* IMPOSTOS E TAXAS */}
+                        <Card className="hover:border-border-color transition-colors">
+                            <h3 className="font-bold mb-4 text-primary text-sm uppercase tracking-wider flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                                Impostos e Alíquotas
+                            </h3>
+                            <div className="space-y-5">
+                                <div className="bg-background/25 p-4 rounded-lg border border-border-color/30 space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-text-primary mb-1">Alíquota Real de Impostos (%) - Escritório</label>
+                                        <input 
+                                            type="number" 
+                                            step="0.1" 
+                                            value={globalTaxRate} 
+                                            onChange={e => setGlobalTaxRate(parseFloat(e.target.value) || 0)} 
+                                            className="w-full bg-background border border-border-color rounded px-3 py-2 text-sm focus:ring-1 focus:ring-primary outline-none" 
+                                        />
+                                        <p className="text-[10px] text-text-secondary mt-1">Estimativa de DAS/Simples Nacional do escritório para cálculos do faturamento real líquido.</p>
+                                    </div>
+                                    <div className="border-t border-border-color/10 pt-4">
+                                        <label className="block text-xs font-semibold text-text-primary mb-1">Alíquota de Retenção de Assessor (%) - Produção</label>
+                                        <input 
+                                            type="number" 
+                                            step="0.1" 
+                                            value={estimatedTaxRate} 
+                                            onChange={e => setEstimatedTaxRate(parseFloat(e.target.value) || 0)} 
+                                            className="w-full bg-background border border-border-color rounded px-3 py-2 text-sm focus:ring-1 focus:ring-primary outline-none" 
+                                        />
+                                        <p className="text-[10px] text-text-secondary mt-1 italic">Retenção de custo tributário pro-rata aplicada estritamente sobre a base bruta do assessor para definir o repasse.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </Card>
+                    </div>
+                )}
+
+                {activeSettingsTab === 'centros' && (
+                    <div className="max-w-2xl mx-auto">
+                        {/* CENTROS DE CUSTO */}
+                        <Card className="hover:border-border-color transition-colors">
+                            <h3 className="font-bold mb-4 text-primary text-sm uppercase tracking-wider flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                                Centros de Custo
+                            </h3>
+                            <div className="flex gap-2 mb-4">
+                                <input 
+                                    type="text" 
+                                    value={newCostCenterName} 
+                                    onChange={e => setNewCostCenterName(e.target.value)} 
+                                    className="flex-1 bg-background border border-border-color rounded px-3 py-2 text-sm focus:ring-1 focus:ring-primary outline-none" 
+                                    placeholder="Ex: Marketing, Operacional, Societário..." 
+                                />
+                                <Button onClick={addCostCenter} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4 mr-1"/> Adicionar</Button>
+                            </div>
+                            <ul className="space-y-2">
+                                {costCenters.map((cc, idx) => (
+                                    <li key={cc.id} className="flex justify-between items-center bg-background/40 hover:bg-background/80 p-3 rounded-lg text-sm border border-border-color/25 group transition-all">
+                                        <div className="flex items-center gap-2">
+                                            <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button onClick={() => moveItem(costCenters, setCostCenters, idx, 'up')} className="text-text-secondary hover:text-primary" title="Mover para cima"><ArrowUpIcon className="w-3 h-3" /></button>
+                                                <button onClick={() => moveItem(costCenters, setCostCenters, idx, 'down')} className="text-text-secondary hover:text-primary" title="Mover para baixo"><ArrowDownIcon className="w-3 h-3" /></button>
+                                            </div>
+                                            {editingCostCenterIdx === idx ? (
+                                                <div className="flex gap-1 items-center">
+                                                    <input type="text" value={tempCostCenterName} onChange={e => setTempCostCenterName(e.target.value)} className="bg-background border border-border-color rounded px-2 py-0.5 text-xs w-40 focus:ring-1 focus:ring-primary outline-none" />
+                                                    <button onClick={saveEditCostCenter} className="text-green-400 hover:text-green-300 font-bold text-xs">OK</button>
+                                                </div>
+                                            ) : (
+                                                <span className="font-semibold text-text-primary">{cc.name}</span>
+                                            )}
                                         </div>
-                                    ) : (
-                                        <span>{cc.name}</span>
-                                    )}
-                                </div>
-                                <div className="flex gap-2">
-                                    {editingCostCenterIdx !== idx && <button onClick={() => startEditCostCenter(idx)} className="text-text-secondary hover:text-primary"><EditIcon className="w-4 h-4"/></button>}
-                                    {!cc.isDefault && <button onClick={() => removeCostCenter(cc.id)} className="text-text-secondary hover:text-danger"><TrashIcon className="w-4 h-4"/></button>}
-                                </div>
-                            </li>
-                        ))}
-                    </ul>
-                </Card>
+                                        <div className="flex gap-2">
+                                            {editingCostCenterIdx !== idx && <button onClick={() => startEditCostCenter(idx)} className="text-text-secondary hover:text-primary" title="Editar"><EditIcon className="w-4 h-4"/></button>}
+                                            {!cc.isDefault && <button onClick={() => removeCostCenter(cc.id)} className="text-text-secondary hover:text-danger" title="Excluir"><TrashIcon className="w-4 h-4"/></button>}
+                                        </div>
+                                    </li>
+                                ))}
+                            </ul>
+                        </Card>
+                    </div>
+                )}
+
+                {activeSettingsTab === 'pagamentos' && (
+                    <div className="max-w-2xl mx-auto">
+                        {/* FORMAS DE PAGAMENTO */}
+                        <Card className="hover:border-border-color transition-colors">
+                            <h3 className="font-bold mb-4 text-primary text-sm uppercase tracking-wider flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+                                Formas de Pagamento
+                            </h3>
+                            <div className="flex gap-2 mb-4">
+                                <input 
+                                    type="text" 
+                                    value={newPaymentMethod} 
+                                    onChange={e => setNewPaymentMethod(e.target.value)} 
+                                    className="flex-1 bg-background border border-border-color rounded px-3 py-2 text-sm focus:ring-1 focus:ring-primary outline-none" 
+                                    placeholder="Ex: Pix, Crédito, TED..." 
+                                />
+                                <Button onClick={addPaymentMethod} variant="secondary" className="py-2"><PlusIcon className="w-4 h-4 mr-1"/> Adicionar</Button>
+                            </div>
+                            <ul className="space-y-2">
+                                {paymentMethods.map((pm, idx) => (
+                                    <li key={idx} className="flex justify-between items-center bg-background/40 hover:bg-background/80 p-3 rounded-lg text-sm border border-border-color/25 group transition-all">
+                                        <div className="flex items-center gap-2">
+                                            <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button onClick={() => moveItem(paymentMethods, setPaymentMethods, idx, 'up')} className="text-text-secondary hover:text-primary" title="Mover para cima"><ArrowUpIcon className="w-3 h-3" /></button>
+                                                <button onClick={() => moveItem(paymentMethods, setPaymentMethods, idx, 'down')} className="text-text-secondary hover:text-primary" title="Mover para baixo"><ArrowDownIcon className="w-3 h-3" /></button>
+                                            </div>
+                                            {editingPaymentIdx === idx ? (
+                                                <div className="flex gap-1 items-center">
+                                                    <input type="text" value={tempPaymentVal} onChange={e => setTempPaymentVal(e.target.value)} className="bg-background border border-border-color rounded px-2 py-0.5 text-xs w-40 focus:ring-1 focus:ring-primary outline-none" />
+                                                    <button onClick={saveEditPayment} className="text-green-400 hover:text-green-300 font-bold text-xs">OK</button>
+                                                </div>
+                                            ) : (
+                                                <span className="font-semibold text-text-primary">{pm}</span>
+                                            )}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            {editingPaymentIdx !== idx && <button onClick={() => startEditPayment(idx)} className="text-text-secondary hover:text-primary" title="Editar"><EditIcon className="w-4 h-4"/></button>}
+                                            <button onClick={() => removePaymentMethod(pm)} className="text-text-secondary hover:text-danger" title="Excluir"><TrashIcon className="w-4 h-4"/></button>
+                                        </div>
+                                    </li>
+                                ))}
+                            </ul>
+                        </Card>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -1488,6 +1725,27 @@ const CustomPieTooltip: FC<any> = ({ active, payload }) => {
           </div>
         </div>
       );
+    }
+    return null;
+};
+
+const CustomChartTooltip: FC<any> = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+        const item = payload[0].payload;
+        const isProj = item.isProjection;
+        const val = isProj ? item.projectedBalance : item.realBalance;
+        return (
+            <div className="bg-surface border border-border-color p-3 rounded-lg shadow-xl text-text-primary backdrop-blur-sm bg-opacity-95 z-50 min-w-[150px]">
+                <p className="font-bold text-xs text-[#94a3b8] mb-1.5 border-b border-border-color/30 pb-1">{item.date}</p>
+                <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${isProj ? 'bg-[#ff7a00]' : 'bg-[#3b82f6]'}`}></div>
+                    <p className="text-xs font-semibold">
+                        {isProj ? 'Saldo Projetado:' : 'Saldo Real:'}{' '}
+                        <span className="font-mono font-bold text-text-primary">{typeof val === 'number' ? formatCurrency(val) : 'N/A'}</span>
+                    </p>
+                </div>
+            </div>
+        );
     }
     return null;
 };
@@ -1770,72 +2028,99 @@ const TransactionsView: FC<{
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead>
-                            <tr className="bg-background/50 text-text-secondary text-xs uppercase tracking-wider border-b border-border-color">
-                                <th className="p-4 cursor-pointer hover:text-primary" onClick={() => requestSort('date')}>Data {getSortIndicator('date')}</th>
-                                <th className="p-4 cursor-pointer hover:text-primary" onClick={() => requestSort('description')}>Descrição {getSortIndicator('description')}</th>
-                                <th className="p-4 cursor-pointer hover:text-primary" onClick={() => requestSort('category')}>Categoria {getSortIndicator('category')}</th>
-                                <th className="p-4 text-right cursor-pointer hover:text-primary" onClick={() => requestSort('amount')}>Valor {getSortIndicator('amount')}</th>
-                                {activeTab === TransactionType.EXPENSE && <th className="p-4 text-center">Status</th>}
-                                <th className="p-4 text-center">Ações</th>
+                            <tr className="bg-background/40 text-text-secondary text-[9px] font-bold uppercase tracking-wider border-b border-border-color">
+                                <th className="p-2.5 px-3 cursor-pointer hover:text-primary transition-colors text-left" onClick={() => requestSort('date')}>Data {getSortIndicator('date')}</th>
+                                <th className="p-2.5 px-3 cursor-pointer hover:text-primary transition-colors text-left" onClick={() => requestSort('description')}>Descrição {getSortIndicator('description')}</th>
+                                <th className="p-2.5 px-3 cursor-pointer hover:text-primary transition-colors text-left" onClick={() => requestSort('category')}>Categoria {getSortIndicator('category')}</th>
+                                <th className="p-2.5 px-3 text-right cursor-pointer hover:text-primary transition-colors font-semibold" onClick={() => requestSort('amount')}>Valor {getSortIndicator('amount')}</th>
+                                {activeTab === TransactionType.EXPENSE && <th className="p-2.5 px-3 text-center">Status</th>}
+                                <th className="p-2.5 px-3 text-right">Ações</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-border-color/30 text-sm font-medium">
+                        <tbody className="divide-y divide-border-color/15 text-xs font-medium">
                             {filtered.map(t => (
-                                <tr key={t.id} className={`hover:bg-background/50 transition-colors ${t.isProjection ? 'opacity-50 grayscale-[0.5]' : ''}`}>
-                                    <td className="p-4 whitespace-nowrap text-text-secondary">{formatDate(t.date)}</td>
-                                    <td className="p-4 font-bold">{t.description}<div className="text-xs text-text-secondary font-normal">{t.clientSupplier}</div></td>
-                                    <td className="p-4"><span className="px-3 py-1 rounded-full bg-border-color/50 border border-border-color text-[10px] uppercase font-bold">{t.category}</span></td>
-                                    <td className={`p-4 text-right font-bold ${t.type === TransactionType.INCOME ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(t.amount)}</td>
+                                <tr key={t.id} className={`hover:bg-background/20 transition-colors h-11 ${t.isProjection ? 'opacity-50 grayscale-[0.5]' : ''}`}>
+                                    <td className="p-2.5 px-3 whitespace-nowrap text-text-secondary font-mono">{formatDate(t.date)}</td>
+                                    <td className="p-2.5 px-3">
+                                        <div className="font-bold text-text-primary text-xs">{t.description}</div>
+                                        <div className="text-[10px] text-text-secondary font-normal mt-0.5">{t.clientSupplier || '-'}</div>
+                                    </td>
+                                    <td className="p-2.5 px-3">
+                                        <span className="inline-block px-1.5 py-0.5 rounded bg-border-color/25 border border-border-color/40 text-[9px] uppercase font-bold text-text-secondary">
+                                            {t.category}
+                                        </span>
+                                    </td>
+                                    <td className={`p-2.5 px-3 text-right font-mono font-bold text-xs ${t.type === TransactionType.INCOME ? 'text-success' : 'text-danger'}`}>
+                                        {formatCurrency(t.amount)}
+                                    </td>
                                     {activeTab === TransactionType.EXPENSE && (
-                                        <td className="p-4 text-center">
+                                        <td className="p-2.5 px-3 text-center">
                                             {(() => {
                                                 const isPaid = t.status === ExpenseStatus.PAID;
                                                 const isOverdue = t.status === ExpenseStatus.PENDING && new Date(t.date).setHours(0,0,0,0) < new Date().setHours(0,0,0,0);
                                                 
                                                 if (isPaid) {
                                                     return (
-                                                        <span className="px-3 py-1 rounded text-[10px] font-black uppercase bg-green-500/20 text-green-400">
+                                                        <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-success/15 text-success border border-success/30">
                                                             PAGO
                                                         </span>
                                                     );
                                                 }
                                                 if (isOverdue) {
                                                     return (
-                                                        <span className="px-3 py-1 rounded text-[10px] font-black uppercase bg-danger/20 text-danger animate-pulse">
+                                                        <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-danger/15 text-danger border border-danger/30">
                                                             VENCIDO
                                                         </span>
                                                     );
                                                 }
                                                 return (
-                                                    <span className="px-3 py-1 rounded text-[10px] font-black uppercase bg-yellow-500/20 text-yellow-500">
+                                                    <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-yellow-500/15 text-yellow-500 border border-yellow-500/30">
                                                         PENDENTE
                                                     </span>
                                                 );
                                             })()}
                                         </td>
                                     )}
-                                    <td className="p-4 text-center">
-                                        <div className="flex justify-center gap-3 items-center">
+                                    <td className="p-2.5 px-3 text-right">
+                                        <div className="flex justify-end gap-2 items-center">
                                             {!t.isProjection ? (
                                                 <>
-                                                    <label className="flex items-center gap-1 cursor-pointer select-none" title={t.type === TransactionType.EXPENSE && t.status !== ExpenseStatus.PAID ? "Apenas despesas pagas podem ser conciliadas" : "Conciliação Bancária (CB)"}>
+                                                    <label className="flex items-center gap-1 cursor-pointer select-none py-1 mr-1" title={t.type === TransactionType.EXPENSE && t.status !== ExpenseStatus.PAID ? "Apenas despesas pagas podem ser conciliadas" : "Conciliação Bancária (CB)"}>
                                                         <input 
                                                             type="checkbox" 
                                                             checked={!!t.reconciled} 
                                                             onChange={() => onToggleReconciliation(t.id, !!t.reconciled)}
                                                             disabled={t.type === TransactionType.EXPENSE && t.status !== ExpenseStatus.PAID}
-                                                            className="w-4 h-4 rounded border-border-color text-primary focus:ring-primary bg-background disabled:opacity-30 disabled:cursor-not-allowed"
+                                                            className="w-3.5 h-3.5 rounded border-border-color text-primary focus:ring-primary bg-background disabled:opacity-30 disabled:cursor-not-allowed"
                                                         />
                                                         <span className="text-[10px] font-bold text-text-secondary">CB</span>
                                                     </label>
                                                     {t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PENDING && (
-                                                        <Button variant="success" className="py-1 px-2 rounded-lg" onClick={() => onSetPaid(t.id)} title="Marcar como Pago"><CheckCircleIcon className="w-4 h-4"/></Button>
+                                                        <button 
+                                                            className="p-1 rounded hover:bg-success/10 text-text-secondary hover:text-success border border-transparent hover:border-success/30 transition-all" 
+                                                            onClick={() => onSetPaid(t.id)} 
+                                                            title="Marcar como Pago"
+                                                        >
+                                                            <CheckCircleIcon className="w-4 h-4"/>
+                                                        </button>
                                                     )}
-                                                    <Button variant="ghost" className="py-1 px-2 rounded-lg hover:bg-surface" onClick={() => handleEdit(t)}><EditIcon className="w-4 h-4 opacity-70"/></Button>
-                                                    <Button variant="ghostDanger" className="py-1 px-2 rounded-lg" onClick={() => onDelete(t.id)}><TrashIcon className="w-4 h-4"/></Button>
+                                                    <button 
+                                                        className="p-1 rounded hover:bg-secondary/10 text-text-secondary hover:text-primary border border-transparent hover:border-secondary/30 transition-all" 
+                                                        onClick={() => handleEdit(t)} 
+                                                        title="Editar"
+                                                    >
+                                                        <EditIcon className="w-4 h-4"/>
+                                                    </button>
+                                                    <button 
+                                                        className="p-1 rounded hover:bg-danger/10 text-text-secondary hover:text-danger border border-transparent hover:border-danger/30 transition-all" 
+                                                        onClick={() => onDelete(t.id)} 
+                                                        title="Excluir"
+                                                    >
+                                                        <TrashIcon className="w-4 h-4"/>
+                                                    </button>
                                                 </>
                                             ) : (
-                                                <span className="text-[10px] uppercase font-black text-primary px-2 py-1 bg-primary/10 rounded">Projetado</span>
+                                                <span className="text-[9px] uppercase font-bold text-secondary px-1.5 py-0.5 bg-secondary/15 rounded border border-secondary/25">Projetado</span>
                                             )}
                                         </div>
                                     </td>
@@ -1843,7 +2128,7 @@ const TransactionsView: FC<{
                             ))}
                             {filtered.length === 0 && (
                                 <tr>
-                                    <td colSpan={activeTab === TransactionType.EXPENSE ? 6 : 5} className="p-8 text-center text-text-secondary text-sm">Nenhuma transação encontrada.</td>
+                                    <td colSpan={activeTab === TransactionType.EXPENSE ? 6 : 5} className="p-6 text-center text-text-secondary text-sm">Nenhuma transação encontrada.</td>
                                 </tr>
                             )}
                         </tbody>
@@ -2333,6 +2618,7 @@ const ImportedRevenuesView: FC<{
     const [importSummary, setImportSummary] = useState<{ records: any[], totalAmount: number } | null>(null);
     const [editingRevenue, setEditingRevenue] = useState<ImportedRevenue | null>(null);
     const [selectedRevenueIds, setSelectedRevenueIds] = useState<Set<string>>(new Set());
+    const [showReconciliationReport, setShowReconciliationReport] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleSyncAdvisorLinks = async () => {
@@ -2661,6 +2947,99 @@ const ImportedRevenuesView: FC<{
         });
     }, [filteredRevenues, advisors, estimatedTaxRate, selectedYear, selectedMonth, selectedAdvisorId]);
 
+    const reconciliationReport = useMemo(() => {
+        const targetAdvisors = selectedAdvisorId === 'all' ? advisors : advisors.filter(a => a.id === selectedAdvisorId);
+
+        return targetAdvisors.map(a => {
+            const mainRevenues = filteredRevenues.filter(r => 
+                r.advisorId === a.id || normalizeName(r.advisorName) === normalizeName(a.name)
+            );
+
+            const faturamentoBruto = mainRevenues.reduce((sum, r) => sum + (r.revenueAmount || 0), 0);
+            
+            const totalTax = mainRevenues.reduce((sum, r) => {
+                const net = r.estimatedNetRevenue || round((r.revenueAmount || 0) * (1 - (r.taxRate || globalTaxRate) / 100));
+                return sum + ((r.revenueAmount || 0) - net);
+            }, 0);
+
+            const faturamentoLiquido = faturamentoBruto - totalTax;
+
+            const repasseBrutoAssessor = mainRevenues.reduce((sum, r) => {
+                const net = r.estimatedNetRevenue || round((r.revenueAmount || 0) * (1 - (r.taxRate || globalTaxRate) / 100));
+                return sum + (r.advisorShare || round(net * 0.70));
+            }, 0);
+
+            const crmDesconto = Math.abs((a.costs || []).reduce((acc, c) => acc + c.value, 0));
+
+            let repiquePago = 0;
+            mainRevenues.forEach(record => {
+                if (record.hasReferral && record.referralPercentage && record.referralPercentage > 0) {
+                    if (record.referralAmountLocked && record.referralAmount) {
+                        repiquePago += record.referralAmount;
+                    } else {
+                        const net = record.estimatedNetRevenue || round((record.revenueAmount || 0) * (1 - (record.taxRate || globalTaxRate) / 100));
+                        const recordAdvisorShare = round(net * 0.70);
+                        const proRataCrm = repasseBrutoAssessor > 0 ? (crmDesconto * (recordAdvisorShare / repasseBrutoAssessor)) : 0;
+                        const recordNetCommission = Math.max(recordAdvisorShare - proRataCrm, 0);
+                        repiquePago += round(recordNetCommission * (record.referralPercentage / 100));
+                    }
+                }
+            });
+
+            let repiqueRecebido = 0;
+            const referralInRevenues = filteredRevenues.filter(r => 
+                r.referralAdvisorId === a.id || normalizeName(r.referralAdvisorName) === normalizeName(a.name)
+            );
+            referralInRevenues.forEach(record => {
+                if (record.hasReferral && record.referralPercentage && record.referralPercentage > 0) {
+                    if (record.referralAmountLocked && record.referralAmount) {
+                        repiqueRecebido += record.referralAmount;
+                    } else {
+                        const pAdvisor = advisors.find(ad => ad.id === record.advisorId);
+                        if (pAdvisor) {
+                            const pRecords = filteredRevenues.filter(r => 
+                                r.advisorId === pAdvisor.id
+                            );
+                            const pTotalAdvisorShare = pRecords.reduce((sum, r) => {
+                                const net = r.estimatedNetRevenue || round((r.revenueAmount || 0) * (1 - (r.taxRate || globalTaxRate) / 100));
+                                return sum + round(net * 0.70);
+                            }, 0);
+                            const pCrmCost = Math.abs((pAdvisor.costs || []).reduce((acc, c) => acc + c.value, 0));
+                            
+                            const net = record.estimatedNetRevenue || round((record.revenueAmount || 0) * (1 - (record.taxRate || globalTaxRate) / 100));
+                            const recordAdvisorShare = round(net * 0.70);
+                            const proRataCrm = pTotalAdvisorShare > 0 ? (pCrmCost * (recordAdvisorShare / pTotalAdvisorShare)) : 0;
+                            const recordNetCommission = Math.max(recordAdvisorShare - proRataCrm, 0);
+                            repiqueRecebido += round(recordNetCommission * (record.referralPercentage / 100));
+                        }
+                    }
+                }
+            });
+
+            const comissaoLiquidaAssessor = Math.max(repasseBrutoAssessor - crmDesconto, 0);
+            const crmNaoCoberto = Math.max(crmDesconto - repasseBrutoAssessor, 0);
+            
+            const comissaoFinalLiquida = round(comissaoLiquidaAssessor - repiquePago + repiqueRecebido);
+            
+            const repasseEscritorio = faturamentoLiquido - repasseBrutoAssessor;
+            const resultadoEscritorio = round(repasseEscritorio - crmNaoCoberto);
+
+            return {
+                advisorId: a.id,
+                name: a.name,
+                faturamentoBruto,
+                imposto: totalTax,
+                faturamentoLiquido,
+                repasseBrutoAssessor,
+                crmDesconto,
+                repiquePago,
+                repiqueRecebido,
+                comissaoFinalLiquida,
+                resultadoEscritorio
+            };
+        });
+    }, [filteredRevenues, advisors, globalTaxRate, selectedAdvisorId]);
+
     const advisorSummary = useMemo(() => {
         if (selectedAdvisorId === 'all') return null;
         const advisor = advisors.find(a => a.id === selectedAdvisorId);
@@ -2699,10 +3078,10 @@ const ImportedRevenuesView: FC<{
         };
     }, [filteredRevenues, selectedAdvisorId, advisors, totals]);
 
-    const getStatusLabel = (status?: CommissionStatus, lancamentosRealizados?: boolean) => {
-        if (status === CommissionStatus.COMPLETED || lancamentosRealizados) return { 
+    const getStatusLabel = (status?: CommissionStatus) => {
+        if (status === CommissionStatus.COMPLETED) return { 
             label: 'Lançamento Completo', 
-            style: { background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.50)', border: '0.5px solid rgba(255,255,255,0.12)' }
+            style: { background: 'rgba(16,185,129,0.1)', color: 'rgba(16,185,129,1)', border: '0.5px solid rgba(16,185,129,0.3)' }
         };
         if (status === CommissionStatus.COMMISSION_LAUNCHED) return { label: 'Comissão Lançada', color: 'text-blue-400', bg: 'bg-blue-400/10' };
         if (status === CommissionStatus.REVENUE_LAUNCHED) return { label: 'Receita Lançada', color: 'text-indigo-400', bg: 'bg-indigo-400/10' };
@@ -2733,7 +3112,7 @@ const ImportedRevenuesView: FC<{
             'Valor Indicação': r.referralAmount || 0,
             'Líquido Assessor': r.responsibleAdvisorNet || 0,
             'Resultado Escritório': r.advisorOperationalResult || 0,
-            'Status': getStatusLabel(r.status, r.lancamentosRealizados).label
+            'Status': getStatusLabel(r.status).label
         }));
 
         const ws = XLSX.utils.json_to_sheet(exportData);
@@ -2933,8 +3312,11 @@ const ImportedRevenuesView: FC<{
                     <Button 
                         onClick={() => setIsClosingModalOpen(true)} 
                         variant="success" 
-                        className="text-sm"
-                        disabled={selectedAdvisorId === 'all'}
+                        className="text-sm shadow-sm"
+                        disabled={selectedAdvisorId === 'all' || selectedRevenueIds.size === 0 || Array.from(selectedRevenueIds).some(id => {
+                            const rev = importedRevenues.find(r => r.id === id);
+                            return rev?.status === CommissionStatus.COMPLETED || rev?.lancamentosRealizados;
+                        })}
                     >
                         <CheckCircleIcon className="w-4 h-4 mr-2"/> Fechar comissões ({selectedRevenueIds.size})
                     </Button>
@@ -3092,101 +3474,160 @@ const ImportedRevenuesView: FC<{
 
             <div style={{ borderTop: '0.5px solid rgba(255,255,255,0.07)', margin: '14px 0' }} />
 
-            {selectedAdvisorId === 'all' && advisorProfitability.length > 0 && (
+            {reconciliationReport.length > 0 && (
                 <div style={{ marginBottom: '24px' }}>
-                    <div className="flex items-center justify-between mb-4 px-1">
-                        <div className="flex items-center gap-2">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.50)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
-                                <polyline points="16 7 22 7 22 13"></polyline>
-                            </svg>
-                            <h3 style={{ fontSize: '12px', fontWeight: 500, color: 'rgba(255,255,255,0.75)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Rentabilidade por Assessor</h3>
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 px-1 gap-2">
+                        <div className="flex items-center gap-3">
+                            <span className="p-2 bg-primary/10 rounded-lg text-primary">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                    <polyline points="14 2 14 8 20 8"></polyline>
+                                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                                    <polyline points="10 9 9 9 8 9"></polyline>
+                                </svg>
+                            </span>
+                            <div>
+                                <h3 style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(255,255,255,0.9)' }} className="tracking-tight uppercase">
+                                    Relatório de Conciliação e Fechamento
+                                </h3>
+                                <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)' }}>
+                                    Detalhamento de comissionamento, tributos, custos e repiques no período
+                                </p>
+                            </div>
                         </div>
-                        <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)' }}>
-                            {advisorProfitability.filter(a => a.status === 'Lucrativo').length} lucrativos · {advisorProfitability.filter(a => a.status === 'Subsidiado').length} subsidiados
-                        </div>
+                        <Button 
+                            onClick={() => setShowReconciliationReport(!showReconciliationReport)}
+                            variant="secondary"
+                            className="text-[11px] py-1 px-3 border border-border-color/40 h-8"
+                        >
+                            {showReconciliationReport ? 'Ocultar Relatório Detalhado' : 'Ver Relatório de Conciliação'}
+                        </Button>
                     </div>
-                    
-                    <div style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: '12px', padding: '4px 16px' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <thead>
-                                <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-                                    <th style={{ padding: '12px 0', textAlign: 'left', width: '40px' }}></th>
-                                    <th style={{ padding: '12px 0', textAlign: 'left', fontSize: '10px', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 500 }}>Assessor</th>
-                                    <th style={{ padding: '12px 0', textAlign: 'left', fontSize: '10px', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 500 }}>Resultado</th>
-                                    <th style={{ padding: '12px 0', textAlign: 'right', fontSize: '10px', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 500 }}>Cobertura CRM</th>
-                                    <th style={{ padding: '12px 0', textAlign: 'right', fontSize: '10px', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 500 }}>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {advisorProfitability.map((item, index) => {
-                                    const coverage = item.crmCusto > 0 ? (item.totalParcelaAssessor / item.crmCusto) * 100 : 100;
-                                    const isProfitable = item.status === 'Lucrativo';
-                                    const isSubsidized = item.status === 'Subsidiado';
-                                    
-                                    return (
-                                        <tr key={item.advisorId} style={{ borderBottom: index === advisorProfitability.length - 1 ? 'none' : '0.5px solid rgba(255,255,255,0.05)' }} className="hover:bg-white/[0.02] transition-colors">
-                                            <td style={{ padding: '12px 0' }}>
-                                                <div style={{ 
-                                                    width: '30px', 
-                                                    height: '30px', 
-                                                    borderRadius: '50%', 
-                                                    background: isProfitable ? 'rgba(110, 231, 183, 0.1)' : isSubsidized ? 'rgba(252, 165, 165, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-                                                    color: isProfitable ? '#6ee7b7' : isSubsidized ? '#fca5a5' : 'rgba(255, 255, 255, 0.5)',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    fontSize: '11px',
-                                                    fontWeight: 600
-                                                }}>
-                                                    {item.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
-                                                </div>
-                                            </td>
-                                            <td style={{ padding: '12px 0' }}>
-                                                <span style={{ fontSize: '13px', fontWeight: 500, color: 'rgba(255,255,255,0.82)' }}>{item.name}</span>
-                                            </td>
-                                            <td style={{ padding: '12px 0' }}>
-                                                <span style={{ fontSize: '14px', fontWeight: 600, color: item.result < 0 ? '#f87171' : '#34d399' }}>
-                                                    {formatCurrency(item.result)}
-                                                </span>
-                                            </td>
-                                            <td style={{ padding: '12px 0', textAlign: 'right' }}>
-                                                <div style={{ display: 'inline-block', width: '80px' }}>
-                                                    <div style={{ background: 'rgba(255,255,255,0.06)', height: '4px', borderRadius: '4px', width: '100%', overflow: 'hidden' }}>
-                                                        <div style={{ 
-                                                            background: coverage >= 100 ? '#34d399' : '#f87171', 
-                                                            height: '100%', 
-                                                            width: `max(${Math.min(coverage, 100)}%, 2px)` 
-                                                        }} />
-                                                    </div>
-                                                    <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.35)', marginTop: '3px' }}>
-                                                        {Math.round(coverage)}%
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td style={{ padding: '12px 0', textAlign: 'right' }}>
-                                                <div style={{ 
-                                                    display: 'inline-flex', 
-                                                    alignItems: 'center', 
-                                                    gap: '6px',
-                                                    padding: '3px 8px', 
-                                                    border: `0.5px solid ${isProfitable ? 'rgba(52, 211, 153, 0.2)' : isSubsidized ? 'rgba(248, 113, 113, 0.2)' : 'rgba(251, 191, 36, 0.2)'}`,
-                                                    borderRadius: '99px', 
-                                                    background: isProfitable ? 'rgba(52, 211, 153, 0.1)' : isSubsidized ? 'rgba(248, 113, 113, 0.1)' : 'rgba(251, 191, 36, 0.1)',
-                                                    color: isProfitable ? '#34d399' : isSubsidized ? '#f87171' : '#fbbf24',
-                                                    fontSize: '10px',
-                                                    fontWeight: 500
-                                                }}>
-                                                    <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'currentColor' }} />
-                                                    {item.status}
-                                                </div>
-                                            </td>
+
+                    {showReconciliationReport ? (
+                        <Card className="p-2 sm:p-4 bg-surface border border-border-color/50 overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse text-[10px] sm:text-xs font-mono">
+                                    <thead>
+                                        <tr className="border-b border-border-color text-text-secondary uppercase select-none text-[9px] tracking-wider bg-background/30">
+                                            <th className="p-3 font-medium">Assessor</th>
+                                            <th className="p-3 font-medium text-right">Fat. Bruto</th>
+                                            <th className="p-3 font-medium text-right text-danger">Imposto</th>
+                                            <th className="p-3 font-medium text-right text-green-400">Fat. Líquido</th>
+                                            <th className="p-3 font-medium text-right">Partilha Assessor</th>
+                                            <th className="p-3 font-medium text-right text-danger">Desc. CRM</th>
+                                            <th className="p-3 font-medium text-right text-danger">Repique Pago</th>
+                                            <th className="p-3 font-medium text-right text-green-400">Repique Rec.</th>
+                                            <th className="p-3 font-medium text-right text-primary font-bold">Comissão Líq.</th>
+                                            <th className="p-3 font-medium text-right font-bold text-amber-500">Result. Escrit.</th>
                                         </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
+                                    </thead>
+                                    <tbody className="divide-y divide-border-color/10">
+                                        {reconciliationReport.map(item => (
+                                            <tr key={item.advisorId} className="hover:bg-background/45 transition-colors">
+                                                <td className="p-3 font-sans font-bold text-text-primary capitalize">{item.name}</td>
+                                                <td className="p-3 text-right">{formatCurrency(item.faturamentoBruto)}</td>
+                                                <td className="p-3 text-right text-danger">{formatCurrency(item.imposto)}</td>
+                                                <td className="p-3 text-right text-green-400 font-semibold">{formatCurrency(item.faturamentoLiquido)}</td>
+                                                <td className="p-3 text-right">{formatCurrency(item.repasseBrutoAssessor)} <span className="text-[9px] text-text-secondary">(70%)</span></td>
+                                                <td className="p-3 text-right text-danger">-{formatCurrency(item.crmDesconto)}</td>
+                                                <td className="p-3 text-right text-danger">-{formatCurrency(item.repiquePago)}</td>
+                                                <td className="p-3 text-right text-green-400">+{formatCurrency(item.repiqueRecebido)}</td>
+                                                <td className="p-3 text-right text-primary font-bold">{formatCurrency(item.comissaoFinalLiquida)}</td>
+                                                <td className={`p-3 text-right font-bold ${item.resultadoEscritorio >= 0 ? 'text-amber-500' : 'text-danger'}`}>
+                                                    {formatCurrency(item.resultadoEscritorio)}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </Card>
+                    ) : (
+                        selectedAdvisorId === 'all' && (
+                            <div style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: '12px', padding: '4px 16px' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                    <thead>
+                                        <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
+                                            <th style={{ padding: '12px 0', textAlign: 'left', width: '40px' }}></th>
+                                            <th style={{ padding: '12px 0', textAlign: 'left', fontSize: '10px', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 500 }}>Assessor</th>
+                                            <th style={{ padding: '12px 0', textAlign: 'left', fontSize: '10px', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 500 }}>Resultado</th>
+                                            <th style={{ padding: '12px 0', textAlign: 'right', fontSize: '10px', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 500 }}>Cobertura CRM</th>
+                                            <th style={{ padding: '12px 0', textAlign: 'right', fontSize: '10px', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 500 }}>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {advisorProfitability.map((item, index) => {
+                                            const coverage = item.crmCusto > 0 ? (item.totalParcelaAssessor / item.crmCusto) * 100 : 100;
+                                            const isProfitable = item.status === 'Lucrativo';
+                                            const isSubsidized = item.status === 'Subsidiado';
+                                            
+                                            return (
+                                                <tr key={item.advisorId} style={{ borderBottom: index === advisorProfitability.length - 1 ? 'none' : '0.5px solid rgba(255,255,255,0.05)' }} className="hover:bg-white/[0.02] transition-colors">
+                                                    <td style={{ padding: '12px 0' }}>
+                                                        <div style={{ 
+                                                            width: '30px', 
+                                                            height: '30px', 
+                                                            borderRadius: '50%', 
+                                                            background: isProfitable ? 'rgba(110, 231, 183, 0.1)' : isSubsidized ? 'rgba(252, 165, 165, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+                                                            color: isProfitable ? '#6ee7b7' : isSubsidized ? '#fca5a5' : 'rgba(255, 255, 255, 0.5)',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            fontSize: '11px',
+                                                            fontWeight: 600
+                                                        }}>
+                                                            {item.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ padding: '12px 0' }}>
+                                                        <span style={{ fontSize: '13px', fontWeight: 500, color: 'rgba(255,255,255,0.82)' }}>{item.name}</span>
+                                                    </td>
+                                                    <td style={{ padding: '12px 0' }}>
+                                                        <span style={{ fontSize: '14px', fontWeight: 600, color: item.result < 0 ? '#f87171' : '#34d399' }}>
+                                                            {formatCurrency(item.result)}
+                                                        </span>
+                                                    </td>
+                                                    <td style={{ padding: '12px 0', textAlign: 'right' }}>
+                                                        <div style={{ display: 'inline-block', width: '80px' }}>
+                                                            <div style={{ background: 'rgba(255,255,255,0.06)', height: '4px', borderRadius: '4px', width: '100%', overflow: 'hidden' }}>
+                                                                <div style={{ 
+                                                                    background: coverage >= 100 ? '#34d399' : '#f87171', 
+                                                                    height: '100%', 
+                                                                    width: `max(${Math.min(coverage, 100)}%, 2px)` 
+                                                                }} />
+                                                            </div>
+                                                            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.35)', marginTop: '3px' }}>
+                                                                {Math.round(coverage)}%
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ padding: '12px 0', textAlign: 'right' }}>
+                                                        <div style={{ 
+                                                            display: 'inline-flex', 
+                                                            alignItems: 'center', 
+                                                            gap: '6px',
+                                                            padding: '3px 8px', 
+                                                            border: `0.5px solid ${isProfitable ? 'rgba(52, 211, 153, 0.2)' : isSubsidized ? 'rgba(248, 113, 113, 0.2)' : 'rgba(251, 191, 36, 0.2)'}`,
+                                                            borderRadius: '99px', 
+                                                            background: isProfitable ? 'rgba(52, 211, 153, 0.1)' : isSubsidized ? 'rgba(248, 113, 113, 0.1)' : 'rgba(251, 191, 36, 0.1)',
+                                                            color: isProfitable ? '#34d399' : isSubsidized ? '#f87171' : '#fbbf24',
+                                                            fontSize: '10px',
+                                                            fontWeight: 500
+                                                        }}>
+                                                            <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'currentColor' }} />
+                                                            {item.status}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )
+                    )}
                 </div>
             )}
 
@@ -3313,12 +3754,35 @@ const ImportedRevenuesView: FC<{
                                     <td className="print-only-cell p-4">{r.observacao || '-'}</td>
                                     <td className="p-4 text-center">
                                         <div className="flex flex-col items-center gap-1">
-                                            <div 
-                                                className={`px-2 py-1 rounded text-[9px] font-bold uppercase ${getStatusLabel(r.status, r.lancamentosRealizados).bg || ''} ${getStatusLabel(r.status, r.lancamentosRealizados).color || ''}`}
-                                                style={getStatusLabel(r.status, r.lancamentosRealizados).style}
+                                            <select 
+                                                className={`px-2 py-1 rounded text-[9px] font-bold uppercase cursor-pointer text-center select-none border border-white/5 focus:outline-none focus:ring-1 focus:ring-primary/40 ${getStatusLabel(r.status).bg || 'bg-background'} ${getStatusLabel(r.status).color || 'text-text-secondary'}`}
+                                                style={{...getStatusLabel(r.status).style, WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none', textAlignLast: 'center'}}
+                                                value={r.status || 'pending'}
+                                                onChange={async (e) => {
+                                                    const val = e.target.value;
+                                                    let statusVal: CommissionStatus = CommissionStatus.PENDING;
+                                                    let lancamentosRealizados = false;
+                                                    if (val === 'completed') {
+                                                        statusVal = CommissionStatus.COMPLETED;
+                                                        lancamentosRealizados = true;
+                                                    } else if (val === 'commission_launched') {
+                                                        statusVal = CommissionStatus.COMMISSION_LAUNCHED;
+                                                    } else if (val === 'revenue_launched') {
+                                                        statusVal = CommissionStatus.REVENUE_LAUNCHED;
+                                                    } else if (val === 'tax_provisioned') {
+                                                        statusVal = CommissionStatus.TAX_PROVISIONED;
+                                                    } else {
+                                                        statusVal = CommissionStatus.PENDING;
+                                                    }
+                                                    await onUpdate(r.id, { status: statusVal, lancamentosRealizados });
+                                                }}
                                             >
-                                                {getStatusLabel(r.status, r.lancamentosRealizados).label}
-                                            </div>
+                                                <option className="bg-[#1e293b] text-text-secondary" value="pending">Pendente de Lançamento</option>
+                                                <option className="bg-[#1e293b] text-blue-400" value="commission_launched">Comissão Lançada</option>
+                                                <option className="bg-[#1e293b] text-indigo-400" value="revenue_launched">Receita Lançada</option>
+                                                <option className="bg-[#1e293b] text-orange-400" value="tax_provisioned">Impostos Provisionados</option>
+                                                <option className="bg-[#1e293b] text-green-400" value="completed">Lançamento Completo</option>
+                                            </select>
                                         </div>
                                     </td>
                                     <td className="no-print p-4 text-right">
@@ -3479,6 +3943,7 @@ const ReportsView: FC<{
 
     const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
     const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all');
+    const [dreRegime, setDreRegime] = useState<'competencia' | 'caixa'>('competencia');
 
     const filterFn = (dateStr: string) => {
         const d = new Date(dateStr);
@@ -3510,14 +3975,19 @@ const ReportsView: FC<{
             const info = getStructuralInfo(t);
             if (!info.impactaDRE) return false;
             if (t.type === TransactionType.EXPENSE) {
-                return t.status === ExpenseStatus.PAID || t.status === ExpenseStatus.CLEARED;
+                if (dreRegime === 'caixa') {
+                    return t.status === ExpenseStatus.PAID || t.status === ExpenseStatus.CLEARED;
+                } else {
+                    return true; // Competência includes all
+                }
             }
             return true;
         });
 
         // 1. RECEITA OPERACIONAL BRUTA
+        // Filtrar transações com origin === 'comissoes' para evitar dupla contagem com importedRevenues
         const manualOpRevenue = dreTransactions
-            .filter(t => t.type === TransactionType.INCOME && getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.RECEITA_OPERACIONAL)
+            .filter(t => t.type === TransactionType.INCOME && t.origin !== 'comissoes' && getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.RECEITA_OPERACIONAL)
             .reduce((sum, t) => sum + t.amount, 0);
         
         const importedOpRevenue = importedRevenues
@@ -3580,7 +4050,7 @@ const ReportsView: FC<{
             resultadoFinal, 
             sortedExpenses 
         };
-    }, [transactions, importedRevenues, incomeCategories, expenseCategories, selectedYear, selectedMonth]);
+    }, [transactions, importedRevenues, incomeCategories, expenseCategories, selectedYear, selectedMonth, dreRegime]);
 
     const valuationMonthlyData = useMemo(() => {
         const monthlyMap: Record<string, { opRevenue: number; opExpense: number; pjBalanceInMonth: number }> = {};
@@ -3654,7 +4124,7 @@ const ReportsView: FC<{
                 }, 0));
 
                 const resultadoOperacionalMes = round(data.opRevenue - data.opExpense);
-                const valuation = calcularValuation(resultadoOperacionalMes); // Using operational result for valuation
+                const valuation = resultadoOperacionalMes > 0 ? round(resultadoOperacionalMes * 5) : null;
                 
                 const date = new Date(year, month - 1, 1, 12, 0, 0);
                 return {
@@ -3668,12 +4138,178 @@ const ReportsView: FC<{
     }, [transactions, importedRevenues, incomeCategories, expenseCategories, selectedYear, selectedMonth]);
 
     const accumulatedOpResult = round(dreData.resultadoOperacional);
-    const accumulatedValuation = accumulatedOpResult > 0 ? round(accumulatedOpResult * 5) : 0;
+    const accumulatedValuation = accumulatedOpResult > 0 ? round(accumulatedOpResult * 5) : null;
+
+    const handleDREExportPDF = () => {
+        if (!jspdf) {
+            alert('Erro: Biblioteca jspdf não está disponível globalmente.');
+            return;
+        }
+
+        const doc = new jspdf.jsPDF('p', 'mm', 'a4');
+        const companyName = "ACI Capital - Assessoria de Investimentos";
+        const today = new Date().toLocaleDateString('pt-BR');
+        const nowTime = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        const emissionLabel = `${today} às ${nowTime}`;
+
+        const monthLabel = selectedMonth !== 'all' 
+            ? ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][selectedMonth as number] 
+            : '';
+        const yearLabel = selectedYear === 'all' ? 'Todo o Período' : selectedYear.toString();
+        const periodLabel = monthLabel ? `${monthLabel} / ${yearLabel}` : yearLabel;
+        const regimeLabel = dreRegime === 'competencia' ? 'Regime de Competência (Amortizado)' : 'Regime de Caixa (Fluxo Pago)';
+
+        // 1. Beautiful Solid Header Block
+        doc.setFillColor(26, 33, 74); // #1A214A - Rich Navy
+        doc.rect(0, 0, 210, 42, 'F');
+
+        doc.setTextColor(255, 255, 255);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(22);
+        doc.text("ACI Capital", 15, 18);
+        
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(170, 185, 220);
+        doc.text("CONSULTORIA E GESTÃO DE INVESTIMENTOS", 15, 24);
+        
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(11);
+        doc.setTextColor(255, 255, 255);
+        doc.text("DEMONSTRATIVO DO RESULTADO DO EXERCÍCIO (DRE)", 15, 34);
+
+        // Metadata box
+        doc.setFillColor(248, 249, 250); 
+        doc.rect(15, 48, 180, 24, 'F');
+        doc.setDrawColor(220, 225, 235);
+        doc.rect(15, 48, 180, 24, 'S');
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8.5);
+        doc.setTextColor(70, 80, 95);
+        doc.text("Período de Referência:", 20, 54);
+        doc.text("Regime Selecionado:", 20, 60);
+        doc.text("Emissão do Relatório:", 20, 66);
+
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(26, 33, 74);
+        doc.text(periodLabel.toUpperCase(), 60, 54);
+        doc.text(regimeLabel, 60, 60);
+        doc.text(emissionLabel, 60, 66);
+
+        // Rows calculation
+        const rows = [
+            { label: "1. RECEITA OPERACIONAL BRUTA", isSummary: true, val: dreData.receitaBruta },
+            { label: "   (-) DEDUÇÕES DA RECEITA", isSummary: false, val: -Math.abs(dreData.deducoes), indent: true },
+            { label: "2. (=) RECEITA OPERACIONAL LÍQUIDA", isSummary: true, val: dreData.receitaLiquida, bg: true },
+            { label: "   (-) CUSTOS OPERACIONAIS", isSummary: false, val: -Math.abs(dreData.custos), indent: true },
+            { label: "3. (=) RESULTADO BRUTO", isSummary: true, val: dreData.resultadoBruto, bg: true },
+            { label: "   (-) DESPESAS OPERACIONAIS", isSummary: false, val: -Math.abs(dreData.despesasOperacionais), indent: true },
+        ];
+
+        dreData.sortedExpenses.forEach(exp => {
+            rows.push({
+                label: `       - ${exp.name}`,
+                isSummary: false,
+                val: -Math.abs(exp.value),
+                indent: true
+            });
+        });
+
+        rows.push(
+            { label: "4. (=) RESULTADO OPERACIONAL", isSummary: true, val: dreData.resultadoOperacional, bg: true },
+            { label: "   (+) OUTRAS RECEITAS NÃO OPERACIONAIS", isSummary: false, val: dreData.outrasReceitas, indent: true },
+            { label: "5. (=) RESULTADO FINAL (LÍQUIDO)", isSummary: true, val: dreData.resultadoFinal, bg: true }
+        );
+
+        let y = 82;
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.setTextColor(40, 44, 55);
+        
+        doc.text("ESTRUTURA DE CONTAS", 18, y);
+        doc.text("VALOR CONTÁBIL (R$)", 190, y, { align: 'right' });
+        
+        y += 3;
+        doc.setLineWidth(0.5);
+        doc.setDrawColor(26, 33, 74);
+        doc.line(15, y, 195, y);
+        y += 6;
+
+        const fCurr = (amount: number) => {
+            return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(amount);
+        };
+
+        rows.forEach(row => {
+            if (y > 275) {
+                doc.addPage();
+                y = 20;
+            }
+
+            if (row.bg) {
+                doc.setFillColor(240, 245, 255); 
+                doc.rect(15, y - 4.5, 180, 6.5, 'F');
+            } else if (row.isSummary) {
+                doc.setFillColor(242, 244, 247); 
+                doc.rect(15, y - 4.5, 180, 6.5, 'F');
+            }
+
+            if (row.isSummary) {
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(9.5);
+                doc.setTextColor(26, 33, 74);
+            } else {
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(row.label.startsWith('       ') ? 8 : 9);
+                doc.setTextColor(80, 85, 95);
+            }
+
+            doc.text(row.label, 18, y);
+
+            if (row.val < 0) {
+                doc.setTextColor(170, 50, 50); // elegant slate red
+            } else if (row.val > 0 && row.isSummary) {
+                doc.setTextColor(30, 110, 80); // elegant emerald
+            } else if (row.val > 0) {
+                doc.setTextColor(45, 50, 60);
+            } else {
+                doc.setTextColor(130, 130, 140);
+            }
+
+            doc.text(fCurr(row.val), 190, y, { align: 'right' });
+
+            doc.setLineWidth(0.15);
+            doc.setDrawColor(230, 235, 240);
+            doc.line(15, y + 2.5, 195, y + 2.5);
+
+            y += 7.2;
+        });
+
+        // Signatures
+        if (y < 235) {
+            y = 250;
+            doc.setLineWidth(0.4);
+            doc.setDrawColor(190, 200, 210);
+            doc.line(35, y, 85, y);
+            doc.line(125, y, 175, y);
+
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(8);
+            doc.setTextColor(115, 120, 130);
+            doc.text("Controladoria Financeira", 60, y + 4, { align: 'center' });
+            doc.text("Diretoria de Operações", 150, y + 4, { align: 'center' });
+        }
+
+        doc.save(`DRE_ACI_Capital_${periodLabel.replace(/[\s/]/g, '_')}.pdf`);
+    };
 
     return (
-        <div className="space-y-6 animate-fade-in">
+        <div className="space-y-6 animate-fade-in text-text-primary">
              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Relatórios</h2>
+                <div>
+                    <h2 className="text-2xl font-bold bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent uppercase tracking-tight">Relatórios & DRE</h2>
+                    <p className="text-text-secondary text-xs sm:text-sm">Analise balanços contábeis estruturados e valuation pro-forma</p>
+                </div>
                 <div className="flex flex-wrap gap-2">
                     <select 
                         value={selectedYear} 
@@ -3694,40 +4330,148 @@ const ReportsView: FC<{
                 </div>
             </div>
 
-            <Card className="max-w-4xl mx-auto">
-                <div className="border-b border-border-color pb-4 mb-4">
-                    <h3 className="text-xl font-bold text-text-primary text-center uppercase tracking-tight">Demonstrativo do Resultado (DRE)</h3>
-                    <p className="text-center text-text-secondary text-sm">
-                        {selectedMonth !== 'all' ? ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][selectedMonth as number] + ' ' : ''}
-                        {selectedYear === 'all' ? 'Todo o Período' : selectedYear}
-                    </p>
+            {/* CARD PRINCIPAL DRE */}
+            <Card className="max-w-4xl mx-auto border border-border-color/40 shadow-xl relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-full h-[3px] bg-gradient-to-r from-emerald-500 via-primary to-blue-500"></div>
+                <div className="border-b border-border-color pb-4 mb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <h3 className="text-lg font-bold text-text-primary uppercase tracking-tight flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse"></span>
+                            Demonstrativo do Resultado do Exercício
+                        </h3>
+                        <p className="text-text-secondary text-xs">
+                            Relatório executivo estruturado para tomada da decisão estratégica
+                        </p>
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-2 items-center justify-start md:justify-end">
+                        <Button 
+                            onClick={handleDREExportPDF} 
+                            variant="secondary" 
+                            className="text-xs py-1.5 px-3 flex items-center gap-1.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 shadow-sm"
+                            title="Exportar DRE formatado para PDF"
+                        >
+                            <FileTextIcon className="w-4 h-4"/> Exportar PDF de Apresentação
+                        </Button>
+                    </div>
                 </div>
-                <div className="space-y-3 font-mono text-sm sm:text-base">
-                    <div className="flex justify-between items-center py-2"><span className="font-bold text-text-primary">RECEITA OPERACIONAL BRUTA</span><span className="font-bold text-green-400">{formatCurrency(dreData.receitaBruta)}</span></div>
-                    
-                    <div className="flex justify-between items-center py-1 text-text-secondary text-xs sm:text-sm pl-4"><span>(-) DEDUÇÕES DA RECEITA</span><span className="text-danger">{formatCurrency(dreData.deducoes)}</span></div>
-                    
-                    <div className="flex justify-between items-center py-2 border-t border-border-color/30 mt-1"><span className="font-bold text-text-primary">(=) RECEITA OPERACIONAL LÍQUIDA</span><span className="font-bold text-green-400">{formatCurrency(dreData.receitaLiquida)}</span></div>
-                    
-                    <div className="flex justify-between items-center py-1 text-text-secondary text-xs sm:text-sm pl-4"><span>(-) CUSTOS OPERACIONAIS</span><span className="text-danger">{formatCurrency(dreData.custos)}</span></div>
-                    
-                    <div className="flex justify-between items-center py-2 border-t border-border-color/30 mt-1"><span className="font-bold text-text-primary">(=) RESULTADO BRUTO</span><span className={`font-bold ${dreData.resultadoBruto >= 0 ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(dreData.resultadoBruto)}</span></div>
-                    
-                    <div className="flex justify-between items-center py-1 text-text-secondary text-xs sm:text-sm pl-4"><span>(-) DESPESAS OPERACIONAIS</span><span className="text-danger">{formatCurrency(dreData.despesasOperacionais)}</span></div>
-                    
-                    <div className="pl-8 space-y-1">
-                        {dreData.sortedExpenses.map((exp, idx) => (
-                            <div key={idx} className="flex justify-between text-text-secondary text-[10px] sm:text-xs hover:bg-background/50 px-2 rounded"><span>{exp.name}</span><span>{formatCurrency(exp.value)}</span></div>
-                        ))}
+
+                <div className="flex flex-col sm:flex-row items-center justify-between mb-6 p-4 bg-background/35 border border-border-color/25 rounded-lg gap-4">
+                    <div className="text-center sm:text-left">
+                        <span className="text-[10px] uppercase font-bold text-text-secondary block">Período Selecionado</span>
+                        <span className="text-sm font-bold text-text-primary font-sans uppercase">
+                            {selectedMonth !== 'all' ? ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][selectedMonth as number] + ' ' : ''}
+                            {selectedYear === 'all' ? 'Todo o Período' : selectedYear}
+                        </span>
                     </div>
 
-                    <div className="flex justify-between items-center py-2 border-t border-border-color/30 mt-1"><span className="font-bold text-text-primary">(=) RESULTADO OPERACIONAL</span><span className={`font-bold ${dreData.resultadoOperacional >= 0 ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(dreData.resultadoOperacional)}</span></div>
-                    
-                    <div className="flex justify-between items-center py-1 text-text-secondary text-xs sm:text-sm pl-4"><span>(+) OUTRAS RECEITAS</span><span className="text-green-400">{formatCurrency(dreData.outrasReceitas)}</span></div>
+                    <div className="inline-flex bg-background/80 rounded-lg p-0.5 border border-border-color text-xs font-semibold shadow-inner">
+                        <button
+                            onClick={() => setDreRegime('competencia')}
+                            className={`px-3 py-1.5 rounded-md transition-all ${dreRegime === 'competencia' ? 'bg-primary text-background font-bold shadow' : 'text-text-secondary hover:text-text-primary'}`}
+                            title="Regime de Competência: inclui despesas e custos no período da feco, independente de já estarem pagos"
+                        >
+                            Competência (Comprometimento)
+                        </button>
+                        <button
+                            onClick={() => setDreRegime('caixa')}
+                            className={`px-3 py-1.5 rounded-md transition-all ${dreRegime === 'caixa' ? 'bg-primary text-background font-bold shadow' : 'text-text-secondary hover:text-text-primary'}`}
+                            title="Regime de Caixa: baseado estritamente na data de pagamento das despesas lançadas como pagas"
+                        >
+                            Caixa (Liquidação Efetuada)
+                        </button>
+                    </div>
+                </div>
 
-                    <div className="flex justify-between items-center py-3 border-t-2 border-border-color mt-4 bg-background/30 px-2 rounded">
-                        <span className="font-bold text-lg text-text-primary">(=) RESULTADO FINAL</span>
-                        <span className={`font-bold text-lg ${dreData.resultadoFinal >= 0 ? 'text-green-400' : 'text-danger'}`}>{formatCurrency(dreData.resultadoFinal)}</span>
+                {/* ESTRUTURA METÓDICA DO DRE */}
+                <div className="space-y-1 text-sm bg-background/5 border border-border-color/10 rounded-xl overflow-hidden shadow-lg p-1.5">
+                    
+                    {/* 1. RECEITA OPERACIONAL BRUTA */}
+                    <div className="flex justify-between items-center py-2.5 px-4 rounded-lg bg-surface hover:bg-surface/80 transition-all">
+                        <span className="font-bold text-text-primary text-[13px] tracking-wide uppercase">1. FATURAMENTO BRUTO (RECOB/RECOM)</span>
+                        <span className="font-bold tracking-tight text-emerald-400 font-mono text-base">{formatCurrency(dreData.receitaBruta)}</span>
+                    </div>
+                    
+                    {/* - DEDUÇÕES */}
+                    <div className="flex justify-between items-center p-2.5 px-4 transition-all hover:bg-background/20 pl-8 border-b border-border-color/10">
+                        <div className="flex items-center gap-1.5 text-text-secondary">
+                            <span className="w-1.5 h-1.5 rounded bg-rose-500/50"></span>
+                            <span>(-) Deduções da Receita (DAS/Simples/Retenções)</span>
+                        </div>
+                        <span className="text-rose-455 font-mono text-[13px]">{dreData.deducoes > 0 ? '-' : ''}{formatCurrency(dreData.deducoes)}</span>
+                    </div>
+                    
+                    {/* 2. RECEITA OPERACIONAL LÍQUIDA */}
+                    <div className="flex justify-between items-center py-2.5 px-4 rounded-lg bg-emerald-500/5 border border-emerald-500/10 my-1">
+                        <span className="font-bold text-text-primary text-[13px] uppercase">2. (=) RECEITA OPERACIONAL LÍQUIDA</span>
+                        <span className="font-bold tracking-tight text-emerald-400 font-mono text-base">{formatCurrency(dreData.receitaLiquida)}</span>
+                    </div>
+                    
+                    {/* - CUSTOS */}
+                    <div className="flex justify-between items-center p-2.5 px-4 transition-all hover:bg-background/20 pl-8 border-b border-border-color/10">
+                        <div className="flex items-center gap-1.5 text-text-secondary">
+                            <span className="w-1.5 h-1.5 rounded bg-amber-500/50"></span>
+                            <span>(-) Custos Operacionais Diretos (Repasses/Parceiros)</span>
+                        </div>
+                        <span className="text-rose-455 font-mono text-[13px]">{dreData.custos > 0 ? '-' : ''}{formatCurrency(dreData.custos)}</span>
+                    </div>
+                    
+                    {/* 3. RESULTADO BRUTO */}
+                    <div className="flex justify-between items-center py-2.5 px-4 rounded-lg bg-blue-500/5 border border-blue-500/10 my-1">
+                        <span className="font-bold text-text-primary text-[13px] uppercase">3. (=) RESULTADO BRUTO</span>
+                        <span className={`font-bold tracking-tight font-mono text-base ${dreData.resultadoBruto >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {dreData.resultadoBruto < 0 ? '-' : ''}{formatCurrency(Math.abs(dreData.resultadoBruto))}
+                        </span>
+                    </div>
+                    
+                    {/* - DESPESAS OPERACIONAIS */}
+                    <div className="flex justify-between items-center p-2.5 px-4 transition-all hover:bg-background/20 pl-8">
+                        <div className="flex items-center gap-1.5 text-text-secondary">
+                            <span className="w-1.5 h-1.5 rounded bg-orange-500/50"></span>
+                            <span>(-) Despesas Administrativas & Operacionais</span>
+                        </div>
+                        <span className="text-rose-445 font-mono text-[13px]">{dreData.despesasOperacionais > 0 ? '-' : ''}{formatCurrency(dreData.despesasOperacionais)}</span>
+                    </div>
+                    
+                    {/* INDIVIDUAL EXPENSES BREAKDOWN */}
+                    <div className="pl-12 pr-4 py-1.5 space-y-1 border-l-2 border-border-color/30 ml-8 mb-2 bg-background/10 rounded-lg">
+                        {dreData.sortedExpenses.map((exp, idx) => (
+                            <div key={idx} className="flex justify-between text-text-secondary hover:text-text-primary text-xs py-1 px-1 hover:bg-background/40 transition-colors rounded">
+                                <span className="truncate max-w-[280px] sm:max-w-md">{exp.name}</span>
+                                <span className="font-mono font-medium">-{formatCurrency(exp.value)}</span>
+                            </div>
+                        ))}
+                        {dreData.sortedExpenses.length === 0 && (
+                            <div className="text-[10px] text-text-secondary italic p-1">Nenhuma despesa operacional detalhada neste período.</div>
+                        )}
+                    </div>
+
+                    {/* 4. RESULTADO OPERACIONAL */}
+                    <div className="flex justify-between items-center py-2.5 px-4 rounded-lg bg-purple-500/5 border border-purple-500/10 my-1">
+                        <span className="font-bold text-text-primary text-[13px] uppercase">4. (=) RESULTADO OPERACIONAL</span>
+                        <span className={`font-bold tracking-tight font-mono text-base ${dreData.resultadoOperacional >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {dreData.resultadoOperacional < 0 ? '-' : ''}{formatCurrency(Math.abs(dreData.resultadoOperacional))}
+                        </span>
+                    </div>
+                    
+                    {/* - OUTRAS RECEITAS */}
+                    <div className="flex justify-between items-center p-2.5 px-4 transition-all hover:bg-background/20 pl-8 border-b border-border-color/10 mb-1">
+                        <div className="flex items-center gap-1.5 text-text-secondary">
+                            <span className="w-1.5 h-1.5 rounded bg-cyan-500/50"></span>
+                            <span>(+) Outras Receitas Não Operacionais / Rendimentos</span>
+                        </div>
+                        <span className="text-emerald-400 font-mono text-[13px]">{formatCurrency(dreData.outrasReceitas)}</span>
+                    </div>
+
+                    {/* 5. RESULTADO FINAL HIGHLIGHT BOX */}
+                    <div className="flex justify-between items-center py-4 px-5 border-t border-border-color/50 mt-4 bg-gradient-to-r from-surface to-background/50 border-2 border-primary/25 rounded-xl shadow-md">
+                        <div>
+                            <span className="font-bold text-[14px] text-primary uppercase tracking-wide block">(=) RESULTADO FINAL LÍQUIDO</span>
+                            <span className="text-[10px] text-text-secondary">Resultado líquido contábil amortizado do período demonstrado</span>
+                        </div>
+                        <span className={`font-bold text-xl font-mono ${dreData.resultadoFinal >= 0 ? 'text-emerald-400' : 'text-rose-450'}`}>
+                            {dreData.resultadoFinal < 0 ? '-' : ''}{formatCurrency(Math.abs(dreData.resultadoFinal))}
+                        </span>
                     </div>
                 </div>
             </Card>
@@ -3753,8 +4497,12 @@ const ReportsView: FC<{
                                     <td className={`p-3 text-right ${item.resultadoOperacionalMes >= 0 ? 'text-green-400' : 'text-danger'}`}>
                                         {formatCurrency(item.resultadoOperacionalMes)}
                                     </td>
-                                    <td className={`p-3 text-right font-bold ${item.valuation >= 0 ? 'text-primary' : 'text-danger'}`}>
-                                        {formatCurrency(item.valuation)}
+                                    <td className={`p-3 text-right font-bold ${item.valuation !== null ? 'text-primary' : 'text-text-secondary'}`}>
+                                        {item.valuation !== null ? (
+                                            formatCurrency(item.valuation)
+                                        ) : (
+                                            <span className="text-text-secondary text-xs italic font-normal">Não Aplicável (Resultado negativo)</span>
+                                        )}
                                     </td>
                                 </tr>
                             ))}
@@ -3778,8 +4526,12 @@ const ReportsView: FC<{
                         </div>
                         <div className="flex justify-between items-center p-3 bg-surface rounded-lg border border-primary/30">
                             <span className="text-xs font-semibold text-primary">Valuation 5x Resultado Operacional:</span>
-                            <span className="text-lg font-bold text-primary">
-                                {formatCurrency(accumulatedValuation)}
+                            <span className="text-sm sm:text-base md:text-lg font-bold text-primary text-right">
+                                {accumulatedValuation !== null ? (
+                                    formatCurrency(accumulatedValuation)
+                                ) : (
+                                    <span className="text-text-secondary text-xs italic font-normal">Valuation não calculado por resultado operacional negativo</span>
+                                )}
                             </span>
                         </div>
                     </div>
@@ -3789,7 +4541,7 @@ const ReportsView: FC<{
     );
 };
 
-const COLORS = ['#D1822A', '#10B981', '#EF4444', '#3B82F6', '#F59E0B', '#6366F1'];
+const COLORS = ['#3b82f6', '#10b981', '#ff7a00', '#8b5cf6', '#ec4899', '#f43f5e'];
 
 interface DashboardViewProps {
     transactions: Transaction[];
@@ -3812,6 +4564,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
     const [showProjection, setShowProjection] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+    const [dashboardDreRegime, setDashboardDreRegime] = useState<'competencia' | 'caixa'>('competencia');
     
     const availableYears = useMemo(() => {
         const yearsSet = new Set(transactions.map(t => t.date ? new Date(t.date).getUTCFullYear() : null).filter((y): y is number => y !== null));
@@ -3849,12 +4602,19 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
             const info = getStructuralInfo(t);
             if (!info.impactaDRE) return false;
             if (t.type === TransactionType.EXPENSE) {
-                return t.status === ExpenseStatus.PAID || t.status === ExpenseStatus.CLEARED;
+                if (dashboardDreRegime === 'caixa') {
+                    return t.status === ExpenseStatus.PAID || t.status === ExpenseStatus.CLEARED;
+                } else {
+                    return true; // Competência includes all
+                }
             }
             return true;
         });
 
-        const manualIncome = dreTransactions.filter(t => t.type === TransactionType.INCOME).reduce<number>((acc, t) => acc + t.amount, 0);
+        // Filtrar transações com origin === 'comissoes' para evitar dupla contagem com importedRevenues
+        const manualIncome = dreTransactions
+            .filter(t => t.type === TransactionType.INCOME && t.origin !== 'comissoes')
+            .reduce<number>((acc, t) => acc + t.amount, 0);
         
         const importedIncome = importedRevenues
             .filter(r => {
@@ -3870,7 +4630,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         const expense = round(dreTransactions.filter(t => t.type === TransactionType.EXPENSE).reduce<number>((acc, t) => acc + t.amount, 0));
         
         return { totalIncome: income, totalExpense: expense, resultadoPeriodo: round(Number(income) - Number(expense)) };
-    }, [filteredTransactions, importedRevenues, incomeCategories, expenseCategories, selectedYear, selectedMonth]);
+    }, [filteredTransactions, importedRevenues, incomeCategories, expenseCategories, selectedYear, selectedMonth, dashboardDreRegime]);
 
     const saldoHoje = useMemo(() => round(transactions.reduce((acc: number, t: Transaction) => {
         const txDate = new Date(t.date).getTime();
@@ -3901,6 +4661,8 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         }
         return acc;
     }, 0)), [transactions]);
+
+    const saldoDisponivel = useMemo(() => round(saldoHoje - saldoProvisaoHoje), [saldoHoje, saldoProvisaoHoje]);
 
     const achievedGoals = useMemo(() => goals.filter(g => (Number(g.currentAmount) || 0) >= g.targetAmount).length, [goals]);
     
@@ -3956,26 +4718,79 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         const curM = now.getUTCMonth();
         const curY = now.getUTCFullYear();
         
-        // Busca gastos fixos do mês anterior como base para a projeção
-        const refDate = new Date(Date.UTC(curY, curM - 1, 1));
-        const refYear = refDate.getUTCFullYear();
-        const refMonth = refDate.getUTCMonth();
-
-        const fixedInCurrent = transactions.filter(t => {
+        // 1. Calcular médias dos últimos 3 meses fechados/completos
+        const threeMonthsAgo = new Date(Date.UTC(curY, curM - 3, 1));
+        const oneMonthAgoEnd = new Date(Date.UTC(curY, curM, 0, 23, 59, 59));
+        
+        const recentRealTransactions = transactions.filter(t => {
             const d = new Date(t.date);
-            return t.type === TransactionType.EXPENSE &&
-                   t.nature === ExpenseNature.FIXED &&
-                   d.getUTCFullYear() === refYear &&
-                   d.getUTCMonth() === refMonth;
+            return d >= threeMonthsAgo && d <= oneMonthAgoEnd && !t.isProjection;
         });
-        const monthlyFixedTotal = round(fixedInCurrent.reduce((sum, t) => sum + t.amount, 0));
+
+        const recentExpenses = recentRealTransactions.filter(t => t.type === TransactionType.EXPENSE);
+        const fixedExpensesTotal = recentExpenses.filter(e => e.nature === ExpenseNature.FIXED).reduce((sum, e) => sum + e.amount, 0);
+        const avgMonthlyFixedExpense = round(fixedExpensesTotal / 3);
+
+        const recentIncomes = recentRealTransactions.filter(t => t.type === TransactionType.INCOME && t.origin !== 'comissoes');
+        const manualIncomeTotal = recentIncomes.reduce((sum, t) => sum + t.amount, 0);
+        
+        const recentImported = (importedRevenues || []).filter(r => {
+            const d = new Date(r.date);
+            return d >= threeMonthsAgo && d <= oneMonthAgoEnd;
+        });
+        const importedIncomeTotal = recentImported.reduce((sum, r) => sum + (r.officeNetRevenue || 0), 0);
+        
+        const avgMonthlyIncome = round((manualIncomeTotal + importedIncomeTotal) / 3);
 
         const bankBalance = historyCashFlow.length > 0 ? historyCashFlow[historyCashFlow.length - 1].balance : 0;
         let projectedBalance = bankBalance;
         const projectionPoints = [];
+
         for (let i = 1; i <= 12; i++) {
-            const projDate = new Date(Date.UTC(curY, curM + i + 1, 0));
-            projectedBalance = round(projectedBalance - monthlyFixedTotal);
+            const targetMonthIndex = curM + i;
+            const targetMonth = targetMonthIndex % 12;
+            const targetYear = curY + Math.floor(targetMonthIndex / 12);
+            
+            // Buscar itens cadastrados especificamente para este mês futuro
+            const scheduledFixed = transactions.filter(t => {
+                const d = new Date(t.date);
+                return t.type === TransactionType.EXPENSE &&
+                       t.nature === ExpenseNature.FIXED &&
+                       !t.isProjection &&
+                       new Date(t.date).getUTCFullYear() === targetYear &&
+                       new Date(t.date).getUTCMonth() === targetMonth;
+            }).reduce((sum, t) => sum + t.amount, 0);
+
+            const scheduledVariableAndOthers = transactions.filter(t => {
+                const d = new Date(t.date);
+                return t.type === TransactionType.EXPENSE &&
+                       t.nature !== ExpenseNature.FIXED &&
+                       !t.isProjection &&
+                       new Date(t.date).getUTCFullYear() === targetYear &&
+                       new Date(t.date).getUTCMonth() === targetMonth;
+            }).reduce((sum, t) => sum + t.amount, 0);
+
+            const scheduledIncome = transactions.filter(t => {
+                const d = new Date(t.date);
+                return t.type === TransactionType.INCOME &&
+                       !t.isProjection &&
+                       new Date(t.date).getUTCFullYear() === targetYear &&
+                       new Date(t.date).getUTCMonth() === targetMonth;
+            }).reduce((sum, t) => sum + t.amount, 0);
+
+            // Despesa total projetada: maior entre a média fixa histórica e fixas agendadas + despesas variáveis/outros agendados
+            const projectedExpenseForMonth = round(
+                Math.max(avgMonthlyFixedExpense, scheduledFixed) + scheduledVariableAndOthers
+            );
+
+            // Receita total projetada: maior entre a média mensal e receitas agendadas
+            const projectedIncomeForMonth = round(
+                Math.max(avgMonthlyIncome, scheduledIncome)
+            );
+
+            projectedBalance = round(projectedBalance + projectedIncomeForMonth - projectedExpenseForMonth);
+            
+            const projDate = new Date(Date.UTC(targetYear, targetMonth + 1, 0));
             projectionPoints.push({
                 date: formatDate(projDate.toISOString()),
                 balance: projectedBalance,
@@ -3984,50 +4799,184 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         }
 
         return [...historyCashFlow, ...projectionPoints];
-    }, [historyCashFlow, showProjection, transactions]);
+    }, [historyCashFlow, showProjection, transactions, importedRevenues]);
+
+    const chartData = useMemo(() => {
+        const data = showProjection ? cashFlowData : historyCashFlow;
+        const lastRealIndex = data.map(d => d.isProjection).lastIndexOf(false);
+        return data.map((d, index) => {
+            const isProj = d.isProjection;
+            const bal = d.balance;
+            return {
+                date: d.date,
+                realBalance: isProj ? undefined : bal,
+                projectedBalance: (isProj || index === lastRealIndex) ? bal : undefined,
+                isProjection: isProj
+            };
+        });
+    }, [cashFlowData, historyCashFlow, showProjection]);
 
     const handlePayClick = (bill: Transaction) => { setEditingTransaction({ ...bill, status: ExpenseStatus.PAID }); setIsModalOpen(true); };
     const handleFormSubmit = (data: TransactionFormValues) => { if (editingTransaction) onEdit(editingTransaction.id, data); setIsModalOpen(false); setEditingTransaction(null); };
 
      return (
-        <div className="space-y-6 animate-fade-in">
-            <div className="flex flex-col sm:flex-row gap-4">
-                <div className="flex-1">
-                    <div className="flex gap-6 mb-3">
-                        <div className="flex flex-col">
-                            <span className="text-text-secondary font-semibold text-[10px] uppercase tracking-wider">Saldo Hoje</span>
-                            <span className={`text-sm font-bold ${saldoHoje >= 0 ? 'text-primary' : 'text-danger'}`}>{formatCurrency(saldoHoje)}</span>
-                        </div>
-                        <div className="flex flex-col">
-                            <span className="text-text-secondary font-semibold text-[10px] uppercase tracking-wider">Saldo Provisão</span>
-                            <span className={`text-sm font-bold ${saldoProvisaoHoje >= 0 ? 'text-primary' : 'text-danger'}`}>{formatCurrency(saldoProvisaoHoje)}</span>
-                        </div>
-                    </div>
-                    <h2 className="text-2xl font-bold text-text-primary mb-2 uppercase tracking-tight">Visão Geral</h2>
-                    <p className="text-text-secondary text-sm">Resumo do desempenho financeiro.</p>
-                </div>
-                <div className="flex items-center gap-2">
-                     <Button 
-                        onClick={() => setShowProjection(!showProjection)} 
-                        variant={showProjection ? "primary" : "secondary"} 
-                        className="text-xs py-1"
-                        title="Projetar fluxo para os próximos 12 meses baseado em gastos fixos"
-                    >
-                        <TrendingUpIcon className="w-4 h-4"/> {showProjection ? "Ocultar Projeção" : "Projetar 12 Meses"}
-                    </Button>
-                     <select value={selectedYear} onChange={e => setSelectedYear(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-surface border-border-color rounded-md p-2 text-xs">
-                        <option value="all">Todo o Período</option>{availableYears.map((year: any) => <option key={year} value={year}>{year}</option>)}
-                    </select>
-                     <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-surface border-border-color rounded-md p-2 text-xs">
-                        <option value="all">Todos os Meses</option>{['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'].map((m, i) => <option key={m} value={i}>{m}</option>)}
-                    </select>
+        <div className="space-y-6 animate-fade-in pr-1">
+            {/* Cabeçalho da página */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2">
+                <div>
+                    <h2 className="text-2xl font-bold text-text-primary tracking-tight">Painel de Controle</h2>
+                    <p className="text-text-secondary text-xs sm:text-sm">Visão instantânea do fluxo de caixa e progresso de metas.</p>
                 </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <Card className="border-l-4 border-green-400"><h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Receita Líquida</h3><p className="text-2xl font-bold text-green-400">{formatCurrency(totalIncome)}</p></Card>
-                <Card className="border-l-4 border-danger"><h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Despesa Total</h3><p className="text-2xl font-bold text-danger">{formatCurrency(totalExpense)}</p></Card>
-                <Card className="border-l-4 border-primary"><h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Resultado do Período</h3><p className={`text-2xl font-bold ${resultadoPeriodo >= 0 ? 'text-text-primary' : 'text-danger'}`}>{formatCurrency(resultadoPeriodo)}</p></Card>
-                <Card className="border-l-4 border-blue-400"><h3 className="text-text-secondary text-[10px] uppercase font-bold tracking-wider">Metas Atingidas</h3><p className="text-2xl font-bold text-blue-400">{achievedGoals} <span className="text-lg text-text-secondary font-normal">/ {goals.length}</span></p></Card>
+
+            {/* SEÇÃO 1: CAIXA (Visão de Liquidez) */}
+            <div className="bg-surface/50 border border-border-color/60 rounded-xl p-5 md:p-6 shadow-sm">
+                <div className="flex items-center gap-3 mb-4">
+                    <div className="bg-secondary/15 p-2 rounded-lg text-secondary">
+                        <WalletIcon className="w-5 h-5"/>
+                    </div>
+                    <div>
+                        <h3 className="text-sm font-bold uppercase tracking-wider text-text-primary">Controle de Caixa (Posição Geral)</h3>
+                        <p className="text-xs text-text-secondary">Saldos reais e provisões acumuladas em conta</p>
+                    </div>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    {/* Saldo Bruto */}
+                    <div className="bg-background/40 border border-border-color/40 rounded-xl p-4.5 flex flex-col justify-between">
+                        <div>
+                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Saldo Bruto em Conta</span>
+                            <p className={`text-xl font-bold mt-1.5 ${saldoHoje >= 0 ? 'text-text-primary' : 'text-danger'}`}>{formatCurrency(saldoHoje)}</p>
+                        </div>
+                        <span className="text-[10px] text-text-secondary/85 mt-3">Soma de todas as entradas menos despesas pagas</span>
+                    </div>
+
+                    {/* Provisão de Impostos */}
+                    <div className="bg-background/40 border border-border-color/40 rounded-xl p-4.5 flex flex-col justify-between">
+                        <div>
+                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Reserva de Impostos (Provisão)</span>
+                            <p className="text-xl font-bold mt-1.5 text-orange-400">{formatCurrency(saldoProvisaoHoje)}</p>
+                        </div>
+                        <span className="text-[10px] text-text-secondary/85 mt-3">Valor provisionado para tributações futuras</span>
+                    </div>
+
+                    {/* Saldo Disponível */}
+                    <div className="bg-secondary/5 border border-secondary/15 rounded-xl p-4.5 flex flex-col justify-between shadow-xs">
+                        <div>
+                            <span className="text-[10px] font-bold text-secondary uppercase tracking-wider block">Saldo Disponível Real (Livre)</span>
+                            <p className={`text-2xl font-bold mt-1.5 ${saldoDisponivel >= 0 ? 'text-success' : 'text-danger'}`}>{formatCurrency(saldoDisponivel)}</p>
+                        </div>
+                        <span className="text-[10px] text-secondary/80 mt-3 font-medium">Recurso financeiro livre (Saldo Bruto - Provisão)</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* SEÇÃO 2: RESULTADO DO PERÍODO (Filtragem por competência/caixa) */}
+            <div className="border-t border-border-color/40 pt-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-5">
+                    <div>
+                        <h3 className="text-sm font-bold uppercase tracking-wider text-text-primary">
+                            Desempenho no Período ({dashboardDreRegime === 'competencia' ? 'Competência' : 'Caixa'})
+                        </h3>
+                        <p className="text-xs text-text-secondary">Estatísticas calculadas a partir das datas filtradas</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 self-stretch sm:self-auto">
+                        <div className="inline-flex bg-background/60 rounded-lg p-0.5 border border-border-color/40 text-[11px] font-semibold mr-1 h-9 items-center">
+                            <button
+                                onClick={() => setDashboardDreRegime('competencia')}
+                                className={`px-2.5 py-1 rounded-md transition-all h-7 flex items-center ${dashboardDreRegime === 'competencia' ? 'bg-primary text-background font-bold shadow-xs' : 'text-text-secondary hover:text-text-primary'}`}
+                                title="Regime de Competência: inclui todas as despesas lançadas para o período, pagas ou pendentes"
+                            >
+                                Competência
+                            </button>
+                            <button
+                                onClick={() => setDashboardDreRegime('caixa')}
+                                className={`px-2.5 py-1 rounded-md transition-all h-7 flex items-center ${dashboardDreRegime === 'caixa' ? 'bg-primary text-background font-bold shadow-xs' : 'text-text-secondary hover:text-text-primary'}`}
+                                title="Regime de Caixa: inclui apenas despesas devidamente pagas"
+                            >
+                                Caixa
+                            </button>
+                        </div>
+                        <Button 
+                            onClick={() => setShowProjection(!showProjection)} 
+                            variant={showProjection ? "primary" : "secondary"} 
+                            className="text-xs py-1.5 px-3 h-9 animate-none"
+                            title="Projetar fluxo para os próximos 12 meses baseado em histórico robusto"
+                        >
+                            <TrendingUpIcon className="w-4 h-4"/> {showProjection ? "Ocultar Projeção" : "Projetar 12m"}
+                        </Button>
+                        <select value={selectedYear} onChange={e => setSelectedYear(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-surface border border-border-color/80 rounded-lg p-2 text-xs h-9 text-text-primary hover:border-slate-600 focus:outline-none transition-colors">
+                            <option value="all">Todo o Período</option>{availableYears.map((year: any) => <option key={year} value={year}>{year}</option>)}
+                        </select>
+                        <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-surface border border-border-color/80 rounded-lg p-2 text-xs h-9 text-text-primary hover:border-slate-600 focus:outline-none transition-colors">
+                            <option value="all">Todos os Meses</option>{['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'].map((m, i) => <option key={m} value={i}>{m}</option>)}
+                        </select>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                    {/* Receita Líquida */}
+                    <div className="bg-surface border border-border-color/65 rounded-xl p-5 flex flex-col justify-between shadow-xs">
+                        <div className="flex justify-between items-start">
+                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Receita Líquida</span>
+                            <div className="bg-success/10 p-1.5 rounded-lg text-success">
+                                <ArrowUpRightIcon className="w-4 h-4" />
+                            </div>
+                        </div>
+                        <div className="mt-4">
+                            <p className="text-2xl font-bold text-success tracking-tight">{formatCurrency(totalIncome)}</p>
+                            <span className="text-[10px] text-text-secondary mt-1 block">Receitas manuais + comissões abertas</span>
+                        </div>
+                    </div>
+
+                    {/* Despesa Total */}
+                    <div className="bg-surface border border-border-color/65 rounded-xl p-5 flex flex-col justify-between shadow-xs">
+                        <div className="flex justify-between items-start">
+                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Despesa Total</span>
+                            <div className="bg-danger/10 p-1.5 rounded-lg text-danger">
+                                <ArrowDownRightIcon className="w-4 h-4" />
+                            </div>
+                        </div>
+                        <div className="mt-4">
+                            <p className="text-2xl font-bold text-danger tracking-tight">{formatCurrency(totalExpense)}</p>
+                            <span className="text-[10px] text-text-secondary mt-1 block">
+                                {dashboardDreRegime === 'competencia' ? 'Contas pagas + pendentes' : 'Apenas contas pagas'}
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Resultado do Período */}
+                    <div className="bg-surface border border-border-color/65 rounded-xl p-5 flex flex-col justify-between shadow-xs">
+                        <div className="flex justify-between items-start">
+                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Resultado do Período</span>
+                            <div className={`p-1.5 rounded-lg ${resultadoPeriodo >= 0 ? 'bg-secondary/10 text-secondary' : 'bg-danger/10 text-danger'}`}>
+                                <ScaleIcon className="w-4 h-4" />
+                            </div>
+                        </div>
+                        <div className="mt-4">
+                            <p className={`text-2xl font-bold tracking-tight ${resultadoPeriodo >= 0 ? 'text-[#10b981]' : 'text-danger'}`}>{formatCurrency(resultadoPeriodo)}</p>
+                            <span className="text-[10px] text-text-secondary mt-1 block">
+                                Demonstrativo por {dashboardDreRegime === 'competencia' ? 'competência' : 'caixa'}
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Metas Atingidas */}
+                    <div className="bg-surface border border-border-color/65 rounded-xl p-5 flex flex-col justify-between shadow-xs">
+                        <div className="flex justify-between items-start">
+                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Metas Atingidas</span>
+                            <div className="bg-purple-500/10 p-1.5 rounded-lg text-purple-400">
+                                <TargetIcon className="w-4 h-4" />
+                            </div>
+                        </div>
+                        <div className="mt-4">
+                            <p className="text-2xl font-bold text-purple-400 tracking-tight">
+                                {achievedGoals} <span className="text-sm font-normal text-text-secondary">/ {goals.length}</span>
+                            </p>
+                            <span className="text-[10px] text-text-secondary mt-1 block">Metas com progresso concluído</span>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             {upcomingBills.length > 0 && (
@@ -4036,14 +4985,14 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                         <div className="bg-danger/10 p-2 rounded-full"><AlertCircleIcon className="w-5 h-5 text-danger" /></div>
                         <div><h3 className="text-base font-bold uppercase tracking-tight">Contas a Pagar</h3></div>
                     </div>
-                    <table className="w-full text-center border-collapse text-xs sm:text-sm">
+                    <table className="w-full border-collapse text-xs">
                         <thead>
-                            <tr className="text-text-secondary border-b border-border-color/30 uppercase text-[10px]">
-                                <th className="py-2">Vencimento</th>
-                                <th>Descrição</th>
-                                <th>Valor</th>
-                                <th>Status</th>
-                                <th>Ação</th>
+                            <tr className="text-text-secondary border-b border-border-color/30 uppercase text-[9px] tracking-wider">
+                                <th className="py-2.5 px-3 text-left font-semibold">Vencimento</th>
+                                <th className="py-2.5 px-3 text-left font-semibold">Descrição</th>
+                                <th className="py-2.5 px-3 text-right font-semibold">Valor</th>
+                                <th className="py-2.5 px-3 text-center font-semibold">Status</th>
+                                <th className="py-2.5 px-3 text-right font-semibold">Ação</th>
                             </tr>
                         </thead>
                         <tbody>{upcomingBills.map(bill => {
@@ -4051,18 +5000,25 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                             todayStart.setHours(0,0,0,0);
                             const isOverdue = new Date(bill.date) < todayStart;
                             return (
-                                <tr key={bill.id} className="border-b border-border-color/10 last:border-0 hover:bg-background/50">
-                                    <td className="py-2 text-text-secondary">{formatDate(bill.date)}</td>
-                                    <td className="font-medium">{bill.description}</td>
-                                    <td className="font-bold text-danger">{formatCurrency(bill.amount)}</td>
-                                    <td>
-                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${isOverdue ? 'bg-danger/20 text-danger' : 'bg-yellow-500/20 text-yellow-500'}`}>
+                                <tr key={bill.id} className="border-b border-border-color/10 last:border-0 hover:bg-background/40 transition-colors h-10">
+                                    <td className="py-2 px-3 text-left text-text-secondary font-mono">{formatDate(bill.date)}</td>
+                                    <td className="py-2 px-3 text-left font-medium max-w-xs truncate" title={bill.description}>{bill.description}</td>
+                                    <td className="py-2 px-3 text-right font-mono font-bold text-danger">{formatCurrency(bill.amount)}</td>
+                                    <td className="py-2 px-3 text-center">
+                                        <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-bold ${isOverdue ? 'bg-danger/15 text-danger border border-danger/25' : 'bg-yellow-500/15 text-yellow-500 border border-yellow-500/25'}`}>
                                             {isOverdue ? 'VENCIDA' : 'PENDENTE'}
                                         </span>
                                     </td>
-                                    <td>
-                                        <div className="flex justify-center">
-                                            <Button onClick={() => handlePayClick(bill)} variant="success" className="py-1 px-3 text-[10px] w-fit shadow-none">Pagar</Button>
+                                    <td className="py-2 px-3 text-right">
+                                        <div className="flex justify-end">
+                                            <button 
+                                                onClick={() => handlePayClick(bill)} 
+                                                className="py-1 px-2.5 text-[10px] font-semibold bg-background hover:bg-success/10 border border-border-color/65 hover:border-success/30 rounded text-text-secondary hover:text-success flex items-center gap-1 transition-all"
+                                                title="Marcar como pago"
+                                            >
+                                                <CheckCircleIcon className="w-3.5 h-3.5" />
+                                                <span>Pagar</span>
+                                            </button>
                                         </div>
                                     </td>
                                 </tr>
@@ -4077,18 +5033,25 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                   <h3 className="text-lg font-bold mb-4 uppercase tracking-tight">Fluxo de Caixa {showProjection && <span className="text-xs text-primary ml-2">(com projeção 12m)</span>}</h3>
                   <div className="flex-grow">
                     <ResponsiveContainer>
-                      <AreaChart data={cashFlowData}>
+                      <AreaChart data={chartData}>
                         <defs>
-                          <linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#D1822A" stopOpacity={0.8}/>
-                            <stop offset="95%" stopColor="#D1822A" stopOpacity={0}/>
+                          <linearGradient id="colorReal" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.25}/>
+                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                          </linearGradient>
+                          <linearGradient id="colorProj" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#ff7a00" stopOpacity={0.15}/>
+                            <stop offset="95%" stopColor="#ff7a00" stopOpacity={0}/>
                           </linearGradient>
                         </defs>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2D376A" opacity={0.5} />
-                        <XAxis dataKey="date" stroke="#A0AEC0" tick={{fontSize:11}} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#A0AEC0" tickFormatter={v => `R$${(Number(v) as number)/1000}k`} tick={{fontSize:11}} width={60} tickLine={false} axisLine={false} />
-                        <Tooltip contentStyle={{backgroundColor:'#1A214A',border:'none',borderRadius:'8px'}} itemStyle={{color:'#D1822A'}} formatter={v => [formatCurrency(Number(v)), 'Saldo']}/>
-                        <Area type="monotone" dataKey="balance" stroke="#D1822A" strokeWidth={3} fillOpacity={1} fill="url(#colorBalance)" />
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" opacity={0.4} />
+                        <XAxis dataKey="date" stroke="#94a3b8" tick={{fontSize:10}} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#94a3b8" tickFormatter={v => `R$${(Number(v) as number)/1000}k`} tick={{fontSize:10}} width={62} tickLine={false} axisLine={false} />
+                        <Tooltip content={<CustomChartTooltip />} />
+                        <Area type="monotone" dataKey="realBalance" name="Saldo Real" stroke="#3b82f6" strokeWidth={2.5} fillOpacity={1} fill="url(#colorReal)" />
+                        {showProjection && (
+                          <Area type="monotone" dataKey="projectedBalance" name="Projeção" stroke="#ff7a00" strokeWidth={2} strokeDasharray="5 5" fillOpacity={1} fill="url(#colorProj)" />
+                        )}
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>

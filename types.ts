@@ -35,6 +35,7 @@ export interface Transaction {
   attachment?: string; 
   costCenter?: string;
   reconciled?: boolean; // Novo campo para conciliação bancária
+  origin?: 'manual' | 'importado' | 'comissoes'; // Origem da transação para evitar dupla contagem
   // Field to identify projected transactions (e.g., predicted fixed expenses for future months)
   isProjection?: boolean;
   
