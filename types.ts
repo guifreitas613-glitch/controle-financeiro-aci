@@ -46,6 +46,7 @@ export interface Transaction {
   commissionAmount?: number;
   advisorId?: string;
   splits?: AdvisorSplit[];
+  originTransactionId?: string;
 }
 
 export interface AdvisorParticipation {
