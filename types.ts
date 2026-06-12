@@ -172,6 +172,7 @@ export enum CategoryStructuralType {
     RECEITA_NAO_OPERACIONAL = 'receita_nao_operacional',
     CUSTO = 'custo',
     DESPESA_OPERACIONAL = 'despesa_operacional',
+    DESPESA_NAO_OPERACIONAL = 'despesa_nao_operacional',
     DEDUCAO_RECEITA = 'deducao_receita',
     INVESTIMENTO = 'investimento',
     SOCIETARIO = 'societario',

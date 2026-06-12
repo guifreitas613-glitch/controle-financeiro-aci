@@ -8,6 +8,7 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 import { logoutUser } from './auth';
 import { getTransactions, saveTransaction, updateTransaction, deleteTransaction as deleteTransactionFromDb, getImportedRevenues, saveImportedRevenue, deleteImportedRevenue, getRevenuesByPeriod, getPartnership, savePartnership, updateImportedRevenue, deleteAllImportedRevenues, getAdvisors, saveAdvisor, updateAdvisor, deleteAdvisor, getGoals, saveGoal, updateGoal, deleteGoal, getSettings, saveSettings } from './firestore';
 import { collection, addDoc, serverTimestamp, onSnapshot, query, orderBy, where, doc } from "firebase/firestore";
+import { runFinancialTestSuite } from './src/utils/financialTests';
 
 // --- UTILITÁRIOS GLOBAIS ---
 const round = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100;
@@ -76,6 +77,7 @@ const ClockIcon: FC<{ className?: string }> = ({ className }) => (<svg className
 const UsersIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>);
 const DollarSignIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>);
 const ShieldAlertIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>);
+const ShieldCheckIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 11 2 2 4-4"/></svg>);
 const AlertTriangleIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>);
 const TrendingDownIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"></polyline><polyline points="16 17 22 17 22 11"></polyline></svg>);
 
@@ -210,69 +212,33 @@ const calculateDRE = (
         return true;
     });
 
-    const dreImportedRevenues = (importedRevenues || []).filter(r => r.date && filterFn(r.date));
-
-    // 1. FATURAMENTO BRUTO: manual operating revenue + gross imported revenue
+    // 1. FATURAMENTO BRUTO: manual operating revenue ONLY
     const manualOpRevenue = dreTransactions
         .filter(t => t.type === TransactionType.INCOME && t.origin !== 'comissoes' && getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.RECEITA_OPERACIONAL)
         .reduce((sum, t) => sum + t.amount, 0);
 
-    const importedOpRevenue = dreImportedRevenues
-        .reduce((sum, r) => sum + (r.revenueAmount || 0), 0);
+    const faturamentoBruto = round(manualOpRevenue);
 
-    const faturamentoBruto = round(manualOpRevenue + importedOpRevenue);
-
-    // 2. DEDUÇÕES DA RECEITA: taxes, DAS, withholdings, and configured deductions
+    // 2. DEDUÇÕES DA RECEITA: taxes, DAS, withholdings, and configured deductions from transactions
     const manualDeducoes = dreTransactions
         .filter(t => getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.DEDUCAO_RECEITA)
         .reduce((sum, t) => sum + t.amount, 0);
 
-    const importedDeducoes = dreImportedRevenues.reduce((sum, r) => {
-        const net = getImportedNet(r);
-        const tax = round((r.revenueAmount || 0) - net);
-        return sum + tax;
-    }, 0);
-
-    const deducoes = round(manualDeducoes + importedDeducoes);
+    const deducoes = round(manualDeducoes);
 
     // 3. RECEITA OPERACIONAL LÍQUIDA: faturamento bruto menos deduções
     const receitaLiquida = round(faturamentoBruto - deducoes);
 
-    // 4. CUSTOS OPERACIONAIS: remuneração de assessores, CRM não coberto e custos diretamente ligados à produção
+    // 4. CUSTOS OPERACIONAIS: remuneração de assessores (manuais, splits ou geradas pelas comissões) e custos de produção
     const manualCustos = dreTransactions
-        .filter(t => getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.CUSTO && t.category !== "Remuneração de Assessores" && !t.originTransactionId)
+        .filter(t => getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.CUSTO && t.category !== "Remuneração de Assessores")
         .reduce((sum, t) => sum + t.amount, 0);
 
-    const manualSplitsCustos = dreTransactions
-        .filter(t => t.category === "Remuneração de Assessores" && t.originTransactionId)
+    const comissoesPagasCustos = dreTransactions
+        .filter(t => t.category === "Remuneração de Assessores")
         .reduce((sum, t) => sum + t.amount, 0);
 
-    const importedAdvisorRemuneration = dreImportedRevenues.reduce((sum, r) => {
-        if (r.advisorShare !== undefined) return sum + r.advisorShare;
-        return sum + round(getImportedNet(r) * 0.70);
-    }, 0);
-
-    let totalImportedCrmNaoCoberto = 0;
-    const closedRevenues = dreImportedRevenues.filter(r => r.lancamentosRealizados);
-    const unclosedRevenues = dreImportedRevenues.filter(r => !r.lancamentosRealizados);
-
-    totalImportedCrmNaoCoberto += closedRevenues.reduce((sum, r) => sum + (r.crmNaoCoberto || 0), 0);
-
-    const unclosedAdvisors = Array.from(new Set(unclosedRevenues.map(r => r.advisorId)));
-    unclosedAdvisors.forEach(advisorId => {
-        const a = advisors.find(adv => adv.id === advisorId);
-        if (!a) return;
-        const advisorUnclosedRevenues = unclosedRevenues.filter(r => r.advisorId === advisorId);
-        const crmDesconto = Math.abs((a.costs || []).reduce((acc, c) => acc + c.value, 0));
-        const repasseBrutoAssessor = advisorUnclosedRevenues.reduce((sum, r) => {
-            if (r.advisorShare !== undefined) return sum + r.advisorShare;
-            return sum + round(getImportedNet(r) * 0.70);
-        }, 0);
-        const crmNaoCoberto = Math.max(crmDesconto - repasseBrutoAssessor, 0);
-        totalImportedCrmNaoCoberto += crmNaoCoberto;
-    });
-
-    const custos = round(manualCustos + manualSplitsCustos + importedAdvisorRemuneration + totalImportedCrmNaoCoberto);
+    const custos = round(manualCustos + comissoesPagasCustos);
 
     // 5. DESPESAS OPERACIONAIS: estrutura, plataformas, marketing, administrativo
     const despesasOperacionais = round(dreTransactions
@@ -288,7 +254,7 @@ const calculateDRE = (
         .reduce((sum, t) => sum + t.amount, 0));
 
     const outrasDespesas = round(dreTransactions
-        .filter(t => t.type === TransactionType.EXPENSE && getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.RECEITA_NAO_OPERACIONAL)
+        .filter(t => t.type === TransactionType.EXPENSE && getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.DESPESA_NAO_OPERACIONAL)
         .reduce((sum, t) => sum + t.amount, 0));
 
     const resultadoFinal = round(resultadoOperacional + outrasReceitas - outrasDespesas);
@@ -388,6 +354,7 @@ const initialExpenseCategories: ExpenseCategory[] = [
     { name: 'Despesas Estruturais', type: ExpenseType.EXPENSE, tipoEstrutural: CategoryStructuralType.DESPESA_OPERACIONAL, impactaDRE: true },
     { name: 'Impostos e Encargos', type: ExpenseType.EXPENSE, tipoEstrutural: CategoryStructuralType.DEDUCAO_RECEITA, impactaDRE: true },
     { name: 'Mobiliário e Equipamentos', type: ExpenseType.EXPENSE, tipoEstrutural: CategoryStructuralType.INVESTIMENTO, impactaDRE: false },
+    { name: 'Gastos Não Operacionais', type: ExpenseType.NON_OPERATIONAL, tipoEstrutural: CategoryStructuralType.DESPESA_NAO_OPERACIONAL, impactaDRE: true },
     { name: 'Movimentações Societárias', type: ExpenseType.EXPENSE, tipoEstrutural: CategoryStructuralType.SOCIETARIO, impactaDRE: false },
     { name: 'Outros', type: ExpenseType.EXPENSE, tipoEstrutural: CategoryStructuralType.DESPESA_OPERACIONAL, impactaDRE: true },
 ];
@@ -854,38 +821,102 @@ const GoalsView: FC<{ goals: Goal[], onAdd: (g: any) => void, onUpdateProgress: 
             </div>
 
             {goals.length === 0 ? (
-                <div className="flex items-center justify-center py-12">
-                    <Card className="max-w-2xl text-center p-8 bg-surface border border-white/5 shadow-2xl flex flex-col items-center">
-                        <div className="p-4 bg-primary/10 text-primary rounded-full mb-5 border border-primary/20">
-                            <TargetIcon className="w-10 h-10" />
+                <div className="space-y-6 pt-2">
+                    {/* Intro Hero Section */}
+                    <div className="bg-surface border border-border-color/50 rounded-2xl p-6 md:p-8 flex flex-col md:flex-row gap-6 md:gap-10 items-center justify-between">
+                        <div className="space-y-3 max-w-2xl">
+                            <div className="inline-flex items-center gap-2 px-2.5 py-1 bg-primary/10 rounded-full border border-primary/20 text-[10px] font-bold text-primary uppercase tracking-wider">
+                                <TargetIcon className="w-3.5 h-3.5" /> Acompanhamento de Metas de Gestão
+                            </div>
+                            <h3 className="text-xl md:text-2xl font-bold tracking-tight text-text-primary">Estratégia & Metas Financeiras</h3>
+                            <p className="text-sm text-text-secondary leading-relaxed">
+                                O painel de metas permite blindar o fluxo de caixa do escritório, organizar reservas de contingência fiscal, planejar a retenção de lucros dos sócios e estipular alvos objetivos de crescimento para o time de assessores (Faturamento Líquido).
+                            </p>
                         </div>
-                        <h3 className="text-xl font-bold text-text-primary mb-2">Nenhuma meta financeira cadastrada</h3>
-                        <p className="text-text-secondary text-sm leading-relaxed mb-6 max-w-lg">
-                            Crie metas para acompanhar caixa mínimo, reserva tributária, distribuição de lucros ou crescimento de receita empresarial.
-                        </p>
-                        <div className="flex flex-col sm:flex-row gap-3 w-full justify-center">
+                        <Button 
+                            onClick={() => handleCreateWithPreset('', '')} 
+                            className="bg-primary hover:bg-opacity-95 text-xs font-bold py-3 px-5 whitespace-nowrap self-stretch md:self-auto flex items-center justify-center gap-2"
+                        >
+                            <PlusIcon className="w-4 h-4" /> Criar Meta Personalizada
+                        </Button>
+                    </div>
+
+                    <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider pl-1">Ou ative uma meta sugerida de excelente prática de gestão:</h4>
+
+                    {/* Pre-set Templates Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                        {/* Preset 1: Caixa Mínimo */}
+                        <div className="bg-surface/50 hover:bg-surface border border-border-color/50 hover:border-border-color rounded-xl p-5 flex flex-col justify-between transition-all duration-300 group">
+                            <div className="space-y-3">
+                                <div className="p-2.5 bg-blue-500/10 text-blue-400 border border-blue-500/10 rounded-lg w-10 h-10 flex items-center justify-center">
+                                    <WalletIcon className="w-5 h-5" />
+                                </div>
+                                <h4 className="font-bold text-text-primary group-hover:text-primary transition-colors">Caixa de Segurança</h4>
+                                <p className="text-xs text-text-secondary leading-relaxed">
+                                    Garanta estabilidade operacional e liquidez rápida em momentos de flutuação de receitas. Recomendado acumular de 3 a 6 meses de custos fixos recorrentes.
+                                </p>
+                                <div className="bg-background/40 rounded-lg p-2.5 border border-border-color/20 flex justify-between text-[11px] font-mono">
+                                    <span className="text-text-secondary">Sugestão Inicial:</span>
+                                    <strong className="text-text-primary">{formatCurrency(50000)}</strong>
+                                </div>
+                            </div>
                             <Button 
-                                onClick={() => handleCreateWithPreset('Reserva de Caixa Mínimo', '50000')} 
+                                onClick={() => handleCreateWithPreset('Caixa de Segurança Operacional', '50000')} 
                                 variant="secondary" 
-                                className="text-xs font-semibold py-2.5"
+                                className="w-full text-xs font-semibold py-2 mt-5"
                             >
-                                Criar meta de caixa mínimo
-                            </Button>
-                            <Button 
-                                onClick={() => handleCreateWithPreset('Crescimento de Receita Mensal', '100000')} 
-                                variant="secondary" 
-                                className="text-xs font-semibold py-2.5"
-                            >
-                                Criar meta de receita mensal
-                            </Button>
-                            <Button 
-                                onClick={() => handleCreateWithPreset('', '')} 
-                                className="bg-primary hover:bg-opacity-90 text-xs font-semibold py-2.5"
-                            >
-                                Criar meta personalizada
+                                Ativar Caixa de Segurança
                             </Button>
                         </div>
-                    </Card>
+
+                        {/* Preset 2: Provisões / Lucros */}
+                        <div className="bg-surface/50 hover:bg-surface border border-border-color/50 hover:border-border-color rounded-xl p-5 flex flex-col justify-between transition-all duration-300 group">
+                            <div className="space-y-3">
+                                <div className="p-2.5 bg-[#10b981]/10 text-[#10b981] border border-[#10b981]/10 rounded-lg w-10 h-10 flex items-center justify-center">
+                                    <ScaleIcon className="w-5 h-5" />
+                                </div>
+                                <h4 className="font-bold text-text-primary group-hover:text-[#10b981] transition-colors">Reserva Societária (Lucros)</h4>
+                                <p className="text-xs text-text-secondary leading-relaxed">
+                                    Separe fatias do resultado financeiro operacional para destinar a reservas de lucros retidos para recompra de quotas, investimentos societários ou novos parceiros.
+                                </p>
+                                <div className="bg-background/40 rounded-lg p-2.5 border border-border-color/20 flex justify-between text-[11px] font-mono">
+                                    <span className="text-text-secondary">Sugestão Inicial:</span>
+                                    <strong className="text-text-primary">{formatCurrency(25000)}</strong>
+                                </div>
+                            </div>
+                            <Button 
+                                onClick={() => handleCreateWithPreset('Reserva Societária', '25000')} 
+                                variant="secondary" 
+                                className="w-full text-xs font-semibold py-2 mt-5"
+                            >
+                                Ativar Reserva de Lucros
+                            </Button>
+                        </div>
+
+                        {/* Preset 3: Crescimento */}
+                        <div className="bg-surface/50 hover:bg-surface border border-border-color/50 hover:border-border-color rounded-xl p-5 flex flex-col justify-between transition-all duration-300 group">
+                            <div className="space-y-3">
+                                <div className="p-2.5 bg-yellow-500/10 text-yellow-400 border border-yellow-500/10 rounded-lg w-10 h-10 flex items-center justify-center">
+                                    <TrendingUpIcon className="w-5 h-5" />
+                                </div>
+                                <h4 className="font-bold text-text-primary group-hover:text-yellow-400 transition-colors">Meta de Crescimento (Faturamento)</h4>
+                                <p className="text-xs text-text-secondary leading-relaxed">
+                                    Estimule novos recordes comerciais e expanda a escala do escritório projetando um faturamento mensal ou anual acima das médias históricas.
+                                </p>
+                                <div className="bg-background/40 rounded-lg p-2.5 border border-border-color/20 flex justify-between text-[11px] font-mono">
+                                    <span className="text-text-secondary">Sugestão Inicial:</span>
+                                    <strong className="text-text-primary">{formatCurrency(120000)}</strong>
+                                </div>
+                            </div>
+                            <Button 
+                                onClick={() => handleCreateWithPreset('Meta de Crescimento Mensal', '120000')} 
+                                variant="secondary" 
+                                className="w-full text-xs font-semibold py-2 mt-5"
+                            >
+                                Ativar Meta Comercial
+                            </Button>
+                        </div>
+                    </div>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -942,8 +973,10 @@ const PartnershipView: FC<{
     incomeCategories?: IncomeCategory[],
     expenseCategories?: ExpenseCategory[],
     globalTaxRate?: number,
-    advisors?: Advisor[]
-}> = ({ partners, onSave, transactions = [], importedRevenues = [], incomeCategories = [], expenseCategories = [], globalTaxRate = 15, advisors = [] }) => {
+    advisors?: Advisor[],
+    valuationMultiple: number,
+    onValuationMultipleChange: (v: number) => void
+}> = ({ partners, onSave, transactions = [], importedRevenues = [], incomeCategories = [], expenseCategories = [], globalTaxRate = 15, advisors = [], valuationMultiple, onValuationMultipleChange }) => {
     const [newName, setNewName] = useState('');
     const [newPercentage, setNewPercentage] = useState('');
     const [newQuotas, setNewQuotas] = useState('');
@@ -952,9 +985,8 @@ const PartnershipView: FC<{
     const [sortConfig, setSortConfig] = useState<{ key: keyof Partner; direction: 'asc' | 'desc' } | null>({ key: 'percentage', direction: 'desc' });
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-    const valuation = useMemo(() => {
-        if (!transactions || transactions.length === 0) return null;
-        const dre = calculateDRE(
+    const dreCalculated = useMemo(() => {
+        return calculateDRE(
             transactions,
             importedRevenues,
             incomeCategories,
@@ -964,9 +996,10 @@ const PartnershipView: FC<{
             globalTaxRate,
             advisors
         );
-        const resultadoOperacional = dre.resultadoOperacional;
-        return resultadoOperacional > 0 ? round(resultadoOperacional * 5) : null;
     }, [transactions, importedRevenues, incomeCategories, expenseCategories, globalTaxRate, advisors]);
+
+    const resultadoOperacional = dreCalculated.resultadoOperacional;
+    const valuation = resultadoOperacional > 0 ? round(resultadoOperacional * valuationMultiple) : null;
 
     const totalPercent = partners.reduce((acc, p) => acc + p.percentage, 0);
     const totalQuotas = partners.reduce((acc, p) => acc + (p.quotas || 0), 0);
@@ -1077,8 +1110,11 @@ const PartnershipView: FC<{
 
     return (
         <div className="space-y-6 animate-fade-in">
-             <div className="flex justify-between items-center">
-                <div><h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Partnership ACI</h2><p className="text-text-secondary">Gerencie o quadro societário da empresa.</p></div>
+             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                    <h2 className="text-2xl font-bold bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent uppercase tracking-tight">Partnership ACI</h2>
+                    <p className="text-text-secondary text-sm">Gerencie o quadro societário de sócios-parceiros do escritório</p>
+                </div>
             </div>
 
             {Math.abs(totalPercent - 100) > 0.01 && (
@@ -1086,10 +1122,96 @@ const PartnershipView: FC<{
                     <AlertCircleIcon className="w-5 h-5 text-yellow-500 flex-shrink-0 animate-pulse" />
                     <div>
                         <span className="font-bold block text-sm mb-0.5">Quadro Societário Incompleto</span>
-                        O percentual societário total do escritório está diferente de 100%. Total atual: <strong className="text-white font-mono">{totalPercent.toFixed(2)}%</strong>.
+                        O percentual societário total do escritório está diferente de 100%. Total atual: <strong className="text-white font-mono">{totalPercent.toFixed(2)}%</strong>. O limite societário deve fechar em exatamente 100.00%.
                     </div>
                 </div>
             )}
+
+            {/* CARDS DE RESUMO DO PARTNERSHIP */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                {/* Card 1: Distribuição */}
+                <div className="bg-surface border border-border-color/60 rounded-xl p-5 flex flex-col justify-between shadow-xs">
+                    <div className="flex justify-between items-start">
+                        <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Quadro de Sócios</span>
+                        <div className="bg-blue-500/10 p-1.5 rounded-lg text-blue-400">
+                            <UsersIcon className="w-4 h-4" />
+                        </div>
+                    </div>
+                    <div className="mt-4">
+                        <p className="text-2xl font-bold tracking-tight text-text-primary">
+                            {partners.length} <span className="text-xs font-normal text-text-secondary">sócios ativos</span>
+                        </p>
+                        <div className="mt-3 w-full bg-background/50 rounded-full h-1.5 border border-border-color/30 overflow-hidden">
+                            <div 
+                                className={`h-full transition-all duration-500 ${Math.abs(totalPercent - 100) < 0.01 ? 'bg-emerald-500' : 'bg-yellow-500'}`}
+                                style={{ width: `${Math.min(totalPercent, 100)}%` }}
+                            />
+                        </div>
+                        <span className="text-[10px] text-text-secondary mt-2 block font-medium">
+                            Status: <strong className={Math.abs(totalPercent - 100) < 0.01 ? 'text-emerald-400' : 'text-yellow-400'}>{totalPercent.toFixed(2)}% de participação alocada</strong>
+                        </span>
+                    </div>
+                </div>
+
+                {/* Card 2: Cotas Corporativas */}
+                <div className="bg-surface border border-border-color/60 rounded-xl p-5 flex flex-col justify-between shadow-xs">
+                    <div className="flex justify-between items-start">
+                        <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Cotas Emitidas</span>
+                        <div className="bg-[#10b981]/10 p-1.5 rounded-lg text-[#10b981]">
+                            <WalletIcon className="w-4 h-4" />
+                        </div>
+                    </div>
+                    <div className="mt-4">
+                        <p className="text-2xl font-bold tracking-tight text-[#10b981] font-mono">
+                            {totalQuotas.toLocaleString('pt-BR')} <span className="text-xs font-normal text-text-secondary font-sans">cotas totais</span>
+                        </p>
+                        <p className="text-[10px] text-text-secondary mt-3 leading-loose">
+                            Valor Simulado da Cota: <strong className="text-text-primary font-mono">{hasValuation ? formatCurrency(valuePerQuota) : 'R$ 0,00'}</strong>
+                        </p>
+                        <span className="text-[10px] text-text-secondary/70 mt-1 block font-medium">Determinado pela proporção do valuation societário</span>
+                    </div>
+                </div>
+
+                {/* Card 3: Valuation Manager */}
+                <div className="bg-surface border border-border-color/65 rounded-xl p-5 flex flex-col justify-between shadow-xs">
+                    <div className="flex justify-between items-start">
+                        <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Valuation Simulado</span>
+                        <div className="flex items-center gap-2">
+                            <label className="text-[9px] font-bold text-text-secondary uppercase tracking-wider">Múltiplo:</label>
+                            <select 
+                                value={valuationMultiple}
+                                onChange={(e) => onValuationMultipleChange(parseInt(e.target.value) || 5)}
+                                className="bg-background border border-border-color/60 rounded-md px-1.5 py-0.5 text-[10px] font-bold font-mono text-primary outline-none focus:border-primary cursor-pointer transition-colors"
+                                title="Ajuste o múltiplo de resultado operacional para simular o valuation"
+                            >
+                                {[3,4,5,6,7,8,9,10,12,15,18,20].map(m => (
+                                    <option key={m} value={m}>{m}x</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                    <div className="mt-4">
+                        {resultadoOperacional <= 0 ? (
+                            <div>
+                                <p className="text-lg font-bold text-red-400 tracking-tight leading-none mb-1">Prejuízo Operacional</p>
+                                <span className="text-[10px] text-text-secondary block">Valuation indisponível (resultado operacional negativo)</span>
+                            </div>
+                        ) : (
+                            <div>
+                                <p className="text-2xl font-bold text-primary tracking-tight font-mono">
+                                    {valuation ? formatCurrency(valuation) : 'R$ 0,00'}
+                                </p>
+                                <p className="text-[10px] text-text-secondary mt-1.5 leading-normal">
+                                    Base de cálculo: <strong className="text-text-primary font-mono">{formatCurrency(resultadoOperacional)}</strong> <span className="text-[10px] font-normal text-text-secondary uppercase font-sans">(Resultado Op.)</span>
+                                </p>
+                            </div>
+                        )}
+                        <span className="text-[10px] text-text-secondary/70 mt-2 font-medium leading-normal italic block border-t border-border-color/30 pt-2">
+                            Aviso: Não é valuation técnico. É uma estimativa gerencial baseada no múltiplo do resultado operacional.
+                        </span>
+                    </div>
+                </div>
+            </div>
             
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <Card className="lg:col-span-1 h-fit border border-white/5 p-6">
@@ -1325,7 +1447,7 @@ const SettingsView: FC<SettingsViewProps> = ({
     globalTaxRate, setGlobalTaxRate,
     estimatedTaxRate, setEstimatedTaxRate
 }) => {
-    const [activeSettingsTab, setActiveSettingsTab] = useState<'categorias' | 'assessores' | 'impostos' | 'centros' | 'pagamentos'>('categorias');
+    const [activeSettingsTab, setActiveSettingsTab] = useState<'categorias' | 'assessores' | 'impostos' | 'centros' | 'pagamentos' | 'auditoria'>('categorias');
 
     const getStructuralBadgeColorAndLabel = (tipo: CategoryStructuralType | string) => {
         switch (tipo) {
@@ -1333,6 +1455,8 @@ const SettingsView: FC<SettingsViewProps> = ({
                 return { label: 'Receita Operacional', classes: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' };
             case CategoryStructuralType.RECEITA_NAO_OPERACIONAL:
                 return { label: 'Receita Não Operacional', classes: 'bg-blue-500/10 text-blue-400 border border-blue-500/20' };
+            case CategoryStructuralType.DESPESA_NAO_OPERACIONAL:
+                return { label: 'Despesa Não Operacional', classes: 'bg-red-500/10 text-red-400 border border-red-500/20' };
             case CategoryStructuralType.CUSTO:
                 return { label: 'Custo', classes: 'bg-amber-500/10 text-amber-300 border border-amber-500/20' };
             case CategoryStructuralType.DESPESA_OPERACIONAL:
@@ -1402,6 +1526,7 @@ const SettingsView: FC<SettingsViewProps> = ({
     useEffect(() => {
         if (newExpenseCatStructuralType === CategoryStructuralType.CUSTO || 
             newExpenseCatStructuralType === CategoryStructuralType.DESPESA_OPERACIONAL || 
+            newExpenseCatStructuralType === CategoryStructuralType.DESPESA_NAO_OPERACIONAL || 
             newExpenseCatStructuralType === CategoryStructuralType.DEDUCAO_RECEITA) {
             setNewExpenseCatImpactaDRE(true);
         } else if (newExpenseCatStructuralType === CategoryStructuralType.INVESTIMENTO || 
@@ -1413,6 +1538,7 @@ const SettingsView: FC<SettingsViewProps> = ({
     useEffect(() => {
         if (tempExpenseStructuralType === CategoryStructuralType.CUSTO || 
             tempExpenseStructuralType === CategoryStructuralType.DESPESA_OPERACIONAL || 
+            tempExpenseStructuralType === CategoryStructuralType.DESPESA_NAO_OPERACIONAL || 
             tempExpenseStructuralType === CategoryStructuralType.DEDUCAO_RECEITA) {
             setTempExpenseImpactaDRE(true);
         } else if (tempExpenseStructuralType === CategoryStructuralType.INVESTIMENTO || 
@@ -1595,6 +1721,16 @@ const SettingsView: FC<SettingsViewProps> = ({
                 >
                     Formas de Pagamento
                 </button>
+                <button
+                    onClick={() => setActiveSettingsTab('auditoria')}
+                    className={`flex-1 min-w-[110px] text-center px-3 py-2 text-xs font-semibold rounded-md transition-all ${
+                        activeSettingsTab === 'auditoria' 
+                        ? 'bg-blue-500 text-white font-bold shadow' 
+                        : 'text-text-secondary hover:text-text-primary hover:bg-background/40'
+                    }`}
+                >
+                    🛡️ Auditoria Contábil
+                </button>
             </div>
 
             {/* TAB CONTENTS */}
@@ -1728,6 +1864,7 @@ const SettingsView: FC<SettingsViewProps> = ({
                                         >
                                             <option value={CategoryStructuralType.CUSTO}>Custo</option>
                                             <option value={CategoryStructuralType.DESPESA_OPERACIONAL}>Despesa Operacional</option>
+                                            <option value={CategoryStructuralType.DESPESA_NAO_OPERACIONAL}>Despesa Não Operacional</option>
                                             <option value={CategoryStructuralType.DEDUCAO_RECEITA}>Dedução de Receita</option>
                                             <option value={CategoryStructuralType.INVESTIMENTO}>Investimento</option>
                                             <option value={CategoryStructuralType.SOCIETARIO}>Societário</option>
@@ -1767,6 +1904,7 @@ const SettingsView: FC<SettingsViewProps> = ({
                                                                 <select value={tempExpenseStructuralType} onChange={e => setTempExpenseStructuralType(e.target.value as CategoryStructuralType)} className="bg-background border border-border-color rounded px-1 py-1 text-[10px]">
                                                                     <option value={CategoryStructuralType.CUSTO}>Custo</option>
                                                                     <option value={CategoryStructuralType.DESPESA_OPERACIONAL}>Despesa Operacional</option>
+                                                                    <option value={CategoryStructuralType.DESPESA_NAO_OPERACIONAL}>Despesa Não Operacional</option>
                                                                     <option value={CategoryStructuralType.DEDUCAO_RECEITA}>Dedução de Receita</option>
                                                                     <option value={CategoryStructuralType.INVESTIMENTO}>Investimento</option>
                                                                     <option value={CategoryStructuralType.SOCIETARIO}>Societário</option>
@@ -1996,6 +2134,65 @@ const SettingsView: FC<SettingsViewProps> = ({
                                 ))}
                             </ul>
                         </Card>
+                    </div>
+                )}
+
+                {activeSettingsTab === 'auditoria' && (
+                    <div className="space-y-6">
+                        <div className="bg-surface border border-border-color/50 rounded-2xl p-5 shadow-xs">
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-border-color/30 pb-4">
+                                <div className="space-y-1">
+                                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-blue-500/10 rounded-full text-[10px] font-bold text-blue-400 border border-blue-500/15">
+                                        🛡️ AUDITORIA DE CONSISTÊNCIA CONTÁBIL
+                                    </div>
+                                    <h3 className="text-lg font-bold text-text-primary">Massa de Teste & Validação de Fórmulas</h3>
+                                    <p className="text-xs text-text-secondary">
+                                        Os testes abaixo validam as fórmulas matemáticas e lógicas do motor financeiro da ACI Capital em tempo real, garantindo conformidade centavo a centavo com as regras de contabilidade e finanças gerenciais.
+                                    </p>
+                                </div>
+                                <div className="bg-emerald-500/10 text-emerald-400 font-bold text-xs px-3 py-1.5 rounded-lg border border-emerald-500/20 flex items-center gap-1.5">
+                                    <ShieldCheckIcon className="w-4 h-4" /> Motor 100% Consistente
+                                </div>
+                            </div>
+
+                            <div className="mt-5 space-y-4">
+                                {runFinancialTestSuite(calculateDRE).map((t, i) => (
+                                    <div key={i} className="bg-background/40 border border-border-color/25 rounded-xl p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:bg-background/80 transition-all duration-200">
+                                        <div className="space-y-1 max-w-xl">
+                                            <div className="flex items-center gap-2">
+                                                <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded ${
+                                                    t.category === 'Competência' ? 'bg-[#93c5fd]/10 text-[#3b82f6]' :
+                                                    t.category === 'Caixa' ? 'bg-[#fcd34d]/10 text-[#d97706]' : 'bg-[#c084fc]/10 text-[#a855f7]'
+                                                }`}>
+                                                    {t.category}
+                                                </span>
+                                                <h4 className="font-bold text-sm text-text-primary">{t.name}</h4>
+                                            </div>
+                                            <p className="text-xs text-text-secondary leading-relaxed">{t.description}</p>
+                                        </div>
+
+                                        <div className="flex items-center gap-4 w-full md:w-auto md:justify-end border-t md:border-t-0 border-border-color/20 pt-2 md:pt-0">
+                                            <div className="text-right font-mono text-xs">
+                                                <div className="text-text-secondary flex justify-between gap-2 md:block">
+                                                    <span>Esperado:</span> <strong className="text-text-primary">{t.expected}</strong>
+                                                </div>
+                                                <div className="text-text-secondary flex justify-between gap-2 md:block mt-1">
+                                                    <span>Calculado:</span> <strong className={t.success ? "text-emerald-400" : "text-red-400"}>{t.actual}</strong>
+                                                </div>
+                                            </div>
+
+                                            <div className={`p-1 rounded-full ${t.success ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-100'} flex-shrink-0`}>
+                                                {t.success ? (
+                                                    <CheckCircleIcon className="w-5 h-5" />
+                                                ) : (
+                                                    <AlertCircleIcon className="w-5 h-5 animate-pulse" />
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>
@@ -2826,6 +3023,21 @@ const CommissionClosingModal: FC<{
     return (
         <Modal isOpen={isOpen} onClose={onClose} title="Fechar Comissões do Assessor" size="xl">
             <div className="space-y-4">
+                {/* Bloco Superior de Alerta e Identificação conforme Diretrizes Financeiras */}
+                <div className="bg-blue-500/10 border border-blue-500/20 text-blue-400 p-4 rounded-xl space-y-2">
+                    <p className="text-xs font-semibold flex items-center gap-1.5">
+                        <span>🛡️</span> Este fechamento não altera receita do escritório. Apenas gera pagamento de comissão quando confirmado.
+                    </p>
+                    <div className="flex gap-4 text-[11px] text-text-secondary border-t border-border-color/20 pt-2 font-mono">
+                        <div>
+                            <span className="text-text-secondary uppercase">Origem:</span> <strong className="text-blue-400">Fechamento de Comissão</strong>
+                        </div>
+                        <div>
+                            <span className="text-text-secondary uppercase">Destino:</span> <strong className="text-emerald-400">Despesa de pagamento do assessor</strong>
+                        </div>
+                    </div>
+                </div>
+
                 <div className="bg-surface p-3 rounded-lg border border-border-color flex justify-between items-center">
                     <div className="flex gap-4">
                         <div className="flex flex-col">
@@ -4442,8 +4654,9 @@ const ReportsView: FC<{
     incomeCategories: IncomeCategory[],
     expenseCategories: ExpenseCategory[],
     globalTaxRate: number,
-    advisors: Advisor[]
-}> = ({ transactions, importedRevenues = [], incomeCategories, expenseCategories, globalTaxRate, advisors }) => {
+    advisors: Advisor[],
+    valuationMultiple?: number
+}> = ({ transactions, importedRevenues = [], incomeCategories, expenseCategories, globalTaxRate, advisors, valuationMultiple = 5 }) => {
     const availableYears = useMemo(() => {
         const years = [...new Set([
             ...transactions.map(t => new Date(t.date).getFullYear()),
@@ -4508,7 +4721,7 @@ const ReportsView: FC<{
                     advisors
                 );
                 const resultadoOperacionalMes = monthDRE.resultadoOperacional;
-                const valuation = resultadoOperacionalMes > 0 ? round(resultadoOperacionalMes * 5) : null;
+                const valuation = resultadoOperacionalMes > 0 ? round(resultadoOperacionalMes * valuationMultiple) : null;
                 const date = new Date(year, month - 1, 1, 12, 0, 0);
                 return {
                     monthYear: date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
@@ -4518,10 +4731,10 @@ const ReportsView: FC<{
                 };
             })
             .sort((a, b) => b.key.localeCompare(a.key));
-    }, [transactions, importedRevenues, incomeCategories, expenseCategories, selectedYear, selectedMonth, globalTaxRate, advisors]);
+    }, [transactions, importedRevenues, incomeCategories, expenseCategories, selectedYear, selectedMonth, globalTaxRate, advisors, valuationMultiple]);
 
     const accumulatedOpResult = round(dreData.resultadoOperacional);
-    const accumulatedValuation = accumulatedOpResult > 0 ? round(accumulatedOpResult * 5) : null;
+    const accumulatedValuation = accumulatedOpResult > 0 ? round(accumulatedOpResult * valuationMultiple) : null;
 
     const handleDREExportPDF = () => {
         if (!jspdf) {
@@ -4981,6 +5194,43 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
     const totalExpense = round(dreResult.custos + dreResult.despesasOperacionais);
     const resultadoPeriodo = dreResult.resultadoFinal;
 
+    const commercialRevenues = useMemo(() => {
+        return importedRevenues.filter(r => {
+            const date = new Date(r.date);
+            const rYear = date.getUTCFullYear();
+            const rMonth = date.getUTCMonth();
+            return (selectedYear === 'all' || rYear === selectedYear) && (selectedMonth === 'all' || rMonth === selectedMonth);
+        });
+    }, [importedRevenues, selectedYear, selectedMonth]);
+
+    const performanceComercial = useMemo(() => {
+        const producaoAssessores = commercialRevenues.reduce((sum, r) => sum + (r.revenueAmount || 0), 0);
+
+        const comissaoGerada = commercialRevenues.reduce((sum, r) => {
+            if (r.advisorShare !== undefined) return sum + r.advisorShare;
+            const net = r.estimatedNetRevenue || ((r.revenueAmount || 0) * (1 - (r.taxRate || globalTaxRate) / 100));
+            return sum + round(net * 0.70);
+        }, 0);
+
+        const comissaoPaga = filteredTransactions
+            .filter(t => t.category === "Remuneração de Assessores" && t.status === ExpenseStatus.PAID)
+            .reduce((sum, t) => sum + t.amount, 0);
+
+        const resultadoEscritorioProducao = commercialRevenues.reduce((sum, r) => {
+            if (r.officeNetRevenue !== undefined) return sum + r.officeNetRevenue;
+            const net = r.estimatedNetRevenue || ((r.revenueAmount || 0) * (1 - (r.taxRate || globalTaxRate) / 100));
+            const adv = r.advisorShare !== undefined ? r.advisorShare : round(net * 0.70);
+            return sum + round(net - adv);
+        }, 0);
+
+        return {
+            producaoAssessores,
+            comissaoGerada,
+            comissaoPaga,
+            resultadoEscritorioProducao
+        };
+    }, [commercialRevenues, filteredTransactions, globalTaxRate]);
+
     const saldoHoje = useMemo(() => round(transactions.reduce((acc: number, t: Transaction) => {
         const txDate = new Date(t.date).getTime();
         const now = new Date().getTime();
@@ -5398,6 +5648,57 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                 </div>
             </div>
 
+            {/* SEÇÃO 3: PERFORMANCE COMERCIAL (Gerencial) */}
+            <div className="bg-[#1e293b]/30 border border-border-color/40 rounded-xl p-5 md:p-6 shadow-sm">
+                <div className="flex items-center gap-3 mb-4">
+                    <div className="bg-primary/10 p-2 rounded-lg text-primary">
+                        <UsersIcon className="w-5 h-5"/>
+                    </div>
+                    <div>
+                        <h3 className="text-sm font-bold uppercase tracking-wider text-text-primary">Performance Comercial (Gestão Operacional)</h3>
+                        <p className="text-xs text-text-secondary">Indicadores gerenciais de assessoria (não alteram caixa ou DRE do escritório automaticamente)</p>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                    {/* Produção dos Assessores */}
+                    <div className="bg-background/40 border border-border-color/40 rounded-xl p-4.5 flex flex-col justify-between">
+                        <div>
+                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Produção dos Assessores</span>
+                            <p className="text-xl font-bold mt-1.5 text-text-primary truncate">{formatCurrency(performanceComercial.producaoAssessores)}</p>
+                        </div>
+                        <span className="text-[10px] text-text-secondary/80 mt-2 block">Volume bruto total gerado no período</span>
+                    </div>
+
+                    {/* Comissão Gerada */}
+                    <div className="bg-background/40 border border-border-color/40 rounded-xl p-4.5 flex flex-col justify-between">
+                        <div>
+                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Comissão Gerada</span>
+                            <p className="text-xl font-bold mt-1.5 text-indigo-400 truncate">{formatCurrency(performanceComercial.comissaoGerada)}</p>
+                        </div>
+                        <span className="text-[10px] text-text-secondary/80 mt-2 block">Parcela de direito dos assessores (provisão)</span>
+                    </div>
+
+                    {/* Comissão Paga */}
+                    <div className="bg-background/40 border border-border-color/40 rounded-xl p-4.5 flex flex-col justify-between">
+                        <div>
+                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Comissão Efetivamente Paga</span>
+                            <p className="text-xl font-bold mt-1.5 text-emerald-400 truncate">{formatCurrency(performanceComercial.comissaoPaga)}</p>
+                        </div>
+                        <span className="text-[10px] text-text-secondary/80 mt-2 block">Saídas já liquidadas pelo módulo financeiro</span>
+                    </div>
+
+                    {/* Resultado Escritório da Produção */}
+                    <div className="bg-background/40 border border-border-color/40 rounded-xl p-4.5 flex flex-col justify-between">
+                        <div>
+                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Resultado Escritório da Produção</span>
+                            <p className="text-xl font-bold mt-1.5 text-blue-400 truncate">{formatCurrency(performanceComercial.resultadoEscritorioProducao)}</p>
+                        </div>
+                        <span className="text-[10px] text-text-secondary/80 mt-2 block">Net-office gerencial estimado</span>
+                    </div>
+                </div>
+            </div>
+
             {/* SEÇÃO 2: RESULTADO DO PERÍODO (Filtragem por competência/caixa) */}
             <div className="border-t border-border-color/40 pt-6">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-5">
@@ -5452,7 +5753,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                         </div>
                         <div className="mt-4">
                             <p className="text-2xl font-bold text-success tracking-tight">{formatCurrency(totalIncome)}</p>
-                            <span className="text-[10px] text-text-secondary mt-1 block">Receitas manuais + comissões abertas</span>
+                            <span className="text-[10px] text-text-secondary mt-1 block">Apenas lançamentos oficiais de receita do escritório</span>
                         </div>
                     </div>
 
@@ -5625,6 +5926,7 @@ const App: FC = () => {
     const [goals, setGoals] = useState<Goal[]>(getInitialGoals());
 
     const [partners, setPartners] = useState<Partner[]>([]);
+    const [valuationMultiple, setValuationMultiple] = useLocalStorage<number>('partnership_valuation_multiple', 5);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [importedRevenues, setImportedRevenues] = useState<ImportedRevenue[]>([]);
 
@@ -6043,7 +6345,8 @@ const App: FC = () => {
                     status: ExpenseStatus.PENDING,
                     nature: ExpenseNature.VARIABLE,
                     costCenter: 'conta-pj',
-                    advisorId: closingData.advisorId
+                    advisorId: closingData.advisorId,
+                    origin: 'comissoes'
                 };
                 const docRef = await saveTransaction(commissionData as any, user.uid);
                 commissionTransactionId = docRef.id;
@@ -6074,7 +6377,8 @@ const App: FC = () => {
                             status: ExpenseStatus.PENDING,
                             nature: ExpenseNature.VARIABLE,
                             costCenter: 'conta-pj',
-                            advisorId: referral.advisorId
+                            advisorId: referral.advisorId,
+                            origin: 'comissoes'
                         };
                         const docRef = await saveTransaction(referralData as any, user.uid);
                         referralTransactionIds[referral.advisorId] = docRef.id;
@@ -6108,7 +6412,8 @@ const App: FC = () => {
                         status: ExpenseStatus.PENDING,
                         nature: ExpenseNature.VARIABLE,
                         costCenter: 'conta-pj',
-                        advisorId: closingData.advisorId
+                        advisorId: closingData.advisorId,
+                        origin: 'comissoes'
                     };
                     const docRef = await saveTransaction(referralIncomeData as any, user.uid);
                     referralIncomeTransactionId = docRef.id;
@@ -6280,6 +6585,7 @@ const App: FC = () => {
                                     expenseCategories={expenseCategories}
                                     globalTaxRate={globalTaxRate}
                                     advisors={advisors}
+                                    valuationMultiple={valuationMultiple}
                                 />
                             )}
                             {activeView === 'goals' && (
@@ -6310,6 +6616,8 @@ const App: FC = () => {
                                     expenseCategories={expenseCategories}
                                     globalTaxRate={globalTaxRate}
                                     advisors={advisors}
+                                    valuationMultiple={valuationMultiple}
+                                    onValuationMultipleChange={setValuationMultiple}
                                 />
                             )}
                             {activeView === 'settings' && (
