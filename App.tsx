@@ -6223,12 +6223,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                     </div>
                 </div>
 
-                <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 flex items-start gap-3 mb-6 text-[#3b82f6]">
-                    <svg className="w-5 h-5 shrink-0 mt-0.5 text-blue-400" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                    <span className="text-xs sm:text-sm font-medium">
-                        <strong>Resultado Operacional:</strong> Mede se a operação de assessoria gera resultado próprio (considerando se as receitas cobrem os custos e despesas).
-                    </span>
-                </div>
+
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
                     {/* Receita Operacional */}
@@ -6355,16 +6350,11 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                     </div>
                 </div>
 
-                <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 flex items-start gap-3 mb-6 text-[#10b981]">
-                    <svg className="w-5 h-5 shrink-0 mt-0.5 text-emerald-400" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                    <span className="text-xs sm:text-sm font-medium">
-                        <strong>Posição Financeira:</strong> Mede capacidade financeira e fôlego da empresa (incluindo aportes societários/investimentos que não constam como receita de vendas no DRE, e subtraindo a reserva de impostos).
-                    </span>
-                </div>
+
                 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                     {/* Saldo Gross em Conta */}
-                    <div className="bg-surface border border-border-color/40 rounded-xl p-6 flex flex-col justify-between shadow-[0_4px_20px_rgba(0,0,0,0.2)] hover:border-slate-800 transition-all duration-300">
+                    <div className="bg-surface border border-border-color/40 rounded-xl p-5 flex flex-col justify-between shadow-[0_4px_20px_rgba(0,0,0,0.2)] hover:border-slate-800 transition-all duration-300">
                         <div>
                             <span className="text-[10px] font-bold text-text-secondary/60 uppercase tracking-wider block">Saldo em Conta</span>
                             <p className={`text-2xl font-extrabold tracking-tight mt-2 ${saldoHoje >= 0 ? 'text-[#f8fafc]' : 'text-danger'}`}>{formatCurrency(saldoHoje)}</p>
@@ -6375,18 +6365,18 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                     </div>
 
                     {/* Aportes / Incentivos */}
-                    <div className="bg-surface border border-border-color/40 rounded-xl p-6 flex flex-col justify-between shadow-[0_4px_20px_rgba(0,0,0,0.2)] hover:border-slate-800 transition-all duration-300">
+                    <div className="bg-surface border border-border-color/40 rounded-xl p-5 flex flex-col justify-between shadow-[0_4px_20px_rgba(0,0,0,0.2)] hover:border-slate-800 transition-all duration-300">
                         <div>
                             <span className="text-[10px] font-bold text-text-secondary/60 uppercase tracking-wider block">+ Aportes / Incentivos</span>
                             <p className="text-2xl font-extrabold tracking-tight mt-2 text-primary">{formatCurrency(financePosition.totalAportes)}</p>
                         </div>
                         <div className="mt-4 pt-3 border-t border-border-color/25">
-                            <span className="text-[10px] text-text-secondary/50 block font-medium">Investimentos/Aportes recebidos</span>
+                            <span className="text-[10px] text-text-secondary/50 block font-medium">Investimentos e aportes societários</span>
                         </div>
                     </div>
 
                     {/* Saídas Realizadas */}
-                    <div className="bg-surface border border-border-color/40 rounded-xl p-6 flex flex-col justify-between shadow-[0_4px_20px_rgba(0,0,0,0.2)] hover:border-slate-800 transition-all duration-300">
+                    <div className="bg-surface border border-border-color/40 rounded-xl p-5 flex flex-col justify-between shadow-[0_4px_20px_rgba(0,0,0,0.2)] hover:border-slate-800 transition-all duration-300">
                         <div>
                             <span className="text-[10px] font-bold text-text-secondary/60 uppercase tracking-wider block">- Saídas Realizadas</span>
                             <p className="text-2xl font-extrabold tracking-tight mt-2 text-danger/80">{formatCurrency(financePosition.totalSaidasRealizadas)}</p>
@@ -6396,8 +6386,19 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                         </div>
                     </div>
 
+                    {/* Provisão de Impostos */}
+                    <div className="bg-surface border border-border-color/40 rounded-xl p-5 flex flex-col justify-between shadow-[0_4px_20px_rgba(0,0,0,0.2)] hover:border-slate-800 transition-all duration-300">
+                        <div>
+                            <span className="text-[10px] font-bold text-amber-500 uppercase tracking-wider block">- Provisão de Impostos</span>
+                            <p className="text-2xl font-extrabold tracking-tight mt-2 text-amber-500">{formatCurrency(saldoProvisaoHoje)}</p>
+                        </div>
+                        <div className="mt-4 pt-3 border-t border-border-color/25">
+                            <span className="text-[10px] text-text-secondary/50 block font-medium">Reserva de impostos provisionada</span>
+                        </div>
+                    </div>
+
                     {/* Caixa Disponível */}
-                    <div className="bg-surface border border-secondary/50 rounded-xl p-6 flex flex-col justify-between shadow-[0_4px_20px_rgba(16,185,129,0.05)] hover:border-emerald-600 transition-all duration-300">
+                    <div className="bg-surface border border-secondary/50 rounded-xl p-5 flex flex-col justify-between shadow-[0_4px_20px_rgba(16,185,129,0.05)] hover:border-emerald-600 transition-all duration-300">
                         <div>
                             <div className="flex justify-between items-start">
                                 <span className="text-[10px] font-bold text-secondary uppercase tracking-wider block">(=) Caixa Disponível</span>
@@ -6411,26 +6412,15 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                         </div>
                     </div>
                 </div>
-
-                {/* Sub-informação de Provisão */}
-                {saldoProvisaoHoje > 0 && (
-                    <div className="mt-4 p-3 bg-yellow-500/5 border border-yellow-500/10 rounded-lg flex items-center justify-between text-xs text-text-secondary">
-                        <div className="flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                            <span>Possui uma reserva de <strong>{formatCurrency(saldoProvisaoHoje)}</strong> provisionada para impostos acumulados de lançamentos.</span>
-                        </div>
-                        <span className="text-[10px] font-mono text-amber-500 font-medium">Deduzido do Caixa Disponível</span>
-                    </div>
-                )}
             </div>
 
             <div className="bg-surface/80 border border-border-color/40 shadow-[0_8px_30px_rgb(0,0,0,0.35)] rounded-xl p-6 space-y-6">
                 <div className="flex justify-between items-center pb-4 border-b border-border-color/20">
                     <div>
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary/60 font-mono">Controle de Saídas</h3>
-                        <h3 className="text-lg font-extrabold tracking-tight text-text-primary flex items-center gap-2">
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary/60 font-mono animate-fade-in">Controle de Saídas</h3>
+                        <h4 className="text-lg font-extrabold tracking-tight text-text-primary flex items-center gap-2">
                             Contas a Pagar
-                        </h3>
+                        </h4>
                         <p className="text-text-secondary/60 text-[11px] mt-0.5">Lançamentos de despesas pendentes com vencimento nos próximos 10 dias.</p>
                     </div>
                 </div>
