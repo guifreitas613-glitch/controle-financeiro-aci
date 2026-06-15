@@ -8,7 +8,6 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 import { logoutUser } from './auth';
 import { getTransactions, saveTransaction, updateTransaction, deleteTransaction as deleteTransactionFromDb, getImportedRevenues, saveImportedRevenue, deleteImportedRevenue, getRevenuesByPeriod, getPartnership, savePartnership, updateImportedRevenue, deleteAllImportedRevenues, getAdvisors, saveAdvisor, updateAdvisor, deleteAdvisor, getGoals, saveGoal, updateGoal, deleteGoal, getSettings, saveSettings } from './firestore';
 import { collection, addDoc, serverTimestamp, onSnapshot, query, orderBy, where, doc } from "firebase/firestore";
-import { runFinancialTestSuite } from './src/utils/financialTests';
 
 // --- UTILITÁRIOS GLOBAIS ---
 const round = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100;
@@ -72,15 +71,6 @@ const TargetIcon: FC<{ className?: string }> = ({ className }) => (<svg classNam
 
 const PrinterIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>);
 
-// --- ÍCONES ADICIONAIS DE ALERTAS FINANCEIROS ---
-const ClockIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>);
-const UsersIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>);
-const DollarSignIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>);
-const ShieldAlertIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>);
-const ShieldCheckIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 11 2 2 4-4"/></svg>);
-const AlertTriangleIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>);
-const TrendingDownIcon: FC<{ className?: string }> = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"></polyline><polyline points="16 17 22 17 22 11"></polyline></svg>);
-
 // --- DECLARAÇÕES DE BIBLIOTECAS GLOBAIS ---
 declare var XLSX: any;
 declare var jspdf: any;
@@ -143,143 +133,6 @@ const calculateRevenueFields = (revenueAmount: number, estimatedTaxRate: number)
         estimatedNetRevenue,
         totalParcelaAssessor: advisorShare,
         totalParcelaEscritorio: officeShare
-    };
-};
-
-const calculateDRE = (
-    transactions: Transaction[],
-    importedRevenues: ImportedRevenue[],
-    incomeCategories: IncomeCategory[],
-    expenseCategories: ExpenseCategory[],
-    period: { year: number | 'all'; month: number | 'all' } | string,
-    regime: 'competencia' | 'caixa',
-    globalTaxRate: number,
-    advisors: Advisor[]
-) => {
-    const filterFn = (dateStr: string) => {
-        if (!dateStr) return false;
-        // Pure string-based extraction for 100% timezone robustness
-        const year = parseInt(dateStr.substring(0, 4), 10);
-        const month = parseInt(dateStr.substring(5, 7), 10) - 1; // 0-indexed
-        
-        if (typeof period === 'string') {
-            if (period === 'all') return true;
-            const monthKey = dateStr.substring(0, 7); // "YYYY-MM"
-            return monthKey === period;
-        } else {
-            const yearMatch = period.year === 'all' || year === period.year;
-            const monthMatch = period.month === 'all' || month === period.month;
-            return yearMatch && monthMatch;
-        }
-    };
-
-    const getStructuralInfo = (t: Transaction) => {
-        if (t.type === TransactionType.INCOME) {
-            const cat = incomeCategories.find(c => c.name === t.category);
-            return {
-                tipoEstrutural: cat?.tipoEstrutural || CategoryStructuralType.RECEITA_OPERACIONAL,
-                impactaDRE: cat?.impactaDRE ?? true
-            };
-        } else {
-            const cat = expenseCategories.find(c => c.name === t.category);
-            return {
-                tipoEstrutural: cat?.tipoEstrutural || CategoryStructuralType.DESPESA_OPERACIONAL,
-                impactaDRE: cat?.impactaDRE ?? true
-            };
-        }
-    };
-
-    const getImportedNet = (r: ImportedRevenue) => {
-        if (r.estimatedNetRevenue !== undefined) return r.estimatedNetRevenue;
-        const taxRate = r.taxRate !== undefined ? r.taxRate : globalTaxRate;
-        const estimatedTax = round((r.revenueAmount || 0) * (taxRate / 100));
-        return round((r.revenueAmount || 0) - estimatedTax);
-    };
-
-    // Filter transactions contributing to DRE in this period and obeying the selected regime
-    const dreTransactions = transactions.filter(t => {
-        if (!t.date || !filterFn(t.date)) return false;
-        const info = getStructuralInfo(t);
-        if (!info.impactaDRE) return false;
-
-        if (t.type === TransactionType.EXPENSE) {
-            if (regime === 'caixa') {
-                return t.status === ExpenseStatus.PAID || t.status === ExpenseStatus.CLEARED;
-            } else {
-                return true;
-            }
-        }
-        return true;
-    });
-
-    // 1. FATURAMENTO BRUTO: manual operating revenue ONLY
-    const manualOpRevenue = dreTransactions
-        .filter(t => t.type === TransactionType.INCOME && t.origin !== 'comissoes' && getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.RECEITA_OPERACIONAL)
-        .reduce((sum, t) => sum + t.amount, 0);
-
-    const faturamentoBruto = round(manualOpRevenue);
-
-    // 2. DEDUÇÕES DA RECEITA: taxes, DAS, withholdings, and configured deductions from transactions
-    const manualDeducoes = dreTransactions
-        .filter(t => getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.DEDUCAO_RECEITA)
-        .reduce((sum, t) => sum + t.amount, 0);
-
-    const deducoes = round(manualDeducoes);
-
-    // 3. RECEITA OPERACIONAL LÍQUIDA: faturamento bruto menos deduções
-    const receitaLiquida = round(faturamentoBruto - deducoes);
-
-    // 4. CUSTOS OPERACIONAIS: remuneração de assessores (manuais, splits ou geradas pelas comissões) e custos de produção
-    const manualCustos = dreTransactions
-        .filter(t => getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.CUSTO && t.category !== "Remuneração de Assessores")
-        .reduce((sum, t) => sum + t.amount, 0);
-
-    const comissoesPagasCustos = dreTransactions
-        .filter(t => t.category === "Remuneração de Assessores")
-        .reduce((sum, t) => sum + t.amount, 0);
-
-    const custos = round(manualCustos + comissoesPagasCustos);
-
-    // 5. DESPESAS OPERACIONAIS: estrutura, plataformas, marketing, administrativo
-    const despesasOperacionais = round(dreTransactions
-        .filter(t => getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.DESPESA_OPERACIONAL)
-        .reduce((sum, t) => sum + t.amount, 0));
-
-    // 6. RESULTADO OPERACIONAL
-    const resultadoOperacional = round(receitaLiquida - custos - despesasOperacionais);
-
-    // 7. RESULTADO FINAL
-    const outrasReceitas = round(dreTransactions
-        .filter(t => t.type === TransactionType.INCOME && getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.RECEITA_NAO_OPERACIONAL)
-        .reduce((sum, t) => sum + t.amount, 0));
-
-    const outrasDespesas = round(dreTransactions
-        .filter(t => t.type === TransactionType.EXPENSE && getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.DESPESA_NAO_OPERACIONAL)
-        .reduce((sum, t) => sum + t.amount, 0));
-
-    const resultadoFinal = round(resultadoOperacional + outrasReceitas - outrasDespesas);
-
-    const expensesByCategory: Record<string, number> = {};
-    dreTransactions
-        .filter(t => t.type === TransactionType.EXPENSE && getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.DESPESA_OPERACIONAL)
-        .forEach(t => {
-            expensesByCategory[t.category] = round((expensesByCategory[t.category] || 0) + t.amount);
-        });
-    const sortedExpenses = Object.entries(expensesByCategory)
-        .map(([name, value]) => ({ name, value }))
-        .sort((a, b) => b.value - a.value);
-
-    return {
-        faturamentoBruto,
-        receitaBruta: faturamentoBruto,
-        deducoes,
-        receitaLiquida,
-        custos,
-        despesasOperacionais,
-        resultadoOperacional,
-        outrasReceitas,
-        resultadoFinal,
-        sortedExpenses
     };
 };
 
@@ -354,7 +207,6 @@ const initialExpenseCategories: ExpenseCategory[] = [
     { name: 'Despesas Estruturais', type: ExpenseType.EXPENSE, tipoEstrutural: CategoryStructuralType.DESPESA_OPERACIONAL, impactaDRE: true },
     { name: 'Impostos e Encargos', type: ExpenseType.EXPENSE, tipoEstrutural: CategoryStructuralType.DEDUCAO_RECEITA, impactaDRE: true },
     { name: 'Mobiliário e Equipamentos', type: ExpenseType.EXPENSE, tipoEstrutural: CategoryStructuralType.INVESTIMENTO, impactaDRE: false },
-    { name: 'Gastos Não Operacionais', type: ExpenseType.NON_OPERATIONAL, tipoEstrutural: CategoryStructuralType.DESPESA_NAO_OPERACIONAL, impactaDRE: true },
     { name: 'Movimentações Societárias', type: ExpenseType.EXPENSE, tipoEstrutural: CategoryStructuralType.SOCIETARIO, impactaDRE: false },
     { name: 'Outros', type: ExpenseType.EXPENSE, tipoEstrutural: CategoryStructuralType.DESPESA_OPERACIONAL, impactaDRE: true },
 ];
@@ -715,10 +567,10 @@ const TransactionForm: FC<TransactionFormProps> = ({ onSubmit, onClose, initialD
     );
 };
 
-interface GoalFormProps { onSubmit: (goal: Omit<Goal, 'id' | 'currentAmount'>) => void; onClose: () => void; initialData?: Goal | null; defaultName?: string; defaultTarget?: string; }
-const GoalForm: FC<GoalFormProps> = ({ onSubmit, onClose, initialData, defaultName, defaultTarget }) => { 
-    const [name, setName] = useState(initialData?.name || defaultName || '');
-  const [targetAmount, setTargetAmount] = useState(initialData?.targetAmount.toString() || defaultTarget || '');
+interface GoalFormProps { onSubmit: (goal: Omit<Goal, 'id' | 'currentAmount'>) => void; onClose: () => void; initialData?: Goal | null; }
+const GoalForm: FC<GoalFormProps> = ({ onSubmit, onClose, initialData }) => { 
+    const [name, setName] = useState(initialData?.name || '');
+  const [targetAmount, setTargetAmount] = useState(initialData?.targetAmount.toString() || '');
   const [deadline, setDeadline] = useState(initialData?.deadline ? formatDateForInput(initialData.deadline) : '');
   
   const handleSubmit = (e: React.FormEvent) => {
@@ -735,16 +587,16 @@ const GoalForm: FC<GoalFormProps> = ({ onSubmit, onClose, initialData, defaultNa
      <form onSubmit={handleSubmit} className="space-y-4">
       <div>
         <label className="block text-sm font-medium text-text-secondary">Nome da Meta</label>
-        <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="mt-1 block w-full bg-background border border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2 text-sm" required />
+        <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" required />
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
             <label className="block text-sm font-medium text-text-secondary">Valor Alvo</label>
-            <input type="number" step="0.01" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} className="mt-1 block w-full bg-background border border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2 text-sm" required />
+            <input type="number" step="0.01" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" required />
         </div>
         <div>
             <label className="block text-sm font-medium text-text-secondary">Prazo (Opcional)</label>
-            <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} className="mt-1 block w-full bg-background border border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2 text-sm" />
+            <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary" />
         </div>
       </div>
       <div className="flex justify-end gap-4 pt-4">
@@ -780,7 +632,7 @@ const AddProgressForm: FC<AddProgressFormProps> = ({ onSubmit, onClose }) => {
                     step="0.01"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    className="mt-1 block w-full bg-background border border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary p-2 text-sm"
+                    className="mt-1 block w-full bg-background border-border-color rounded-md shadow-sm focus:ring-primary focus:border-primary"
                     required
                     autoFocus
                 />
@@ -797,261 +649,54 @@ const GoalsView: FC<{ goals: Goal[], onAdd: (g: any) => void, onUpdateProgress: 
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isProgressModalOpen, setIsProgressModalOpen] = useState(false);
     const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
-    const [defaultFormValues, setDefaultFormValues] = useState<{ name: string; target: string }>({ name: '', target: '' });
-
     const openProgressModal = (id: string) => { setSelectedGoalId(id); setIsProgressModalOpen(true); };
-
-    const handleCreateWithPreset = (name: string, target: string) => {
-        setDefaultFormValues({ name, target });
-        setIsAddModalOpen(true);
-    };
 
     return (
         <div className="space-y-6 animate-fade-in">
              <div className="flex justify-between items-center">
-                <div>
-                    <h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Metas Financeiras</h2>
-                    <p className="text-text-secondary">Defina e acompanhe seus objetivos e provisões.</p>
-                </div>
-                {goals.length > 0 && (
-                    <Button onClick={() => handleCreateWithPreset('', '')} className="flex items-center gap-2">
-                        <PlusIcon className="w-5 h-5"/> Nova Meta
-                    </Button>
-                )}
+                <div><h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Metas Financeiras</h2><p className="text-text-secondary">Defina e acompanhe seus objetivos.</p></div>
+                <Button onClick={() => setIsAddModalOpen(true)} className="flex items-center gap-2"><PlusIcon className="w-5 h-5"/> Nova Meta</Button>
             </div>
-
-            {goals.length === 0 ? (
-                <div className="space-y-6 pt-2">
-                    {/* Intro Hero Section */}
-                    <div className="bg-surface border border-border-color/50 rounded-2xl p-6 md:p-8 flex flex-col md:flex-row gap-6 md:gap-10 items-center justify-between">
-                        <div className="space-y-3 max-w-2xl">
-                            <div className="inline-flex items-center gap-2 px-2.5 py-1 bg-primary/10 rounded-full border border-primary/20 text-[10px] font-bold text-primary uppercase tracking-wider">
-                                <TargetIcon className="w-3.5 h-3.5" /> Acompanhamento de Metas de Gestão
-                            </div>
-                            <h3 className="text-xl md:text-2xl font-bold tracking-tight text-text-primary">Estratégia & Metas Financeiras</h3>
-                            <p className="text-sm text-text-secondary leading-relaxed">
-                                O painel de metas permite blindar o fluxo de caixa do escritório, organizar reservas de contingência fiscal, planejar a retenção de lucros dos sócios e estipular alvos objetivos de crescimento para o time de assessores (Faturamento Líquido).
-                            </p>
-                        </div>
-                        <Button 
-                            onClick={() => handleCreateWithPreset('', '')} 
-                            className="bg-primary hover:bg-opacity-95 text-xs font-bold py-3 px-5 whitespace-nowrap self-stretch md:self-auto flex items-center justify-center gap-2"
-                        >
-                            <PlusIcon className="w-4 h-4" /> Criar Meta Personalizada
-                        </Button>
-                    </div>
-
-                    <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider pl-1">Ou ative uma meta sugerida de excelente prática de gestão:</h4>
-
-                    {/* Pre-set Templates Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                        {/* Preset 1: Caixa Mínimo */}
-                        <div className="bg-surface/50 hover:bg-surface border border-border-color/50 hover:border-border-color rounded-xl p-5 flex flex-col justify-between transition-all duration-300 group">
-                            <div className="space-y-3">
-                                <div className="p-2.5 bg-blue-500/10 text-blue-400 border border-blue-500/10 rounded-lg w-10 h-10 flex items-center justify-center">
-                                    <WalletIcon className="w-5 h-5" />
-                                </div>
-                                <h4 className="font-bold text-text-primary group-hover:text-primary transition-colors">Caixa de Segurança</h4>
-                                <p className="text-xs text-text-secondary leading-relaxed">
-                                    Garanta estabilidade operacional e liquidez rápida em momentos de flutuação de receitas. Recomendado acumular de 3 a 6 meses de custos fixos recorrentes.
-                                </p>
-                                <div className="bg-background/40 rounded-lg p-2.5 border border-border-color/20 flex justify-between text-[11px] font-mono">
-                                    <span className="text-text-secondary">Sugestão Inicial:</span>
-                                    <strong className="text-text-primary">{formatCurrency(50000)}</strong>
-                                </div>
-                            </div>
-                            <Button 
-                                onClick={() => handleCreateWithPreset('Caixa de Segurança Operacional', '50000')} 
-                                variant="secondary" 
-                                className="w-full text-xs font-semibold py-2 mt-5"
-                            >
-                                Ativar Caixa de Segurança
-                            </Button>
-                        </div>
-
-                        {/* Preset 2: Provisões / Lucros */}
-                        <div className="bg-surface/50 hover:bg-surface border border-border-color/50 hover:border-border-color rounded-xl p-5 flex flex-col justify-between transition-all duration-300 group">
-                            <div className="space-y-3">
-                                <div className="p-2.5 bg-[#10b981]/10 text-[#10b981] border border-[#10b981]/10 rounded-lg w-10 h-10 flex items-center justify-center">
-                                    <ScaleIcon className="w-5 h-5" />
-                                </div>
-                                <h4 className="font-bold text-text-primary group-hover:text-[#10b981] transition-colors">Reserva Societária (Lucros)</h4>
-                                <p className="text-xs text-text-secondary leading-relaxed">
-                                    Separe fatias do resultado financeiro operacional para destinar a reservas de lucros retidos para recompra de quotas, investimentos societários ou novos parceiros.
-                                </p>
-                                <div className="bg-background/40 rounded-lg p-2.5 border border-border-color/20 flex justify-between text-[11px] font-mono">
-                                    <span className="text-text-secondary">Sugestão Inicial:</span>
-                                    <strong className="text-text-primary">{formatCurrency(25000)}</strong>
-                                </div>
-                            </div>
-                            <Button 
-                                onClick={() => handleCreateWithPreset('Reserva Societária', '25000')} 
-                                variant="secondary" 
-                                className="w-full text-xs font-semibold py-2 mt-5"
-                            >
-                                Ativar Reserva de Lucros
-                            </Button>
-                        </div>
-
-                        {/* Preset 3: Crescimento */}
-                        <div className="bg-surface/50 hover:bg-surface border border-border-color/50 hover:border-border-color rounded-xl p-5 flex flex-col justify-between transition-all duration-300 group">
-                            <div className="space-y-3">
-                                <div className="p-2.5 bg-yellow-500/10 text-yellow-400 border border-yellow-500/10 rounded-lg w-10 h-10 flex items-center justify-center">
-                                    <TrendingUpIcon className="w-5 h-5" />
-                                </div>
-                                <h4 className="font-bold text-text-primary group-hover:text-yellow-400 transition-colors">Meta de Crescimento (Faturamento)</h4>
-                                <p className="text-xs text-text-secondary leading-relaxed">
-                                    Estimule novos recordes comerciais e expanda a escala do escritório projetando um faturamento mensal ou anual acima das médias históricas.
-                                </p>
-                                <div className="bg-background/40 rounded-lg p-2.5 border border-border-color/20 flex justify-between text-[11px] font-mono">
-                                    <span className="text-text-secondary">Sugestão Inicial:</span>
-                                    <strong className="text-text-primary">{formatCurrency(120000)}</strong>
-                                </div>
-                            </div>
-                            <Button 
-                                onClick={() => handleCreateWithPreset('Meta de Crescimento Mensal', '120000')} 
-                                variant="secondary" 
-                                className="w-full text-xs font-semibold py-2 mt-5"
-                            >
-                                Ativar Meta Comercial
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {goals.map(goal => {
-                        const progress = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount) * 100 : 0;
-                        return (
-                            <Card key={goal.id} className="relative group p-5 border border-white/5 hover:border-white/10 transition-colors">
-                                <div className="flex justify-between items-start mb-2">
-                                    <h3 className="text-base font-bold text-text-primary">{goal.name}</h3>
-                                    <button onClick={() => onDelete(goal.id)} className="text-text-secondary hover:text-danger opacity-0 group-hover:opacity-100 transition-opacity p-1">
-                                        <TrashIcon className="w-4 h-4"/>
-                                    </button>
-                                </div>
-                                <div className="mb-4">
-                                    <div className="flex justify-between text-xs mb-1">
-                                        <span className="text-text-secondary">Progresso</span>
-                                        <span className="font-bold text-primary">{Math.round(progress)}%</span>
-                                    </div>
-                                    <ProgressBar progress={progress} />
-                                </div>
-                                <div className="flex justify-between items-center text-xs mb-4">
-                                    <span className="font-mono text-text-primary font-semibold">{formatCurrency(goal.currentAmount)}</span>
-                                    <span className="text-text-secondary">de {formatCurrency(goal.targetAmount)}</span>
-                                </div>
-                                <Button onClick={() => openProgressModal(goal.id)} variant="secondary" className="w-full text-xs py-2 font-medium">
-                                    Adicionar Progresso
-                                </Button>
-                            </Card>
-                        )
-                    })}
-                </div>
-            )}
-
-            <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Nova Meta">
-                <GoalForm 
-                    onSubmit={(data) => { onAdd(data); setIsAddModalOpen(false); }} 
-                    onClose={() => setIsAddModalOpen(false)} 
-                    defaultName={defaultFormValues.name}
-                    defaultTarget={defaultFormValues.target}
-                />
-            </Modal>
-            <Modal isOpen={isProgressModalOpen} onClose={() => setIsProgressModalOpen(false)} title="Adicionar Progresso" size="sm">
-                <AddProgressForm onSubmit={(amount) => { if(selectedGoalId) onUpdateProgress(selectedGoalId, amount); setIsProgressModalOpen(false); }} onClose={() => setIsProgressModalOpen(false)} />
-            </Modal>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {goals.map(goal => {
+                    const progress = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount) * 100 : 0;
+                    return (
+                        <Card key={goal.id} className="relative group">
+                            <div className="flex justify-between items-start mb-2"><h3 className="text-lg font-bold text-text-primary">{goal.name}</h3><button onClick={() => onDelete(goal.id)} className="text-text-secondary hover:text-danger opacity-0 group-hover:opacity-100 transition-opacity"><TrashIcon className="w-4 h-4"/></button></div>
+                            <div className="mb-4"><div className="flex justify-between text-sm mb-1"><span className="text-text-secondary">Progresso</span><span className="font-bold text-primary">{Math.round(progress)}%</span></div><ProgressBar progress={progress} /></div>
+                            <div className="flex justify-between items-center text-sm mb-4"><span className="font-mono text-text-primary">{formatCurrency(goal.currentAmount)}</span><span className="text-text-secondary">de {formatCurrency(goal.targetAmount)}</span></div>
+                            <Button onClick={() => openProgressModal(goal.id)} variant="secondary" className="w-full text-sm">Adicionar Valor</Button>
+                        </Card>
+                    )
+                })}
+            </div>
+            <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Nova Meta"><GoalForm onSubmit={(data) => { onAdd(data); setIsAddModalOpen(false); }} onClose={() => setIsAddModalOpen(false)} /></Modal>
+            <Modal isOpen={isProgressModalOpen} onClose={() => setIsProgressModalOpen(false)} title="Adicionar Progresso" size="sm"><AddProgressForm onSubmit={(amount) => { if(selectedGoalId) onUpdateProgress(selectedGoalId, amount); setIsProgressModalOpen(false); }} onClose={() => setIsProgressModalOpen(false)} /></Modal>
         </div>
     );
 };
 
-const PartnershipView: FC<{ 
-    partners: Partner[], 
-    onSave: (partners: Partner[]) => void,
-    transactions?: Transaction[],
-    importedRevenues?: ImportedRevenue[],
-    incomeCategories?: IncomeCategory[],
-    expenseCategories?: ExpenseCategory[],
-    globalTaxRate?: number,
-    advisors?: Advisor[],
-    valuationMultiple: number,
-    onValuationMultipleChange: (v: number) => void
-}> = ({ partners, onSave, transactions = [], importedRevenues = [], incomeCategories = [], expenseCategories = [], globalTaxRate = 15, advisors = [], valuationMultiple, onValuationMultipleChange }) => {
+const PartnershipView: FC<{ partners: Partner[], onSave: (partners: Partner[]) => void }> = ({ partners, onSave }) => {
     const [newName, setNewName] = useState('');
     const [newPercentage, setNewPercentage] = useState('');
     const [newQuotas, setNewQuotas] = useState('');
     const [editingId, setEditingId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [sortConfig, setSortConfig] = useState<{ key: keyof Partner; direction: 'asc' | 'desc' } | null>({ key: 'percentage', direction: 'desc' });
-    const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-    const dreCalculated = useMemo(() => {
-        return calculateDRE(
-            transactions,
-            importedRevenues,
-            incomeCategories,
-            expenseCategories,
-            { year: 'all', month: 'all' },
-            'competencia',
-            globalTaxRate,
-            advisors
-        );
-    }, [transactions, importedRevenues, incomeCategories, expenseCategories, globalTaxRate, advisors]);
-
-    const resultadoOperacional = dreCalculated.resultadoOperacional;
-    const valuation = resultadoOperacional > 0 ? round(resultadoOperacional * valuationMultiple) : null;
-
-    const totalPercent = partners.reduce((acc, p) => acc + p.percentage, 0);
-    const totalQuotas = partners.reduce((acc, p) => acc + (p.quotas || 0), 0);
-    const hasValuation = valuation !== null && valuation > 0 && totalQuotas > 0;
-    const valuePerQuota = hasValuation ? round(valuation / totalQuotas) : 0;
 
     const handleSave = () => {
-        if (!newName.trim() || !newPercentage || !newQuotas) {
-            setErrorMessage("Por favor, preencha todos os campos.");
-            return;
-        }
-        
+        if (!newName || !newPercentage || !newQuotas) return;
         const p = parseFloat(newPercentage);
         const q = parseFloat(newQuotas);
+        if (isNaN(p) || isNaN(q)) return;
         
-        if (isNaN(p) || isNaN(q)) {
-            setErrorMessage("Os valores numéricos fornecidos são inválidos.");
-            return;
-        }
-        
-        if (p < 0) {
-            setErrorMessage("O percentual de sociedade não pode ser negativo.");
-            return;
-        }
-        
-        if (q < 0) {
-            setErrorMessage("A quantidade de cotas não pode ser negativa.");
-            return;
-        }
-
-        const otherPartners = partners.filter(partner => partner.id !== editingId);
-        const otherPercentTotal = otherPartners.reduce((acc, partner) => acc + partner.percentage, 0);
-        
-        if (round(otherPercentTotal + p) > 100) {
-            setErrorMessage(`Erro: O percentual total ultrapassaria os 100%. Somas de outros sócios: ${round(otherPercentTotal)}% -> Novo Total: ${round(otherPercentTotal + p)}%.`);
-            return;
-        }
-
-        const isDuplicateName = otherPartners.some(partner => partner.name.trim().toLowerCase() === newName.trim().toLowerCase());
-        if (isDuplicateName) {
-            setErrorMessage("Erro: Já existe um sócio cadastrado com este nome e os nomes devem ser exclusivos.");
-            return;
-        }
-
-        setErrorMessage(null);
         let updated;
         if (editingId) {
             updated = partners.map(partner => 
-                partner.id === editingId ? { ...partner, name: newName.trim(), percentage: p, quotas: q } : partner
+                partner.id === editingId ? { ...partner, name: newName, percentage: p, quotas: q } : partner
             );
         } else {
-            updated = [...partners, { id: crypto.randomUUID(), name: newName.trim(), percentage: p, quotas: q }];
+            updated = [...partners, { id: crypto.randomUUID(), name: newName, percentage: p, quotas: q }];
         }
         
         onSave(updated);
@@ -1059,7 +704,6 @@ const PartnershipView: FC<{
     };
 
     const handleEdit = (partner: Partner) => {
-        setErrorMessage(null);
         setEditingId(partner.id);
         setNewName(partner.name);
         setNewPercentage(partner.percentage.toString());
@@ -1072,7 +716,6 @@ const PartnershipView: FC<{
         setNewName('');
         setNewPercentage('');
         setNewQuotas('');
-        setErrorMessage(null);
     };
 
     const handleSort = (key: keyof Partner) => {
@@ -1108,163 +751,57 @@ const PartnershipView: FC<{
         return result;
     }, [partners, searchTerm, sortConfig]);
 
+    const totalPercent = partners.reduce((acc, p) => acc + p.percentage, 0);
+    const totalQuotas = partners.reduce((acc, p) => acc + (p.quotas || 0), 0);
+
     return (
         <div className="space-y-6 animate-fade-in">
-             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                    <h2 className="text-2xl font-bold bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent uppercase tracking-tight">Partnership ACI</h2>
-                    <p className="text-text-secondary text-sm">Gerencie o quadro societário de sócios-parceiros do escritório</p>
-                </div>
-            </div>
-
-            {Math.abs(totalPercent - 100) > 0.01 && (
-                <div className="bg-yellow-500/10 border border-yellow-500/20 p-4 rounded-xl text-xs text-yellow-300 flex items-center gap-3">
-                    <AlertCircleIcon className="w-5 h-5 text-yellow-500 flex-shrink-0 animate-pulse" />
-                    <div>
-                        <span className="font-bold block text-sm mb-0.5">Quadro Societário Incompleto</span>
-                        O percentual societário total do escritório está diferente de 100%. Total atual: <strong className="text-white font-mono">{totalPercent.toFixed(2)}%</strong>. O limite societário deve fechar em exatamente 100.00%.
-                    </div>
-                </div>
-            )}
-
-            {/* CARDS DE RESUMO DO PARTNERSHIP */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                {/* Card 1: Distribuição */}
-                <div className="bg-surface border border-border-color/60 rounded-xl p-5 flex flex-col justify-between shadow-xs">
-                    <div className="flex justify-between items-start">
-                        <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Quadro de Sócios</span>
-                        <div className="bg-blue-500/10 p-1.5 rounded-lg text-blue-400">
-                            <UsersIcon className="w-4 h-4" />
-                        </div>
-                    </div>
-                    <div className="mt-4">
-                        <p className="text-2xl font-bold tracking-tight text-text-primary">
-                            {partners.length} <span className="text-xs font-normal text-text-secondary">sócios ativos</span>
-                        </p>
-                        <div className="mt-3 w-full bg-background/50 rounded-full h-1.5 border border-border-color/30 overflow-hidden">
-                            <div 
-                                className={`h-full transition-all duration-500 ${Math.abs(totalPercent - 100) < 0.01 ? 'bg-emerald-500' : 'bg-yellow-500'}`}
-                                style={{ width: `${Math.min(totalPercent, 100)}%` }}
-                            />
-                        </div>
-                        <span className="text-[10px] text-text-secondary mt-2 block font-medium">
-                            Status: <strong className={Math.abs(totalPercent - 100) < 0.01 ? 'text-emerald-400' : 'text-yellow-400'}>{totalPercent.toFixed(2)}% de participação alocada</strong>
-                        </span>
-                    </div>
-                </div>
-
-                {/* Card 2: Cotas Corporativas */}
-                <div className="bg-surface border border-border-color/60 rounded-xl p-5 flex flex-col justify-between shadow-xs">
-                    <div className="flex justify-between items-start">
-                        <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Cotas Emitidas</span>
-                        <div className="bg-[#10b981]/10 p-1.5 rounded-lg text-[#10b981]">
-                            <WalletIcon className="w-4 h-4" />
-                        </div>
-                    </div>
-                    <div className="mt-4">
-                        <p className="text-2xl font-bold tracking-tight text-[#10b981] font-mono">
-                            {totalQuotas.toLocaleString('pt-BR')} <span className="text-xs font-normal text-text-secondary font-sans">cotas totais</span>
-                        </p>
-                        <p className="text-[10px] text-text-secondary mt-3 leading-loose">
-                            Valor Simulado da Cota: <strong className="text-text-primary font-mono">{hasValuation ? formatCurrency(valuePerQuota) : 'R$ 0,00'}</strong>
-                        </p>
-                        <span className="text-[10px] text-text-secondary/70 mt-1 block font-medium">Determinado pela proporção do valuation societário</span>
-                    </div>
-                </div>
-
-                {/* Card 3: Valuation Manager */}
-                <div className="bg-surface border border-border-color/65 rounded-xl p-5 flex flex-col justify-between shadow-xs">
-                    <div className="flex justify-between items-start">
-                        <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Valuation Simulado</span>
-                        <div className="flex items-center gap-2">
-                            <label className="text-[9px] font-bold text-text-secondary uppercase tracking-wider">Múltiplo:</label>
-                            <select 
-                                value={valuationMultiple}
-                                onChange={(e) => onValuationMultipleChange(parseInt(e.target.value) || 5)}
-                                className="bg-background border border-border-color/60 rounded-md px-1.5 py-0.5 text-[10px] font-bold font-mono text-primary outline-none focus:border-primary cursor-pointer transition-colors"
-                                title="Ajuste o múltiplo de resultado operacional para simular o valuation"
-                            >
-                                {[3,4,5,6,7,8,9,10,12,15,18,20].map(m => (
-                                    <option key={m} value={m}>{m}x</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-                    <div className="mt-4">
-                        {resultadoOperacional <= 0 ? (
-                            <div>
-                                <p className="text-lg font-bold text-red-400 tracking-tight leading-none mb-1">Prejuízo Operacional</p>
-                                <span className="text-[10px] text-text-secondary block">Valuation indisponível (resultado operacional negativo)</span>
-                            </div>
-                        ) : (
-                            <div>
-                                <p className="text-2xl font-bold text-primary tracking-tight font-mono">
-                                    {valuation ? formatCurrency(valuation) : 'R$ 0,00'}
-                                </p>
-                                <p className="text-[10px] text-text-secondary mt-1.5 leading-normal">
-                                    Base de cálculo: <strong className="text-text-primary font-mono">{formatCurrency(resultadoOperacional)}</strong> <span className="text-[10px] font-normal text-text-secondary uppercase font-sans">(Resultado Op.)</span>
-                                </p>
-                            </div>
-                        )}
-                        <span className="text-[10px] text-text-secondary/70 mt-2 font-medium leading-normal italic block border-t border-border-color/30 pt-2">
-                            Aviso: Não é valuation técnico. É uma estimativa gerencial baseada no múltiplo do resultado operacional.
-                        </span>
-                    </div>
-                </div>
+             <div className="flex justify-between items-center">
+                <div><h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Partnership ACI</h2><p className="text-text-secondary">Gerencie o quadro societário da empresa.</p></div>
             </div>
             
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <Card className="lg:col-span-1 h-fit border border-white/5 p-6">
+                <Card className="lg:col-span-1 h-fit">
                     <h3 className="font-bold mb-4 text-primary uppercase text-sm tracking-wider">
                         {editingId ? 'Editar Sócio' : 'Adicionar Sócio'}
                     </h3>
                     <div className="space-y-4">
-                        {errorMessage && (
-                            <div className="bg-danger/10 border border-danger/25 p-3 rounded-lg text-xs text-danger font-semibold">
-                                {errorMessage}
-                            </div>
-                        )}
                         <div>
                             <label className="block text-xs text-text-secondary mb-1">Nome Completo</label>
-                            <input type="text" value={newName} onChange={e => setNewName(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm text-text-primary focus:ring-1 focus:ring-primary outline-none" placeholder="Nome do sócio" />
+                            <input type="text" value={newName} onChange={e => setNewName(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm" placeholder="Nome do sócio" />
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                             <div>
                                 <label className="block text-xs text-text-secondary mb-1">Percentual (%)</label>
-                                <input type="number" step="0.01" value={newPercentage} onChange={e => setNewPercentage(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm text-text-primary focus:ring-1 focus:ring-primary outline-none" placeholder="Ex: 25" />
+                                <input type="number" step="0.01" value={newPercentage} onChange={e => setNewPercentage(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm" placeholder="Ex: 25" />
                             </div>
                             <div>
                                 <label className="block text-xs text-text-secondary mb-1">N° de cotas</label>
-                                <input type="number" step="1" value={newQuotas} onChange={e => setNewQuotas(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm text-text-primary focus:ring-1 focus:ring-primary outline-none" placeholder="Ex: 1000" />
+                                <input type="number" step="1" value={newQuotas} onChange={e => setNewQuotas(e.target.value)} className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm" placeholder="Ex: 1000" />
                             </div>
                         </div>
-                        <div className="flex gap-2 pt-2">
-                            <Button onClick={handleSave} className="flex-1 text-xs py-2">{editingId ? 'Salvar Alterações' : 'Adicionar Sócio'}</Button>
-                            {editingId && <Button variant="secondary" onClick={cancelEdit} className="text-xs py-2">Cancelar</Button>}
+                        <div className="flex gap-2">
+                            <Button onClick={handleSave} className="flex-1">{editingId ? 'Salvar Alterações' : 'Adicionar'}</Button>
+                            {editingId && <Button variant="secondary" onClick={cancelEdit}>Cancelar</Button>}
                         </div>
                     </div>
                 </Card>
 
-                <Card className="lg:col-span-2 border border-white/5 p-6">
+                <Card className="lg:col-span-2">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                         <h3 className="font-bold text-text-primary uppercase text-sm tracking-wider">Quadro de Sócios</h3>
-                        <div className="flex flex-wrap gap-3 items-center">
+                        <div className="flex flex-wrap gap-4 items-center">
                             <div className="relative">
                                 <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary" />
                                 <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Filtrar..." className="bg-background border border-border-color rounded-md pl-8 pr-3 py-1.5 text-xs focus:ring-1 focus:ring-primary outline-none w-32 sm:w-40" />
                             </div>
-                            <div className="flex gap-1.5 flex-wrap">
-                                <div className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider ${Math.abs(totalPercent - 100) < 0.01 ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-red-500/10 text-danger border border-danger/20'}`}>
+                            <div className="flex gap-2">
+                                <div className={`px-3 py-1.5 rounded-lg text-xs font-bold ${Math.abs(totalPercent - 100) < 0.01 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-danger'}`}>
                                     Total: {totalPercent.toFixed(2)}%
                                 </div>
-                                <div className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-primary/15 text-primary border border-primary/20 uppercase tracking-wider font-mono">
-                                    Cotas: {totalQuotas.toLocaleString('pt-BR')}
+                                <div className="px-3 py-1.5 rounded-lg text-xs font-bold bg-primary/20 text-primary">
+                                    Total Cotas: {totalQuotas.toLocaleString('pt-BR')}
                                 </div>
-                                {hasValuation && (
-                                    <div className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-blue-500/15 text-blue-400 border border-blue-500/20 uppercase tracking-wider font-mono" title="Calculado a partir do Valuation Geral">
-                                        Vlr Cota: {formatCurrency(valuePerQuota)}
-                                    </div>
-                                )}
                             </div>
                         </div>
                     </div>
@@ -1272,7 +809,7 @@ const PartnershipView: FC<{
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
-                                <tr className="border-b border-border-color text-[10px] text-text-secondary uppercase tracking-wider font-semibold">
+                                <tr className="border-b border-border-color text-[10px] text-text-secondary uppercase tracking-wider">
                                     <th className="p-3 cursor-pointer hover:text-primary transition-colors" onClick={() => handleSort('name')}>
                                         Nome Completo {sortConfig?.key === 'name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
                                     </th>
@@ -1282,32 +819,26 @@ const PartnershipView: FC<{
                                     <th className="p-3 cursor-pointer hover:text-primary transition-colors text-center" onClick={() => handleSort('quotas')}>
                                         N° de cotas {sortConfig?.key === 'quotas' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
                                     </th>
-                                    {hasValuation && <th className="p-3 text-right">Valor Econômico</th>}
                                     <th className="p-3 text-right">Ações</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-border-color/30 text-xs">
+                            <tbody className="divide-y divide-border-color/30 text-sm">
                                 {filteredAndSortedPartners.map(p => (
-                                    <tr key={p.id} className={`hover:bg-background/20 transition-colors h-11 even:bg-background/10 ${editingId === p.id ? 'bg-primary/10' : ''}`}>
-                                        <td className="p-3 font-semibold text-text-primary">{p.name}</td>
-                                        <td className="p-3 font-mono text-primary font-bold text-center">{p.percentage.toFixed(2)}%</td>
-                                        <td className="p-3 text-text-secondary text-center font-mono">{p.quotas?.toLocaleString('pt-BR') || 0}</td>
-                                        {hasValuation && (
-                                            <td className="p-3 text-right font-mono text-blue-400 font-bold" title="Valor calculado com base nas cotas do sócio e no valuation">
-                                                {formatCurrency((p.quotas || 0) * valuePerQuota)}
-                                            </td>
-                                        )}
+                                    <tr key={p.id} className={`hover:bg-background/50 transition-colors ${editingId === p.id ? 'bg-primary/10' : ''}`}>
+                                        <td className="p-3 font-bold text-text-primary">{p.name}</td>
+                                        <td className="p-3 font-mono text-primary font-bold text-center">{p.percentage}%</td>
+                                        <td className="p-3 text-text-secondary text-center">{p.quotas?.toLocaleString('pt-BR') || 0}</td>
                                         <td className="p-3 text-right">
                                             <div className="flex justify-end gap-1">
-                                                <button onClick={() => handleEdit(p)} className="p-1.5 text-text-secondary hover:text-primary hover:bg-surface rounded-lg transition-all" title="Editar Sócio"><EditIcon className="w-3.5 h-3.5"/></button>
-                                                <button onClick={() => { if(window.confirm("Remover sócio?")) onSave(partners.filter(item => item.id !== p.id)) }} className="p-1.5 text-text-secondary hover:text-danger hover:bg-surface rounded-lg transition-all" title="Remover Sócio"><TrashIcon className="w-3.5 h-3.5"/></button>
+                                                <button onClick={() => handleEdit(p)} className="p-2 text-text-secondary hover:text-primary hover:bg-surface rounded-lg transition-all" title="Editar Sócio"><EditIcon className="w-4 h-4"/></button>
+                                                <button onClick={() => { if(window.confirm("Remover sócio?")) onSave(partners.filter(item => item.id !== p.id)) }} className="p-2 text-text-secondary hover:text-danger hover:bg-surface rounded-lg transition-all" title="Remover Sócio"><TrashIcon className="w-4 h-4"/></button>
                                             </div>
                                         </td>
                                     </tr>
                                 ))}
                                 {filteredAndSortedPartners.length === 0 && (
                                     <tr>
-                                        <td colSpan={hasValuation ? 5 : 4} className="p-8 text-center text-text-secondary text-sm">Nenhum sócio cadastrado.</td>
+                                        <td colSpan={4} className="p-8 text-center text-text-secondary text-sm">Nenhum sócio encontrado.</td>
                                     </tr>
                                 )}
                             </tbody>
@@ -1447,7 +978,7 @@ const SettingsView: FC<SettingsViewProps> = ({
     globalTaxRate, setGlobalTaxRate,
     estimatedTaxRate, setEstimatedTaxRate
 }) => {
-    const [activeSettingsTab, setActiveSettingsTab] = useState<'categorias' | 'assessores' | 'impostos' | 'centros' | 'pagamentos' | 'auditoria'>('categorias');
+    const [activeSettingsTab, setActiveSettingsTab] = useState<'categorias' | 'assessores' | 'impostos' | 'centros' | 'pagamentos'>('categorias');
 
     const getStructuralBadgeColorAndLabel = (tipo: CategoryStructuralType | string) => {
         switch (tipo) {
@@ -1455,8 +986,6 @@ const SettingsView: FC<SettingsViewProps> = ({
                 return { label: 'Receita Operacional', classes: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' };
             case CategoryStructuralType.RECEITA_NAO_OPERACIONAL:
                 return { label: 'Receita Não Operacional', classes: 'bg-blue-500/10 text-blue-400 border border-blue-500/20' };
-            case CategoryStructuralType.DESPESA_NAO_OPERACIONAL:
-                return { label: 'Despesa Não Operacional', classes: 'bg-red-500/10 text-red-400 border border-red-500/20' };
             case CategoryStructuralType.CUSTO:
                 return { label: 'Custo', classes: 'bg-amber-500/10 text-amber-300 border border-amber-500/20' };
             case CategoryStructuralType.DESPESA_OPERACIONAL:
@@ -1526,7 +1055,6 @@ const SettingsView: FC<SettingsViewProps> = ({
     useEffect(() => {
         if (newExpenseCatStructuralType === CategoryStructuralType.CUSTO || 
             newExpenseCatStructuralType === CategoryStructuralType.DESPESA_OPERACIONAL || 
-            newExpenseCatStructuralType === CategoryStructuralType.DESPESA_NAO_OPERACIONAL || 
             newExpenseCatStructuralType === CategoryStructuralType.DEDUCAO_RECEITA) {
             setNewExpenseCatImpactaDRE(true);
         } else if (newExpenseCatStructuralType === CategoryStructuralType.INVESTIMENTO || 
@@ -1538,7 +1066,6 @@ const SettingsView: FC<SettingsViewProps> = ({
     useEffect(() => {
         if (tempExpenseStructuralType === CategoryStructuralType.CUSTO || 
             tempExpenseStructuralType === CategoryStructuralType.DESPESA_OPERACIONAL || 
-            tempExpenseStructuralType === CategoryStructuralType.DESPESA_NAO_OPERACIONAL || 
             tempExpenseStructuralType === CategoryStructuralType.DEDUCAO_RECEITA) {
             setTempExpenseImpactaDRE(true);
         } else if (tempExpenseStructuralType === CategoryStructuralType.INVESTIMENTO || 
@@ -1721,16 +1248,6 @@ const SettingsView: FC<SettingsViewProps> = ({
                 >
                     Formas de Pagamento
                 </button>
-                <button
-                    onClick={() => setActiveSettingsTab('auditoria')}
-                    className={`flex-1 min-w-[110px] text-center px-3 py-2 text-xs font-semibold rounded-md transition-all ${
-                        activeSettingsTab === 'auditoria' 
-                        ? 'bg-blue-500 text-white font-bold shadow' 
-                        : 'text-text-secondary hover:text-text-primary hover:bg-background/40'
-                    }`}
-                >
-                    🛡️ Auditoria Contábil
-                </button>
             </div>
 
             {/* TAB CONTENTS */}
@@ -1864,7 +1381,6 @@ const SettingsView: FC<SettingsViewProps> = ({
                                         >
                                             <option value={CategoryStructuralType.CUSTO}>Custo</option>
                                             <option value={CategoryStructuralType.DESPESA_OPERACIONAL}>Despesa Operacional</option>
-                                            <option value={CategoryStructuralType.DESPESA_NAO_OPERACIONAL}>Despesa Não Operacional</option>
                                             <option value={CategoryStructuralType.DEDUCAO_RECEITA}>Dedução de Receita</option>
                                             <option value={CategoryStructuralType.INVESTIMENTO}>Investimento</option>
                                             <option value={CategoryStructuralType.SOCIETARIO}>Societário</option>
@@ -1904,7 +1420,6 @@ const SettingsView: FC<SettingsViewProps> = ({
                                                                 <select value={tempExpenseStructuralType} onChange={e => setTempExpenseStructuralType(e.target.value as CategoryStructuralType)} className="bg-background border border-border-color rounded px-1 py-1 text-[10px]">
                                                                     <option value={CategoryStructuralType.CUSTO}>Custo</option>
                                                                     <option value={CategoryStructuralType.DESPESA_OPERACIONAL}>Despesa Operacional</option>
-                                                                    <option value={CategoryStructuralType.DESPESA_NAO_OPERACIONAL}>Despesa Não Operacional</option>
                                                                     <option value={CategoryStructuralType.DEDUCAO_RECEITA}>Dedução de Receita</option>
                                                                     <option value={CategoryStructuralType.INVESTIMENTO}>Investimento</option>
                                                                     <option value={CategoryStructuralType.SOCIETARIO}>Societário</option>
@@ -2136,65 +1651,6 @@ const SettingsView: FC<SettingsViewProps> = ({
                         </Card>
                     </div>
                 )}
-
-                {activeSettingsTab === 'auditoria' && (
-                    <div className="space-y-6">
-                        <div className="bg-surface border border-border-color/50 rounded-2xl p-5 shadow-xs">
-                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-border-color/30 pb-4">
-                                <div className="space-y-1">
-                                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-blue-500/10 rounded-full text-[10px] font-bold text-blue-400 border border-blue-500/15">
-                                        🛡️ AUDITORIA DE CONSISTÊNCIA CONTÁBIL
-                                    </div>
-                                    <h3 className="text-lg font-bold text-text-primary">Massa de Teste & Validação de Fórmulas</h3>
-                                    <p className="text-xs text-text-secondary">
-                                        Os testes abaixo validam as fórmulas matemáticas e lógicas do motor financeiro da ACI Capital em tempo real, garantindo conformidade centavo a centavo com as regras de contabilidade e finanças gerenciais.
-                                    </p>
-                                </div>
-                                <div className="bg-emerald-500/10 text-emerald-400 font-bold text-xs px-3 py-1.5 rounded-lg border border-emerald-500/20 flex items-center gap-1.5">
-                                    <ShieldCheckIcon className="w-4 h-4" /> Motor 100% Consistente
-                                </div>
-                            </div>
-
-                            <div className="mt-5 space-y-4">
-                                {runFinancialTestSuite(calculateDRE).map((t, i) => (
-                                    <div key={i} className="bg-background/40 border border-border-color/25 rounded-xl p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:bg-background/80 transition-all duration-200">
-                                        <div className="space-y-1 max-w-xl">
-                                            <div className="flex items-center gap-2">
-                                                <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded ${
-                                                    t.category === 'Competência' ? 'bg-[#93c5fd]/10 text-[#3b82f6]' :
-                                                    t.category === 'Caixa' ? 'bg-[#fcd34d]/10 text-[#d97706]' : 'bg-[#c084fc]/10 text-[#a855f7]'
-                                                }`}>
-                                                    {t.category}
-                                                </span>
-                                                <h4 className="font-bold text-sm text-text-primary">{t.name}</h4>
-                                            </div>
-                                            <p className="text-xs text-text-secondary leading-relaxed">{t.description}</p>
-                                        </div>
-
-                                        <div className="flex items-center gap-4 w-full md:w-auto md:justify-end border-t md:border-t-0 border-border-color/20 pt-2 md:pt-0">
-                                            <div className="text-right font-mono text-xs">
-                                                <div className="text-text-secondary flex justify-between gap-2 md:block">
-                                                    <span>Esperado:</span> <strong className="text-text-primary">{t.expected}</strong>
-                                                </div>
-                                                <div className="text-text-secondary flex justify-between gap-2 md:block mt-1">
-                                                    <span>Calculado:</span> <strong className={t.success ? "text-emerald-400" : "text-red-400"}>{t.actual}</strong>
-                                                </div>
-                                            </div>
-
-                                            <div className={`p-1 rounded-full ${t.success ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-100'} flex-shrink-0`}>
-                                                {t.success ? (
-                                                    <CheckCircleIcon className="w-5 h-5" />
-                                                ) : (
-                                                    <AlertCircleIcon className="w-5 h-5 animate-pulse" />
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                )}
             </div>
         </div>
     );
@@ -2321,7 +1777,6 @@ const TransactionsView: FC<{
     const [sortConfig, setSortConfig] = useState<{ key: keyof Transaction; direction: 'asc' | 'desc' } | null>({ key: 'date', direction: 'desc' });
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
-    const [regime, setRegime] = useState<'caixa' | 'competencia'>('caixa');
 
     const availableYears = useMemo(() => {
         const yearsSet = new Set(transactions.map(t => t.date ? new Date(t.date).getUTCFullYear() : null).filter((y): y is number => y !== null));
@@ -2350,11 +1805,6 @@ const TransactionsView: FC<{
             }
             return true;
         });
-
-        // Se regime for caixa real, filtrar fora projecoes e itens pendentes de pagamento (despesas)
-        if (regime === 'caixa') {
-            items = items.filter(t => !t.isProjection && t.status !== ExpenseStatus.PENDING);
-        }
 
         // PROJEÇÃO AUTOMÁTICA DE GASTOS FIXOS (VISUAL APENAS)
         if (activeTab === TransactionType.EXPENSE && filterYear !== 'all' && filterMonth !== 'all' && !searchTerm && filterCategory === 'all') {
@@ -2491,33 +1941,6 @@ const TransactionsView: FC<{
                     <div>
                         <h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Transações</h2>
                         <p className="text-text-secondary text-sm">Gerencie suas receitas e despesas.</p>
-                        
-                        {/* REGIME TOGGLE BADGE WITH TOOLTIP */}
-                        <div className="flex items-center gap-2 bg-surface border border-white/5 py-1 px-2.5 rounded-lg text-xs font-semibold select-none shadow-sm relative group mt-2 w-fit cursor-pointer">
-                            <span className="text-text-secondary">Cálculo:</span>
-                            <div className="flex bg-background/80 p-0.5 rounded-md border border-white/5">
-                                <button 
-                                    onClick={() => setRegime('caixa')} 
-                                    className={`px-2 py-0.5 rounded transition-all text-[9.5px] font-bold uppercase tracking-wider ${regime === 'caixa' ? 'bg-[#ff7a00] text-background' : 'text-text-secondary hover:text-text-primary'}`}
-                                >
-                                    Caixa Real
-                                </button>
-                                <button 
-                                    onClick={() => setRegime('competencia')} 
-                                    className={`px-2 py-0.5 rounded transition-all text-[9.5px] font-bold uppercase tracking-wider ${regime === 'competencia' ? 'bg-[#ff7a00] text-background' : 'text-text-secondary hover:text-text-primary'}`}
-                                >
-                                    Competência
-                                </button>
-                            </div>
-                            
-                            {/* Explanatory Hover Tooltip */}
-                            <div className="absolute top-8 left-0 bg-[#0f1526] border border-white/10 p-3 rounded-lg shadow-2xl text-[11px] text-text-secondary hidden group-hover:block z-50 w-64 leading-relaxed transition-all">
-                                <strong className="text-text-primary block mb-1">{regime === 'caixa' ? 'Modo Caixa Real Ativo' : 'Modo Competência Ativo'}</strong>
-                                {regime === 'caixa' 
-                                    ? 'Cálculo de Saldo exibe apenas entradas recebidas e despesas liquidadas. Projeções e despesas pendentes são desconsideradas.' 
-                                    : 'Cálculo de Saldo inclui todos os lançamentos: realizados, pendentes de pagamento e provisões/projeções de gastos fixos.'}
-                            </div>
-                        </div>
                     </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -2601,11 +2024,11 @@ const TransactionsView: FC<{
                 </div>
             </Card>
 
-            <div className="bg-surface rounded-xl shadow-lg border border-white/5 overflow-hidden">
-                <div className="overflow-x-auto max-h-[600px] scrollbar-thin">
+            <div className="bg-surface rounded-xl shadow-lg overflow-hidden">
+                <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
-                        <thead className="sticky top-0 bg-[#0f1526] z-10 border-b border-border-color">
-                            <tr className="bg-background/40 text-text-secondary text-[9px] font-bold uppercase tracking-wider">
+                        <thead>
+                            <tr className="bg-background/40 text-text-secondary text-[9px] font-bold uppercase tracking-wider border-b border-border-color">
                                 <th className="p-2.5 px-3 cursor-pointer hover:text-primary transition-colors text-left" onClick={() => requestSort('date')}>Data {getSortIndicator('date')}</th>
                                 <th className="p-2.5 px-3 cursor-pointer hover:text-primary transition-colors text-left" onClick={() => requestSort('description')}>Descrição {getSortIndicator('description')}</th>
                                 <th className="p-2.5 px-3 cursor-pointer hover:text-primary transition-colors text-left" onClick={() => requestSort('category')}>Categoria {getSortIndicator('category')}</th>
@@ -2616,18 +2039,10 @@ const TransactionsView: FC<{
                         </thead>
                         <tbody className="divide-y divide-border-color/15 text-xs font-medium">
                             {filtered.map(t => (
-                                <tr key={t.id} className={`hover:bg-background/20 transition-colors h-11 even:bg-background/10 ${t.isProjection ? 'opacity-50 border-dashed border-b border-white/5 bg-background/5' : ''}`}>
+                                <tr key={t.id} className={`hover:bg-background/20 transition-colors h-11 ${t.isProjection ? 'opacity-50 grayscale-[0.5]' : ''}`}>
                                     <td className="p-2.5 px-3 whitespace-nowrap text-text-secondary font-mono">{formatDate(t.date)}</td>
                                     <td className="p-2.5 px-3">
-                                        <div className="flex items-center gap-1.5 flex-wrap">
-                                            <div className="font-bold text-text-primary text-xs">{t.description}</div>
-                                            {t.reconciled && (
-                                                <span className="text-[8px] px-1 py-0 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded font-black uppercase tracking-wider">CB</span>
-                                            )}
-                                            {t.isProjection && (
-                                                <span className="text-[8px] px-1 py-0 bg-[#ff7a00]/15 text-[#ff7a00] border border-[#ff7a00]/25 rounded font-black uppercase tracking-wider">Proj</span>
-                                            )}
-                                        </div>
+                                        <div className="font-bold text-text-primary text-xs">{t.description}</div>
                                         <div className="text-[10px] text-text-secondary font-normal mt-0.5">{t.clientSupplier || '-'}</div>
                                     </td>
                                     <td className="p-2.5 px-3">
@@ -3023,21 +2438,6 @@ const CommissionClosingModal: FC<{
     return (
         <Modal isOpen={isOpen} onClose={onClose} title="Fechar Comissões do Assessor" size="xl">
             <div className="space-y-4">
-                {/* Bloco Superior de Alerta e Identificação conforme Diretrizes Financeiras */}
-                <div className="bg-blue-500/10 border border-blue-500/20 text-blue-400 p-4 rounded-xl space-y-2">
-                    <p className="text-xs font-semibold flex items-center gap-1.5">
-                        <span>🛡️</span> Este fechamento não altera receita do escritório. Apenas gera pagamento de comissão quando confirmado.
-                    </p>
-                    <div className="flex gap-4 text-[11px] text-text-secondary border-t border-border-color/20 pt-2 font-mono">
-                        <div>
-                            <span className="text-text-secondary uppercase">Origem:</span> <strong className="text-blue-400">Fechamento de Comissão</strong>
-                        </div>
-                        <div>
-                            <span className="text-text-secondary uppercase">Destino:</span> <strong className="text-emerald-400">Despesa de pagamento do assessor</strong>
-                        </div>
-                    </div>
-                </div>
-
                 <div className="bg-surface p-3 rounded-lg border border-border-color flex justify-between items-center">
                     <div className="flex gap-4">
                         <div className="flex flex-col">
@@ -3220,7 +2620,6 @@ const ImportedRevenuesView: FC<{
     const [editingRevenue, setEditingRevenue] = useState<ImportedRevenue | null>(null);
     const [selectedRevenueIds, setSelectedRevenueIds] = useState<Set<string>>(new Set());
     const [showReconciliationReport, setShowReconciliationReport] = useState(false);
-    const [selectedRevenueDetail, setSelectedRevenueDetail] = useState<ImportedRevenue | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleSyncAdvisorLinks = async () => {
@@ -3406,7 +2805,6 @@ const ImportedRevenuesView: FC<{
 
         let totalGrossProduction = 0;
         let totalNetProduction = 0;
-        let totalNetRevenue = 0;
         let totalCommissionsPaid = 0;
         let totalOfficeResult = 0;
         let totalSubsidyCost = 0;
@@ -3433,7 +2831,6 @@ const ImportedRevenuesView: FC<{
                 ?? advisors.find(a => a.name === data.advisorName);
             
             totalGrossProduction += data.revenue;
-            totalNetRevenue += data.netRevenue;
             
             // CRM mensal do perfil do assessor (fonte única de verdade)
             const crmCusto = advisor ? Math.abs((advisor.costs || []).reduce((acc, c) => acc + c.value, 0)) : 0;
@@ -3456,7 +2853,6 @@ const ImportedRevenuesView: FC<{
         return {
             totalGrossProduction,
             totalNetProduction,
-            totalNetRevenue: round(totalNetRevenue),
             totalCommissionsPaid,
             totalOfficeResult,
             totalSubsidyCost,
@@ -3910,14 +3306,6 @@ const ImportedRevenuesView: FC<{
         alert(`${importSummary.records.length} registros importados com sucesso!`);
     };
 
-    const pendingSummary = useMemo(() => {
-        const pending = filteredRevenues.filter(r => r.status !== CommissionStatus.COMPLETED && !r.lancamentosRealizados);
-        return {
-            countPending: pending.length,
-            amountPending: pending.reduce((sum, r) => sum + (r.advisorNetTotal || r.advisorNet || r.responsibleAdvisorNet || 0), 0)
-        };
-    }, [filteredRevenues]);
-
     return (
          <div className="space-y-6 animate-fade-in">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -4002,52 +3390,106 @@ const ImportedRevenuesView: FC<{
                 </div>
             </Card>
             
-            {/* CAMADA 1: VISÃO EXECUTIVA COM CARDS */}
-            <div className="space-y-2">
-                <div className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-2">
-                    Visão Executiva do Período
+            <div style={{ background: 'transparent', padding: '0', borderRadius: '16px' }}>
+                <div style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.50)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '10px' }} className="!text-[rgba(255,255,255,0.50)]">
+                    Produção do período
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '8px', marginBottom: '8px' }}>
                     {/* Produção Bruta */}
-                    <div className="bg-white/[0.03] border border-white/5 border-l-4 border-l-primary/40 rounded-r-xl p-4 flex flex-col justify-center">
-                        <label className="text-[10px] font-medium text-text-secondary uppercase tracking-wider mb-1">Produção Bruta</label>
-                        <p className="text-xl font-bold text-text-primary">{formatCurrency(totals.totalGrossProduction)}</p>
+                    <div style={{ 
+                        background: 'rgba(255,255,255,0.04)', 
+                        border: '0.5px solid rgba(255,255,255,0.08)', 
+                        borderLeft: '3px solid rgba(255,255,255,0.20)',
+                        borderRadius: '0 10px 10px 0', 
+                        padding: '16px 18px', 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        justifyContent: 'center' 
+                    }}>
+                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.58)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }} className="!text-[rgba(255,255,255,0.58)]">Produção Bruta</label>
+                        <p style={{ fontSize: '20px', fontWeight: 600, color: 'rgba(255,255,255,0.88)' }}>{formatCurrency(totals.totalGrossProduction)}</p>
                     </div>
 
-                    {/* Receita Líquida */}
-                    <div className="bg-white/[0.03] border border-white/5 border-l-4 border-l-green-500/40 rounded-r-xl p-4 flex flex-col justify-center">
-                        <label className="text-[10px] font-medium text-text-secondary uppercase tracking-wider mb-1">Receita Líquida</label>
-                        <p className="text-xl font-bold text-green-400">{formatCurrency(totals.totalNetRevenue)}</p>
-                        {totals.avgMinProduction > 0 && (
-                            <p className="text-[8px] text-text-secondary mt-1">Prod. Min: {formatCurrency(totals.avgMinProduction)}/mês</p>
-                        )}
+                    {/* Produção Líquida */}
+                    <div style={{ 
+                        background: 'rgba(255,255,255,0.04)', 
+                        border: '0.5px solid rgba(255,255,255,0.08)', 
+                        borderLeft: `3px solid ${totals.totalNetProduction < 0 ? '#f87171' : 'rgba(255,255,255,0.20)'}`,
+                        borderRadius: '0 10px 10px 0', 
+                        padding: '16px 18px', 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        justifyContent: 'center' 
+                    }}>
+                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.58)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }} className="!text-[rgba(255,255,255,0.58)]">Produção Líquida</label>
+                        <p style={{ fontSize: '20px', fontWeight: 600, color: totals.totalNetProduction < 0 ? '#f87171' : 'rgba(255,255,255,0.88)' }}>{formatCurrency(totals.totalNetProduction)}</p>
                     </div>
 
                     {/* Comissões Pagas */}
-                    <div className="bg-white/[0.03] border border-white/5 border-l-4 border-l-blue-400/40 rounded-r-xl p-4 flex flex-col justify-center">
-                        <label className="text-[10px] font-medium text-text-secondary uppercase tracking-wider mb-1">Comissões Pagas</label>
-                        <p className="text-xl font-bold text-blue-400">{formatCurrency(totals.totalCommissionsPaid)}</p>
+                    <div style={{ 
+                        background: 'rgba(255,255,255,0.04)', 
+                        border: '0.5px solid rgba(255,255,255,0.08)', 
+                        borderLeft: '3px solid rgba(255,255,255,0.20)',
+                        borderRadius: '0 10px 10px 0', 
+                        padding: '16px 18px', 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        justifyContent: 'center' 
+                    }}>
+                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.58)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }} className="!text-[rgba(255,255,255,0.58)]">Comissões Pagas</label>
+                        <p style={{ fontSize: '20px', fontWeight: 600, color: 'rgba(255,255,255,0.88)' }}>{formatCurrency(totals.totalCommissionsPaid)}</p>
                     </div>
 
                     {/* Resultado do Escritório */}
-                    <div className="bg-white/[0.03] border border-white/5 border-l-4 border-l-indigo-400/40 rounded-r-xl p-4 flex flex-col justify-center">
-                        <label className="text-[10px] font-medium text-text-secondary uppercase tracking-wider mb-1">Resultado do Escritório</label>
-                        <p className={`text-2xl font-extrabold ${totals.totalOfficeResult < 0 ? 'text-danger' : 'text-indigo-400'}`}>{formatCurrency(totals.totalOfficeResult)}</p>
+                    <div style={{ 
+                        background: 'rgba(255,255,255,0.04)', 
+                        border: '0.5px solid rgba(255,255,255,0.08)', 
+                        borderLeft: `3px solid ${totals.totalOfficeResult < 0 ? '#f87171' : '#818cf8'}`,
+                        borderRadius: '0 10px 10px 0', 
+                        padding: '16px 18px', 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        justifyContent: 'center'
+                    }}>
+                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.58)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }} className="!text-[rgba(255,255,255,0.58)]">Resultado do Escritório</label>
+                        <p style={{ fontSize: '28px', fontWeight: 600, color: totals.totalOfficeResult < 0 ? '#f87171' : '#818cf8' }}>{formatCurrency(totals.totalOfficeResult)}</p>
+                    </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px' }}>
+                    {/* Custo de Subsídio */}
+                    <div style={{ 
+                        background: 'rgba(255,255,255,0.04)', 
+                        border: '0.5px solid rgba(255,255,255,0.08)', 
+                        borderLeft: `3px solid ${totals.totalSubsidyCost > 0 ? '#f87171' : 'rgba(255,255,255,0.20)'}`,
+                        borderRadius: '0 10px 10px 0', 
+                        padding: '16px 18px', 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        justifyContent: 'center' 
+                    }}>
+                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.58)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }} className="!text-[rgba(255,255,255,0.58)]">Custo de Subsídio</label>
+                        <p style={{ fontSize: '22px', fontWeight: 600, color: totals.totalSubsidyCost > 0 ? '#f87171' : 'rgba(255,255,255,0.88)' }}>{formatCurrency(totals.totalSubsidyCost)}</p>
+                        <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.42)', marginTop: '5px' }} className="!text-[rgba(255,255,255,0.42)]">CRM não coberto no período</p>
                     </div>
 
-                    {/* CRM não coberto */}
-                    <div className="bg-white/[0.03] border border-white/5 border-l-4 border-l-danger/40 rounded-r-xl p-4 flex flex-col justify-center">
-                        <label className="text-[10px] font-medium text-text-secondary uppercase tracking-wider mb-1">CRM não coberto</label>
-                        <p className={`text-xl font-bold ${totals.totalSubsidyCost > 0 ? 'text-danger' : 'text-text-primary'}`}>{formatCurrency(totals.totalSubsidyCost)}</p>
-                    </div>
-
-                    {/* Pendências de fechamento */}
-                    <div className="bg-white/[0.03] border border-white/5 border-l-4 border-l-amber-500/40 rounded-r-xl p-4 flex flex-col justify-center">
-                        <label className="text-[10px] font-medium text-text-secondary uppercase tracking-wider mb-1">Pendências Fechamento</label>
-                        <p className="text-xl font-bold text-amber-500">
-                            {pendingSummary.countPending} 
-                            <span className="text-[9px] font-sans font-normal text-text-secondary ml-1.5Block sm:inline">({formatCurrency(pendingSummary.amountPending)})</span>
+                    {/* Produção Mínima */}
+                    <div style={{ 
+                        background: 'rgba(255,255,255,0.04)', 
+                        border: '0.5px solid rgba(255,255,255,0.08)', 
+                        borderLeft: '3px solid #fbbf24',
+                        borderRadius: '0 10px 10px 0', 
+                        padding: '16px 18px', 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        justifyContent: 'center' 
+                    }}>
+                        <label style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.58)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }} className="!text-[rgba(255,255,255,0.58)]">Produção mínima</label>
+                        <p style={{ fontSize: '22px', fontWeight: 600, color: '#fbbf24' }}>
+                            {formatCurrency(totals.avgMinProduction)}
+                            <span style={{ fontSize: '13px', fontWeight: 400, color: 'rgba(255,255,255,0.25)' }}> / mês</span>
                         </p>
+                        <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.42)', marginTop: '5px' }} className="!text-[rgba(255,255,255,0.42)]">mínimo para cobrir CRM e imposto</p>
                     </div>
                 </div>
             </div>
@@ -4256,18 +3698,31 @@ const ImportedRevenuesView: FC<{
                                     />
                                 </th>
                                 <th className="p-4">Data</th>
-                                <th className="p-4">Cliente / Referência</th>
+                                <th className="p-4">Referência / Cliente</th>
                                 <th className="p-4">Assessor Resp.</th>
                                 <th className="p-4">Receita Gerada</th>
+                                <th className="print-only-cell p-4">Imposto (%)</th>
+                                <th className="print-only-cell p-4">Partilha Assessor</th>
+                                <th className="print-only-cell p-4">Partilha Escritório</th>
+                                <th className="print-only-cell p-4">Imposto Assessor</th>
+                                <th className="print-only-cell p-4">Imposto Escritório</th>
+                                <th className="print-only-cell p-4">Provisão Total Imposto</th>
+                                <th className="print-only-cell p-4">Receita Líq. Escritório</th>
+                                <th className="p-4">Indicação</th>
                                 <th className="p-4">Comissão Líquida</th>
-                                <th className="p-4">Resultado Escritório</th>
-                                <th className="p-4 text-center">Status</th>
+                                <th className="print-only-cell p-4">Custo CRM</th>
+                                <th className="print-only-cell p-4">Resultado Produção</th>
+                                <th className="p-4">Resultado do Escritório na Produção</th>
+                                <th className="print-only-cell p-4">Resultado Caixa</th>
+                                <th className="print-only-cell p-4">Entrada Caixa</th>
+                                <th className="print-only-cell p-4">Observação</th>
+                                <th className="p-4 text-center">Status Financeiro</th>
                                 <th className="no-print p-4 text-right">Ações</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border-color/30">
                             {filteredRevenues.map(r => (
-                                <tr key={r.id} className={`hover:bg-background/20 transition-colors ${selectedRevenueIds.has(r.id) ? 'bg-primary/5' : ''}`}>
+                                <tr key={r.id} className={`hover:bg-background/50 ${selectedRevenueIds.has(r.id) ? 'bg-primary/5' : ''}`}>
                                     <td className="no-print p-4">
                                         <input 
                                             type="checkbox" 
@@ -4277,36 +3732,52 @@ const ImportedRevenuesView: FC<{
                                             disabled={r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados}
                                         />
                                     </td>
-                                    <td className="p-4 cursor-pointer hover:text-primary transition-colors font-mono" onClick={() => setSelectedRevenueDetail(r)}>
-                                        {formatDate(r.date)}
+                                    <td className="p-4">{formatDate(r.date)}</td>
+                                    <td className="p-4 font-medium max-w-[150px] truncate" title={`${r.conta ? '[' + r.conta + '] ' : ''}${r.cliente}`}>
+                                        {r.conta && <span className="text-text-secondary mr-1">[{r.conta}]</span>}
+                                        {r.cliente}
                                     </td>
-                                    <td className="p-4 cursor-pointer hover:text-primary transition-colors font-medium max-w-[180px] truncate" onClick={() => setSelectedRevenueDetail(r)} title={`${r.conta ? '[' + r.conta + '] ' : ''}${r.cliente}`}>
-                                        <div className="flex items-center gap-1.5">
-                                            {r.conta && <span className="text-text-secondary">[{r.conta}]</span>}
-                                            <span>{r.cliente}</span>
-                                        </div>
+                                    <td className="p-4">{r.advisorName}</td>
+                                    <td className="p-4 font-bold">{formatCurrency(r.revenueAmount || 0)}</td>
+                                    <td className="print-only-cell p-4">{r.taxRate}%</td>
+                                    <td className="print-only-cell p-4">{formatCurrency(r.advisorShare || 0)}</td>
+                                    <td className="print-only-cell p-4">{formatCurrency(r.officeShare || 0)}</td>
+                                    <td className="print-only-cell p-4">{formatCurrency(r.advisorTax || 0)}</td>
+                                    <td className="print-only-cell p-4">{formatCurrency(r.officeTax || 0)}</td>
+                                    <td className="print-only-cell p-4">{formatCurrency(r.totalTaxProvision || 0)}</td>
+                                    <td className="print-only-cell p-4">{formatCurrency(r.officeNetRevenue || 0)}</td>
+                                    <td className="p-4">
+                                        {r.referralAdvisorId ? (
+                                            <div className="flex flex-col">
+                                                <span className="font-medium">{r.referralAdvisorName}</span>
+                                                <span className="text-[9px] text-text-secondary">{r.referralPercentage}% ({formatCurrency(r.referralAmount)})</span>
+                                            </div>
+                                        ) : (
+                                            <div className="flex justify-center opacity-20">
+                                                <InfoIcon className="w-3 h-3" />
+                                            </div>
+                                        )}
                                     </td>
-                                    <td className="p-4 cursor-pointer hover:text-primary transition-colors" onClick={() => setSelectedRevenueDetail(r)}>
-                                        {r.advisorName}
-                                    </td>
-                                    <td className="p-4 cursor-pointer hover:text-primary transition-colors font-semibold" onClick={() => setSelectedRevenueDetail(r)}>
-                                        {formatCurrency(r.revenueAmount || 0)}
-                                    </td>
-                                    <td className="p-4 cursor-pointer hover:text-primary transition-colors font-bold text-primary" onClick={() => setSelectedRevenueDetail(r)}>
+                                    <td className="p-4 text-primary font-bold">
                                         <div className="flex flex-col">
                                             <span>{formatCurrency(r.advisorNetTotal || 0)}</span>
                                             {r.referralAdvisorId && (
-                                                <span className="text-[9px] text-text-secondary font-normal">Repique: {formatCurrency(r.referralAmount)}</span>
+                                                <span className="text-[9px] text-text-secondary font-normal">Resp: {formatCurrency(r.responsibleAdvisorNet)}</span>
                                             )}
                                         </div>
                                     </td>
-                                    <td className={`p-4 cursor-pointer hover:text-primary transition-colors font-bold ${r.advisorOperationalResult !== undefined && r.advisorOperationalResult < 0 ? 'text-danger' : 'text-green-400'}`} onClick={() => setSelectedRevenueDetail(r)}>
+                                    <td className="print-only-cell p-4">{formatCurrency(r.crmCost || 0)}</td>
+                                    <td className="print-only-cell p-4">{formatCurrency(r.productionResult || 0)}</td>
+                                    <td className={`p-4 font-bold ${r.advisorOperationalResult !== undefined && r.advisorOperationalResult < 0 ? 'text-danger' : 'text-green-400'}`}>
                                         {r.advisorOperationalResult !== undefined ? formatCurrency(r.advisorOperationalResult) : '-'}
                                     </td>
+                                    <td className="print-only-cell p-4">{formatCurrency(r.cashResult || 0)}</td>
+                                    <td className="print-only-cell p-4">{formatCurrency(r.cashEntryAmount || 0)}</td>
+                                    <td className="print-only-cell p-4">{r.observacao || '-'}</td>
                                     <td className="p-4 text-center">
                                         <div className="flex flex-col items-center gap-1">
                                             <select 
-                                                className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase cursor-pointer text-center select-none border border-white/5 focus:outline-none focus:ring-1 focus:ring-primary/40 ${getStatusLabel(r.status, r.lancamentosRealizados).bg || 'bg-background'} ${getStatusLabel(r.status, r.lancamentosRealizados).color || 'text-text-secondary'}`}
+                                                className={`px-2 py-1 rounded text-[9px] font-bold uppercase cursor-pointer text-center select-none border border-white/5 focus:outline-none focus:ring-1 focus:ring-primary/40 ${getStatusLabel(r.status, r.lancamentosRealizados).bg || 'bg-background'} ${getStatusLabel(r.status, r.lancamentosRealizados).color || 'text-text-secondary'}`}
                                                 style={{...getStatusLabel(r.status, r.lancamentosRealizados).style, WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none', textAlignLast: 'center'}}
                                                 value={getEffectiveStatus(r.status, r.lancamentosRealizados)}
                                                 onChange={async (e) => {
@@ -4315,19 +3786,19 @@ const ImportedRevenuesView: FC<{
                                                     await onUpdate(r.id, { status: val, lancamentosRealizados });
                                                 }}
                                             >
-                                                <option className="bg-[#1e293b] text-text-secondary" value={CommissionStatus.PENDING}>Pendente</option>
+                                                <option className="bg-[#1e293b] text-text-secondary" value={CommissionStatus.PENDING}>Pendente de Lançamento</option>
                                                 <option className="bg-[#1e293b] text-blue-400" value={CommissionStatus.COMMISSION_LAUNCHED}>Comissão Lançada</option>
                                                 <option className="bg-[#1e293b] text-indigo-400" value={CommissionStatus.REVENUE_LAUNCHED}>Receita Lançada</option>
-                                                <option className="bg-[#1e293b] text-orange-400" value={CommissionStatus.TAX_PROVISIONED}>Impostose Provisão</option>
-                                                <option className="bg-[#1e293b] text-teal-400" value={CommissionStatus.REFERRAL_SETTLED}>Indicação Quitada</option>
-                                                <option className="bg-[#1e293b] text-green-400" value={CommissionStatus.COMPLETED}>Completo</option>
+                                                <option className="bg-[#1e293b] text-orange-400" value={CommissionStatus.TAX_PROVISIONED}>Impostos Provisionados</option>
+                                                <option className="bg-[#1e293b] text-teal-400" value={CommissionStatus.REFERRAL_SETTLED}>Indicação Quitada (Parcial)</option>
+                                                 <option className="bg-[#1e293b] text-green-400" value={CommissionStatus.COMPLETED}>Lançamento Completo</option>
                                             </select>
                                         </div>
                                     </td>
                                     <td className="no-print p-4 text-right">
                                         <div className="flex justify-end gap-1">
-                                            <Button variant="ghost" className="p-1" onClick={() => handleEdit(r)} disabled={r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados}><EditIcon className="w-3.5 h-3.5"/></Button>
-                                            <Button variant="ghostDanger" className="p-1" onClick={() => onDelete(r.id)}><TrashIcon className="w-3.5 h-3.5"/></Button>
+                                            <Button variant="ghost" className="p-1" onClick={() => handleEdit(r)} disabled={r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados}><EditIcon className="w-3 h-3"/></Button>
+                                            <Button variant="ghostDanger" className="p-1" onClick={() => onDelete(r.id)}><TrashIcon className="w-3 h-3"/></Button>
                                         </div>
                                     </td>
                                 </tr>
@@ -4341,190 +3812,6 @@ const ImportedRevenuesView: FC<{
                     </table>
                 </div>
             </Card>
-
-            {/* DRAWER LATERAL DE DETALHES (AUDITORIA) */}
-            {selectedRevenueDetail && (
-                <div className="fixed inset-0 z-50 overflow-hidden" role="dialog" aria-modal="true">
-                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setSelectedRevenueDetail(null)} />
-                    <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
-                        <div className="w-screen max-w-md bg-[#0f172a] border-l border-white/10 shadow-2xl flex flex-col animate-slide-in relative">
-                            {/* Header */}
-                            <div className="p-6 border-b border-white/5 flex items-center justify-between">
-                                <div>
-                                    <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Detalhes do Lançamento</h3>
-                                    <p className="text-[10px] text-text-secondary">Auditoria de comissão, repique e provisões</p>
-                                </div>
-                                <button className="p-1 px-2 rounded-md hover:bg-white/5 text-text-secondary hover:text-text-primary transition-colors focus:outline-none" onClick={() => setSelectedRevenueDetail(null)}>
-                                    <CloseIcon className="w-5 h-5" />
-                                </button>
-                            </div>
-
-                            {/* Content */}
-                            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                                {/* Geral */}
-                                <div className="space-y-2">
-                                    <h4 className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">Informações Gerais</h4>
-                                    <div className="bg-white/[0.02] p-4 rounded-xl border border-white/5 space-y-3">
-                                        <div className="flex justify-between text-xs">
-                                            <span className="text-text-secondary">Data do Faturamento:</span>
-                                            <span className="font-mono font-medium text-text-primary">{formatDate(selectedRevenueDetail.date)}</span>
-                                        </div>
-                                        <div className="flex justify-between text-xs">
-                                            <span className="text-text-secondary">Cliente / Conta:</span>
-                                            <span className="font-semibold text-text-primary">
-                                                {selectedRevenueDetail.conta && <span className="text-text-secondary font-mono mr-1">[{selectedRevenueDetail.conta}]</span>}
-                                                {selectedRevenueDetail.cliente}
-                                            </span>
-                                        </div>
-                                        <div className="flex justify-between text-xs">
-                                            <span className="text-text-secondary">Assessor Responsável:</span>
-                                            <span className="font-medium text-text-primary">{selectedRevenueDetail.advisorName}</span>
-                                        </div>
-                                        <div className="flex justify-between text-xs">
-                                            <span className="text-text-secondary">Status Financeiro:</span>
-                                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${getStatusLabel(selectedRevenueDetail.status, selectedRevenueDetail.lancamentosRealizados).bg || 'bg-background'} ${getStatusLabel(selectedRevenueDetail.status, selectedRevenueDetail.lancamentosRealizados).color || 'text-text-secondary'}`}>
-                                                {getStatusLabel(selectedRevenueDetail.status, selectedRevenueDetail.lancamentosRealizados).label}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Valores / Comissionamento */}
-                                <div className="space-y-2">
-                                    <h4 className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">Cálculo de Comissionamento</h4>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="bg-white/[0.02] p-3 rounded-xl border border-white/5 col-span-2">
-                                            <span className="text-[9px] text-text-secondary uppercase block mb-1">Receita Comercial Gerada</span>
-                                            <span className="text-base font-black text-text-primary">{formatCurrency(selectedRevenueDetail.revenueAmount || 0)}</span>
-                                        </div>
-                                        <div className="bg-white/[0.02] p-3 rounded-lg border border-white/5">
-                                            <span className="text-[9px] text-text-secondary uppercase block mb-1">Comissão Líquida</span>
-                                            <span className="text-sm font-bold text-primary">{formatCurrency(selectedRevenueDetail.advisorNetTotal || 0)}</span>
-                                        </div>
-                                        <div className="bg-white/[0.02] p-3 rounded-lg border border-white/5">
-                                            <span className="text-[9px] text-text-secondary uppercase block mb-1">Resultado Escritório</span>
-                                            <span className={`text-sm font-bold ${selectedRevenueDetail.advisorOperationalResult !== undefined && selectedRevenueDetail.advisorOperationalResult < 0 ? 'text-danger' : 'text-green-400'}`}>
-                                                {selectedRevenueDetail.advisorOperationalResult !== undefined ? formatCurrency(selectedRevenueDetail.advisorOperationalResult) : '-'}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Impostos */}
-                                <div className="space-y-2">
-                                    <h4 className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">Tributação & Provisões</h4>
-                                    <div className="bg-white/[0.02] p-4 rounded-xl border border-white/5 space-y-3">
-                                        <div className="flex justify-between text-xs">
-                                            <span className="text-text-secondary">Alíquota Aplicada:</span>
-                                            <span className="font-medium text-text-primary">{selectedRevenueDetail.taxRate || 0}%</span>
-                                        </div>
-                                        <div className="flex justify-between text-xs">
-                                            <span className="text-text-secondary">Retenção de Imposto Assessor (DAS):</span>
-                                            <span className="font-semibold text-danger">{formatCurrency(selectedRevenueDetail.advisorTax || 0)}</span>
-                                        </div>
-                                        <div className="flex justify-between text-xs">
-                                            <span className="text-text-secondary">Imposto Proporcional Escritório:</span>
-                                            <span className="font-semibold text-danger">{formatCurrency(selectedRevenueDetail.officeTax || 0)}</span>
-                                        </div>
-                                        <div className="flex justify-between text-xs pt-2 border-t border-white/5 font-bold">
-                                            <span className="text-text-primary">Provisão Estatutária Total:</span>
-                                            <span className="text-danger">{formatCurrency(selectedRevenueDetail.totalTaxProvision || 0)}</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Indicação / Repique / Reciprocidade */}
-                                <div className="space-y-2">
-                                    <h4 className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">Indicação & Repique</h4>
-                                    <div className="bg-white/[0.02] p-4 rounded-xl border border-white/5 space-y-3">
-                                        <div className="flex justify-between text-xs">
-                                            <span className="text-text-secondary">Origem do Lead:</span>
-                                            <span className="font-medium text-text-primary">{selectedRevenueDetail.hasReferral ? 'Indicação Direta' : 'Interno'}</span>
-                                        </div>
-                                        {selectedRevenueDetail.hasReferral && (
-                                            <>
-                                                <div className="flex justify-between text-xs">
-                                                    <span className="text-text-secondary">Assessor Indicador:</span>
-                                                    <span className="font-semibold text-text-primary">{selectedRevenueDetail.referralAdvisorName || '-'}</span>
-                                                </div>
-                                                <div className="flex justify-between text-xs">
-                                                    <span className="text-text-secondary">Percentual Repique:</span>
-                                                    <span className="font-mono text-text-primary">{selectedRevenueDetail.referralPercentage || 0}%</span>
-                                                </div>
-                                                <div className="flex justify-between text-xs pt-2 border-t border-white/5 font-bold">
-                                                    <span className="text-text-primary">Valor Repassado:</span>
-                                                    <span className="text-primary">{formatCurrency(selectedRevenueDetail.referralAmount || 0)}</span>
-                                                </div>
-                                            </>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* Custos do CRM */}
-                                <div className="space-y-2">
-                                    <h4 className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">Custos Operacionais Alocados</h4>
-                                    <div className="bg-white/[0.02] p-4 rounded-xl border border-white/5 space-y-3">
-                                        <div className="flex justify-between text-xs">
-                                            <span className="text-text-secondary">Custo Rateado do CRM:</span>
-                                            <span className="font-semibold text-danger">{formatCurrency(selectedRevenueDetail.crmCost || 0)}</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Fluxo de Caixa */}
-                                <div className="space-y-2">
-                                    <h4 className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">Fluxo de Caixa Operacional</h4>
-                                    <div className="bg-white/[0.02] p-4 rounded-xl border border-white/5 space-y-3">
-                                        <div className="flex justify-between text-xs">
-                                            <span className="text-text-secondary">Entrada Líquida em Conta:</span>
-                                            <span className="font-semibold text-green-400">{formatCurrency(selectedRevenueDetail.cashEntryAmount || 0)}</span>
-                                        </div>
-                                        <div className="flex justify-between text-xs pt-2 border-t border-white/5 font-bold">
-                                            <span className="text-text-primary">Resultado Líquido Caixa:</span>
-                                            <span className="text-text-primary">{formatCurrency(selectedRevenueDetail.cashResult || 0)}</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Auditoria / Logs */}
-                                <div className="space-y-2">
-                                    <h4 className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">Rastreabilidade e Chaves de Integração</h4>
-                                    <div className="bg-background p-4 rounded-xl border border-white/5 space-y-3 font-mono text-[9px]">
-                                        <div className="flex flex-col gap-1">
-                                            <span className="text-text-secondary">ID Guia Comissão (Fechamento):</span>
-                                            <span className="text-text-primary select-all break-all">{selectedRevenueDetail.transactionIds?.commission || 'Não calculado'}</span>
-                                        </div>
-                                        <div className="flex flex-col gap-1 pt-1 border-t border-white/5">
-                                            <span className="text-text-secondary">ID Lançamento Comercial:</span>
-                                            <span className="text-text-primary select-all break-all">{selectedRevenueDetail.transactionIds?.revenue || 'Não gerado'}</span>
-                                        </div>
-                                        <div className="flex flex-col gap-1 pt-1 border-t border-white/5">
-                                            <span className="text-text-secondary">ID Provisão Tributária:</span>
-                                            <span className="text-text-primary select-all break-all">{selectedRevenueDetail.transactionIds?.tax || 'Não calculado'}</span>
-                                        </div>
-                                        {selectedRevenueDetail.transactionIds?.referral && selectedRevenueDetail.transactionIds.referral.length > 0 && (
-                                            <div className="flex flex-col gap-1 pt-1 border-t border-white/5">
-                                                <span className="text-text-secondary">ID(s) Repique / Indicação:</span>
-                                                <span className="text-text-primary select-all break-all">{selectedRevenueDetail.transactionIds.referral.join(', ')}</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* Observações do Analista */}
-                                {selectedRevenueDetail.observacao && (
-                                    <div className="space-y-2">
-                                        <h4 className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">Observações Internas</h4>
-                                        <div className="p-4 bg-white/[0.01] border border-white/5 rounded-xl text-xs text-text-secondary italic">
-                                            "{selectedRevenueDetail.observacao}"
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             <Modal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} title="Confirmar Importação">
                 <div className="space-y-4">
@@ -4652,11 +3939,8 @@ const ReportsView: FC<{
     transactions: Transaction[], 
     importedRevenues?: ImportedRevenue[],
     incomeCategories: IncomeCategory[],
-    expenseCategories: ExpenseCategory[],
-    globalTaxRate: number,
-    advisors: Advisor[],
-    valuationMultiple?: number
-}> = ({ transactions, importedRevenues = [], incomeCategories, expenseCategories, globalTaxRate, advisors, valuationMultiple = 5 }) => {
+    expenseCategories: ExpenseCategory[]
+}> = ({ transactions, importedRevenues = [], incomeCategories, expenseCategories }) => {
     const availableYears = useMemo(() => {
         const years = [...new Set([
             ...transactions.map(t => new Date(t.date).getFullYear()),
@@ -4679,49 +3963,179 @@ const ReportsView: FC<{
     };
     
     const dreData = useMemo(() => {
-        const result = calculateDRE(
-            transactions,
-            importedRevenues,
-            incomeCategories,
-            expenseCategories,
-            { year: selectedYear, month: selectedMonth },
-            dreRegime,
-            globalTaxRate,
-            advisors
-        );
-        return {
-            ...result,
-            resultadoBruto: round(result.receitaLiquida - result.custos)
+        const fTrans = transactions.filter(t => filterFn(t.date));
+        
+        const getStructuralInfo = (t: Transaction) => {
+            if (t.type === TransactionType.INCOME) {
+                const cat = incomeCategories.find(c => c.name === t.category);
+                return {
+                    tipoEstrutural: cat?.tipoEstrutural || CategoryStructuralType.RECEITA_OPERACIONAL,
+                    impactaDRE: cat?.impactaDRE ?? true
+                };
+            } else {
+                const cat = expenseCategories.find(c => c.name === t.category);
+                return {
+                    tipoEstrutural: cat?.tipoEstrutural || CategoryStructuralType.DESPESA_OPERACIONAL,
+                    impactaDRE: cat?.impactaDRE ?? true
+                };
+            }
         };
-    }, [transactions, importedRevenues, incomeCategories, expenseCategories, selectedYear, selectedMonth, dreRegime, globalTaxRate, advisors]);
+
+        const dreTransactions = fTrans.filter(t => {
+            const info = getStructuralInfo(t);
+            if (!info.impactaDRE) return false;
+            if (t.type === TransactionType.EXPENSE) {
+                if (dreRegime === 'caixa') {
+                    return t.status === ExpenseStatus.PAID || t.status === ExpenseStatus.CLEARED;
+                } else {
+                    return true; // Competência includes all
+                }
+            }
+            return true;
+        });
+
+        // 1. RECEITA OPERACIONAL BRUTA
+        // Filtrar transações com origin === 'comissoes' para evitar dupla contagem com importedRevenues
+        const manualOpRevenue = dreTransactions
+            .filter(t => t.type === TransactionType.INCOME && t.origin !== 'comissoes' && getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.RECEITA_OPERACIONAL)
+            .reduce((sum, t) => sum + t.amount, 0);
+        
+        const importedOpRevenue = importedRevenues
+            .filter(r => filterFn(r.date))
+            .reduce((sum, r) => sum + (r.officeNetRevenue || 0), 0);
+            
+        const receitaBruta = round(manualOpRevenue + importedOpRevenue);
+
+        // 2. DEDUÇÕES DA RECEITA
+        const deducoes = round(dreTransactions
+            .filter(t => getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.DEDUCAO_RECEITA)
+            .reduce((sum, t) => sum + t.amount, 0));
+
+        // 3. RECEITA OPERACIONAL LÍQUIDA
+        const receitaLiquida = round(receitaBruta - deducoes);
+
+        // 4. CUSTOS OPERACIONAIS
+        const custos = round(dreTransactions
+            .filter(t => getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.CUSTO)
+            .reduce((sum, t) => sum + t.amount, 0));
+
+        // 5. RESULTADO BRUTO
+        const resultadoBruto = round(receitaLiquida - custos);
+
+        // 6. DESPESAS OPERACIONAIS
+        const despesasOperacionais = round(dreTransactions
+            .filter(t => getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.DESPESA_OPERACIONAL)
+            .reduce((sum, t) => sum + t.amount, 0));
+
+        // 7. RESULTADO OPERACIONAL
+        const resultadoOperacional = round(resultadoBruto - despesasOperacionais);
+
+        // 8. OUTRAS RECEITAS
+        const outrasReceitas = round(dreTransactions
+            .filter(t => t.type === TransactionType.INCOME && getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.RECEITA_NAO_OPERACIONAL)
+            .reduce((sum, t) => sum + t.amount, 0));
+
+        // 9. RESULTADO FINAL
+        const resultadoFinal = round(resultadoOperacional + outrasReceitas);
+
+        const expensesByCategory: Record<string, number> = {};
+        dreTransactions
+            .filter(t => t.type === TransactionType.EXPENSE && getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.DESPESA_OPERACIONAL)
+            .forEach(t => {
+                expensesByCategory[t.category] = round((expensesByCategory[t.category] || 0) + t.amount);
+            });
+        const sortedExpenses = Object.entries(expensesByCategory)
+            .map(([name, value]) => ({ name, value }))
+            .sort((a, b) => b.value - a.value);
+
+        return { 
+            receitaBruta, 
+            deducoes, 
+            receitaLiquida, 
+            custos, 
+            resultadoBruto, 
+            despesasOperacionais, 
+            resultadoOperacional, 
+            outrasReceitas, 
+            resultadoFinal, 
+            sortedExpenses 
+        };
+    }, [transactions, importedRevenues, incomeCategories, expenseCategories, selectedYear, selectedMonth, dreRegime]);
 
     const valuationMonthlyData = useMemo(() => {
-        const keysSet = new Set<string>();
+        const monthlyMap: Record<string, { opRevenue: number; opExpense: number; pjBalanceInMonth: number }> = {};
+        
+        const getStructuralInfo = (t: Transaction) => {
+            if (t.type === TransactionType.INCOME) {
+                const cat = incomeCategories.find(c => c.name === t.category);
+                return {
+                    tipoEstrutural: cat?.tipoEstrutural || CategoryStructuralType.RECEITA_OPERACIONAL,
+                    impactaDRE: cat?.impactaDRE ?? true
+                };
+            } else {
+                const cat = expenseCategories.find(c => c.name === t.category);
+                return {
+                    tipoEstrutural: cat?.tipoEstrutural || CategoryStructuralType.DESPESA_OPERACIONAL,
+                    impactaDRE: cat?.impactaDRE ?? true
+                };
+            }
+        };
+
         transactions.forEach(t => {
-            if (t.date && filterFn(t.date)) {
-                keysSet.add(t.date.substring(0, 7));
+            if (!filterFn(t.date)) return;
+            const info = getStructuralInfo(t);
+            if (!info.impactaDRE) return;
+            
+            // For valuation, we only care about operational items
+            const isOperational = info.tipoEstrutural === CategoryStructuralType.RECEITA_OPERACIONAL || 
+                                 info.tipoEstrutural === CategoryStructuralType.CUSTO || 
+                                 info.tipoEstrutural === CategoryStructuralType.DESPESA_OPERACIONAL ||
+                                 info.tipoEstrutural === CategoryStructuralType.DEDUCAO_RECEITA;
+
+            if (!isOperational) return;
+
+            if (t.type === TransactionType.EXPENSE && !(t.status === ExpenseStatus.PAID || t.status === ExpenseStatus.CLEARED)) return;
+
+            const key = t.date.substring(0, 7);
+            if (!monthlyMap[key]) monthlyMap[key] = { opRevenue: 0, opExpense: 0, pjBalanceInMonth: 0 };
+            
+            if (t.type === TransactionType.INCOME) {
+                monthlyMap[key].opRevenue = round(monthlyMap[key].opRevenue + t.amount);
+            } else {
+                monthlyMap[key].opExpense = round(monthlyMap[key].opExpense + t.amount);
             }
         });
+
         importedRevenues.forEach(r => {
-            if (r.date && filterFn(r.date)) {
-                keysSet.add(r.date.substring(0, 7));
-            }
+            if (!filterFn(r.date)) return;
+            const key = r.date.substring(0, 7);
+            if (!monthlyMap[key]) monthlyMap[key] = { opRevenue: 0, opExpense: 0, pjBalanceInMonth: 0 };
+            monthlyMap[key].opRevenue = round(monthlyMap[key].opRevenue + (r.officeNetRevenue || 0));
         });
-        return Array.from(keysSet)
-            .map(monthKey => {
+
+        const calcularValuation = (val: number): number => {
+            return val > 0 ? round(val * 5) : 0;
+        };
+
+        return Object.entries(monthlyMap)
+            .map(([monthKey, data]) => {
                 const [year, month] = monthKey.split('-').map(Number);
-                const monthDRE = calculateDRE(
-                    transactions,
-                    importedRevenues,
-                    incomeCategories,
-                    expenseCategories,
-                    monthKey,
-                    'competencia',
-                    globalTaxRate,
-                    advisors
-                );
-                const resultadoOperacionalMes = monthDRE.resultadoOperacional;
-                const valuation = resultadoOperacionalMes > 0 ? round(resultadoOperacionalMes * valuationMultiple) : null;
+                const lastDayOfMonth = new Date(year, month, 0, 23, 59, 59);
+                
+                const caixaNoMes = round(transactions.reduce((acc, t) => {
+                    if (t.costCenter === 'conta-pj' && new Date(t.date) <= lastDayOfMonth) {
+                        if (t.type === TransactionType.INCOME) {
+                            return acc + Number(t.amount);
+                        } else if (t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PAID) {
+                            return acc - Number(t.amount);
+                        }
+                    }
+                    return acc;
+                }, 0));
+
+                const resultadoOperacionalMes = round(data.opRevenue - data.opExpense);
+                const valuation = resultadoOperacionalMes > 0 ? round(resultadoOperacionalMes * 5) : null;
+                
                 const date = new Date(year, month - 1, 1, 12, 0, 0);
                 return {
                     monthYear: date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
@@ -4731,10 +4145,10 @@ const ReportsView: FC<{
                 };
             })
             .sort((a, b) => b.key.localeCompare(a.key));
-    }, [transactions, importedRevenues, incomeCategories, expenseCategories, selectedYear, selectedMonth, globalTaxRate, advisors, valuationMultiple]);
+    }, [transactions, importedRevenues, incomeCategories, expenseCategories, selectedYear, selectedMonth]);
 
     const accumulatedOpResult = round(dreData.resultadoOperacional);
-    const accumulatedValuation = accumulatedOpResult > 0 ? round(accumulatedOpResult * valuationMultiple) : null;
+    const accumulatedValuation = accumulatedOpResult > 0 ? round(accumulatedOpResult * 5) : null;
 
     const handleDREExportPDF = () => {
         if (!jspdf) {
@@ -5177,59 +4591,56 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
             return (selectedYear === 'all' || year === selectedYear) && (selectedMonth === 'all' || month === selectedMonth);
         }), [transactions, selectedYear, selectedMonth]);
 
-    const dreResult = useMemo(() => {
-        return calculateDRE(
-            transactions,
-            importedRevenues,
-            incomeCategories,
-            expenseCategories,
-            { year: selectedYear, month: selectedMonth },
-            dashboardDreRegime,
-            globalTaxRate,
-            advisors
-        );
-    }, [transactions, importedRevenues, incomeCategories, expenseCategories, selectedYear, selectedMonth, dashboardDreRegime, globalTaxRate, advisors]);
-
-    const totalIncome = dreResult.receitaLiquida;
-    const totalExpense = round(dreResult.custos + dreResult.despesasOperacionais);
-    const resultadoPeriodo = dreResult.resultadoFinal;
-
-    const commercialRevenues = useMemo(() => {
-        return importedRevenues.filter(r => {
-            const date = new Date(r.date);
-            const rYear = date.getUTCFullYear();
-            const rMonth = date.getUTCMonth();
-            return (selectedYear === 'all' || rYear === selectedYear) && (selectedMonth === 'all' || rMonth === selectedMonth);
-        });
-    }, [importedRevenues, selectedYear, selectedMonth]);
-
-    const performanceComercial = useMemo(() => {
-        const producaoAssessores = commercialRevenues.reduce((sum, r) => sum + (r.revenueAmount || 0), 0);
-
-        const comissaoGerada = commercialRevenues.reduce((sum, r) => {
-            if (r.advisorShare !== undefined) return sum + r.advisorShare;
-            const net = r.estimatedNetRevenue || ((r.revenueAmount || 0) * (1 - (r.taxRate || globalTaxRate) / 100));
-            return sum + round(net * 0.70);
-        }, 0);
-
-        const comissaoPaga = filteredTransactions
-            .filter(t => t.category === "Remuneração de Assessores" && t.status === ExpenseStatus.PAID)
-            .reduce((sum, t) => sum + t.amount, 0);
-
-        const resultadoEscritorioProducao = commercialRevenues.reduce((sum, r) => {
-            if (r.officeNetRevenue !== undefined) return sum + r.officeNetRevenue;
-            const net = r.estimatedNetRevenue || ((r.revenueAmount || 0) * (1 - (r.taxRate || globalTaxRate) / 100));
-            const adv = r.advisorShare !== undefined ? r.advisorShare : round(net * 0.70);
-            return sum + round(net - adv);
-        }, 0);
-
-        return {
-            producaoAssessores,
-            comissaoGerada,
-            comissaoPaga,
-            resultadoEscritorioProducao
+    const { totalIncome, totalExpense, resultadoPeriodo } = useMemo(() => {
+        const getStructuralInfo = (t: Transaction) => {
+            if (t.type === TransactionType.INCOME) {
+                const cat = incomeCategories.find(c => c.name === t.category);
+                return {
+                    tipoEstrutural: cat?.tipoEstrutural || CategoryStructuralType.RECEITA_OPERACIONAL,
+                    impactaDRE: cat?.impactaDRE ?? true
+                };
+            } else {
+                const cat = expenseCategories.find(c => c.name === t.category);
+                return {
+                    tipoEstrutural: cat?.tipoEstrutural || CategoryStructuralType.DESPESA_OPERACIONAL,
+                    impactaDRE: cat?.impactaDRE ?? true
+                };
+            }
         };
-    }, [commercialRevenues, filteredTransactions, globalTaxRate]);
+
+        const dreTransactions = filteredTransactions.filter(t => {
+            const info = getStructuralInfo(t);
+            if (!info.impactaDRE) return false;
+            if (t.type === TransactionType.EXPENSE) {
+                if (dashboardDreRegime === 'caixa') {
+                    return t.status === ExpenseStatus.PAID || t.status === ExpenseStatus.CLEARED;
+                } else {
+                    return true; // Competência includes all
+                }
+            }
+            return true;
+        });
+
+        // Filtrar transações com origin === 'comissoes' para evitar dupla contagem com importedRevenues
+        const manualIncome = dreTransactions
+            .filter(t => t.type === TransactionType.INCOME && t.origin !== 'comissoes')
+            .reduce<number>((acc, t) => acc + t.amount, 0);
+        
+        const importedIncome = importedRevenues
+            .filter(r => {
+                const date = new Date(r.date);
+                const year = date.getUTCFullYear();
+                const month = date.getUTCMonth();
+                const periodMatch = (selectedYear === 'all' || year === selectedYear) && (selectedMonth === 'all' || month === selectedMonth);
+                return periodMatch && !r.lancamentosRealizados;
+            })
+            .reduce((sum, r) => sum + (r.officeNetRevenue || 0), 0);
+
+        const income = round(manualIncome + importedIncome);
+        const expense = round(dreTransactions.filter(t => t.type === TransactionType.EXPENSE).reduce<number>((acc, t) => acc + t.amount, 0));
+        
+        return { totalIncome: income, totalExpense: expense, resultadoPeriodo: round(Number(income) - Number(expense)) };
+    }, [filteredTransactions, importedRevenues, incomeCategories, expenseCategories, selectedYear, selectedMonth, dashboardDreRegime]);
 
     const saldoHoje = useMemo(() => round(transactions.reduce((acc: number, t: Transaction) => {
         const txDate = new Date(t.date).getTime();
@@ -5262,135 +4673,6 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
     }, 0)), [transactions]);
 
     const saldoDisponivel = useMemo(() => round(saldoHoje - saldoProvisaoHoje), [saldoHoje, saldoProvisaoHoje]);
-
-    const alerts = useMemo(() => {
-        const list = [];
-
-        // 1. Contas vencidas (status pendente e data anterior a hoje)
-        const overdueItems = transactions.filter(t => 
-            t.type === TransactionType.EXPENSE && 
-            t.status === ExpenseStatus.PENDING && 
-            new Date(t.date).setHours(0,0,0,0) < new Date().setHours(0,0,0,0)
-        );
-        if (overdueItems.length > 0) {
-            const sum = round(overdueItems.reduce((acc, t) => acc + t.amount, 0));
-            list.push({
-                id: 'overdue-expenses',
-                type: 'danger',
-                title: 'Contas Vencidas',
-                message: `${overdueItems.length} despesas estão vencidas e pendentes de pagamento.`,
-                value: formatCurrency(sum),
-                icon: AlertTriangleIcon
-            });
-        }
-
-        // 2. Despesas agendadas nos próximos 7 dias
-        const todayMidnight = new Date();
-        todayMidnight.setHours(0,0,0,0);
-        const todayTime = todayMidnight.getTime();
-        const sevenDaysTime = todayTime + 7 * 24 * 60 * 60 * 1000;
-        const nextSevenDaysItems = transactions.filter(t => {
-            if (t.type !== TransactionType.EXPENSE || t.status !== ExpenseStatus.PENDING) return false;
-            const d = new Date(t.date).getTime();
-            return d >= todayTime && d <= sevenDaysTime;
-        });
-        if (nextSevenDaysItems.length > 0) {
-            const sum = round(nextSevenDaysItems.reduce((acc, t) => acc + t.amount, 0));
-            list.push({
-                id: 'upcoming-expenses-7d',
-                type: 'warning',
-                title: 'Vencimentos em 7 Dias',
-                message: `${nextSevenDaysItems.length} despesas vencem nos próximos 7 dias.`,
-                value: formatCurrency(sum),
-                icon: ClockIcon
-            });
-        }
-
-        // 3. Assessores sem produção vinculada no período selecionado
-        const filteredRevenuesForAlerts = importedRevenues.filter(r => {
-            const date = new Date(r.date);
-            const year = date.getUTCFullYear();
-            const month = date.getUTCMonth();
-            return (selectedYear === 'all' || year === selectedYear) && (selectedMonth === 'all' || month === selectedMonth);
-        });
-        const activeAdvisorIds = new Set(filteredRevenuesForAlerts.map(r => r.advisorId));
-        const inactiveAdvisors = advisors.filter(adv => !activeAdvisorIds.has(adv.id));
-        if (inactiveAdvisors.length > 0) {
-            list.push({
-                id: 'inactive-advisors',
-                type: 'info',
-                title: 'Assessores sem Produção',
-                message: `${inactiveAdvisors.length} assessores cadastrados não possuem faturamento no período selecionado.`,
-                value: `${inactiveAdvisors.length} inativos`,
-                icon: UsersIcon
-            });
-        }
-
-        // 4. Resultado operacional negativo no período selecionado
-        if (dreResult.resultadoOperacional < 0) {
-            list.push({
-                id: 'negative-operating-result',
-                type: 'danger',
-                title: 'Resultado Operacional Negativo',
-                message: `O escritório opera em deficit operacional no período selecionado. Avalie corte de custos.`,
-                value: formatCurrency(dreResult.resultadoOperacional),
-                icon: TrendingDownIcon
-            });
-        }
-
-        // 5. Diferença significativa entre modo Competência e modo Caixa
-        const dreCaixa = calculateDRE(
-            transactions,
-            importedRevenues,
-            incomeCategories,
-            expenseCategories,
-            { year: selectedYear, month: selectedMonth },
-            'caixa',
-            globalTaxRate,
-            advisors
-        );
-        const dreComp = calculateDRE(
-            transactions,
-            importedRevenues,
-            incomeCategories,
-            expenseCategories,
-            { year: selectedYear, month: selectedMonth },
-            'competencia',
-            globalTaxRate,
-            advisors
-        );
-        const diff = dreComp.resultadoFinal - dreCaixa.resultadoFinal;
-        if (Math.abs(diff) > 2000) {
-            list.push({
-                id: 'cash-competence-mismatch',
-                type: 'warning',
-                title: 'Divergência Caixa x Comp.',
-                message: `Divergência relevante de apuração entre os regimes Caixa e Competência no período.`,
-                value: formatCurrency(diff),
-                icon: DollarSignIcon
-            });
-        }
-
-        // 6. Lançamentos aguardando conciliação bancária (realizados)
-        const unreconciledItems = transactions.filter(t => 
-            !t.isProjection && 
-            !t.reconciled && 
-            (t.type === TransactionType.INCOME || (t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PAID))
-        );
-        if (unreconciledItems.length > 0) {
-            const sum = round(unreconciledItems.reduce((acc, t) => acc + t.amount, 0));
-            list.push({
-                id: 'unreconciled-realized',
-                type: 'info',
-                title: 'Aguardando Conciliação',
-                message: `Existem lançamentos liquidados aguardando conciliação bancária (CB).`,
-                value: `${unreconciledItems.length} itens`,
-                icon: ShieldAlertIcon
-            });
-        }
-
-        return list;
-    }, [transactions, importedRevenues, selectedYear, selectedMonth, advisors, dreResult, incomeCategories, expenseCategories, globalTaxRate]);
 
     const achievedGoals = useMemo(() => goals.filter(g => (Number(g.currentAmount) || 0) >= g.targetAmount).length, [goals]);
     
@@ -5557,55 +4839,6 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                 </div>
             </div>
 
-            {/* SEÇÃO DE ALERTAS FINANCEIROS */}
-            {alerts.length > 0 && (
-                <div className="bg-[#121826] border border-white/5 rounded-xl p-5 shadow-xl space-y-4">
-                    <div className="flex items-center gap-2">
-                        <AlertTriangleIcon className="w-4 h-4 text-[#ff7a00] animate-pulse" />
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-text-primary">
-                            Alertas de Gestão ({alerts.length})
-                        </h3>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {alerts.map(alert => {
-                            const Icon = alert.icon;
-                            let cardColorClass = "border-white/5 bg-background/40 hover:bg-background/60";
-                            let iconColorClass = "text-text-secondary bg-surface/80";
-                            let valueColorClass = "text-text-primary";
-                            
-                            if (alert.type === 'danger') {
-                                cardColorClass = "border-red-500/10 bg-red-500/5 hover:bg-red-500/10";
-                                iconColorClass = "text-red-400 bg-red-400/10 border border-red-400/25";
-                                valueColorClass = "text-red-400";
-                            } else if (alert.type === 'warning') {
-                                cardColorClass = "border-yellow-500/10 bg-yellow-500/5 hover:bg-yellow-500/10";
-                                iconColorClass = "text-yellow-400 bg-yellow-400/10 border border-yellow-400/25";
-                                valueColorClass = "text-yellow-400";
-                            } else if (alert.type === 'info') {
-                                cardColorClass = "border-blue-500/10 bg-blue-500/5 hover:bg-blue-500/10";
-                                iconColorClass = "text-blue-400 bg-blue-400/10 border border-blue-400/25";
-                                valueColorClass = "text-blue-400";
-                            }
-
-                            return (
-                                <div key={alert.id} className={`border p-4 rounded-xl flex items-start gap-3 transition-colors ${cardColorClass}`}>
-                                    <div className={`p-2 rounded-lg ${iconColorClass}`}>
-                                        <Icon className="w-4 h-4" />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex justify-between items-start gap-2">
-                                            <span className="text-xs font-bold text-text-primary truncate">{alert.title}</span>
-                                            <span className={`text-xs font-mono font-bold ${valueColorClass} whitespace-nowrap`}>{alert.value}</span>
-                                        </div>
-                                        <p className="text-[10.5px] text-text-secondary mt-1 leading-snug">{alert.message}</p>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-            )}
-
             {/* SEÇÃO 1: CAIXA (Visão de Liquidez) */}
             <div className="bg-surface/50 border border-border-color/60 rounded-xl p-5 md:p-6 shadow-sm">
                 <div className="flex items-center gap-3 mb-4">
@@ -5644,57 +4877,6 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                             <p className={`text-2xl font-bold mt-1.5 ${saldoDisponivel >= 0 ? 'text-success' : 'text-danger'}`}>{formatCurrency(saldoDisponivel)}</p>
                         </div>
                         <span className="text-[10px] text-secondary/80 mt-3 font-medium">Recurso financeiro livre (Saldo Bruto - Provisão)</span>
-                    </div>
-                </div>
-            </div>
-
-            {/* SEÇÃO 3: PERFORMANCE COMERCIAL (Gerencial) */}
-            <div className="bg-[#1e293b]/30 border border-border-color/40 rounded-xl p-5 md:p-6 shadow-sm">
-                <div className="flex items-center gap-3 mb-4">
-                    <div className="bg-primary/10 p-2 rounded-lg text-primary">
-                        <UsersIcon className="w-5 h-5"/>
-                    </div>
-                    <div>
-                        <h3 className="text-sm font-bold uppercase tracking-wider text-text-primary">Performance Comercial (Gestão Operacional)</h3>
-                        <p className="text-xs text-text-secondary">Indicadores gerenciais de assessoria (não alteram caixa ou DRE do escritório automaticamente)</p>
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-                    {/* Produção dos Assessores */}
-                    <div className="bg-background/40 border border-border-color/40 rounded-xl p-4.5 flex flex-col justify-between">
-                        <div>
-                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Produção dos Assessores</span>
-                            <p className="text-xl font-bold mt-1.5 text-text-primary truncate">{formatCurrency(performanceComercial.producaoAssessores)}</p>
-                        </div>
-                        <span className="text-[10px] text-text-secondary/80 mt-2 block">Volume bruto total gerado no período</span>
-                    </div>
-
-                    {/* Comissão Gerada */}
-                    <div className="bg-background/40 border border-border-color/40 rounded-xl p-4.5 flex flex-col justify-between">
-                        <div>
-                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Comissão Gerada</span>
-                            <p className="text-xl font-bold mt-1.5 text-indigo-400 truncate">{formatCurrency(performanceComercial.comissaoGerada)}</p>
-                        </div>
-                        <span className="text-[10px] text-text-secondary/80 mt-2 block">Parcela de direito dos assessores (provisão)</span>
-                    </div>
-
-                    {/* Comissão Paga */}
-                    <div className="bg-background/40 border border-border-color/40 rounded-xl p-4.5 flex flex-col justify-between">
-                        <div>
-                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Comissão Efetivamente Paga</span>
-                            <p className="text-xl font-bold mt-1.5 text-emerald-400 truncate">{formatCurrency(performanceComercial.comissaoPaga)}</p>
-                        </div>
-                        <span className="text-[10px] text-text-secondary/80 mt-2 block">Saídas já liquidadas pelo módulo financeiro</span>
-                    </div>
-
-                    {/* Resultado Escritório da Produção */}
-                    <div className="bg-background/40 border border-border-color/40 rounded-xl p-4.5 flex flex-col justify-between">
-                        <div>
-                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Resultado Escritório da Produção</span>
-                            <p className="text-xl font-bold mt-1.5 text-blue-400 truncate">{formatCurrency(performanceComercial.resultadoEscritorioProducao)}</p>
-                        </div>
-                        <span className="text-[10px] text-text-secondary/80 mt-2 block">Net-office gerencial estimado</span>
                     </div>
                 </div>
             </div>
@@ -5753,7 +4935,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                         </div>
                         <div className="mt-4">
                             <p className="text-2xl font-bold text-success tracking-tight">{formatCurrency(totalIncome)}</p>
-                            <span className="text-[10px] text-text-secondary mt-1 block">Apenas lançamentos oficiais de receita do escritório</span>
+                            <span className="text-[10px] text-text-secondary mt-1 block">Receitas manuais + comissões abertas</span>
                         </div>
                     </div>
 
@@ -5816,11 +4998,11 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                     <table className="w-full border-collapse text-xs">
                         <thead>
                             <tr className="text-text-secondary border-b border-border-color/30 uppercase text-[9px] tracking-wider">
-                                <th className="py-2.5 px-3 text-center font-semibold">Vencimento</th>
-                                <th className="py-2.5 px-3 text-center font-semibold">Descrição</th>
-                                <th className="py-2.5 px-3 text-center font-semibold">Valor</th>
+                                <th className="py-2.5 px-3 text-left font-semibold">Vencimento</th>
+                                <th className="py-2.5 px-3 text-left font-semibold">Descrição</th>
+                                <th className="py-2.5 px-3 text-right font-semibold">Valor</th>
                                 <th className="py-2.5 px-3 text-center font-semibold">Status</th>
-                                <th className="py-2.5 px-3 text-center font-semibold">Ação</th>
+                                <th className="py-2.5 px-3 text-right font-semibold">Ação</th>
                             </tr>
                         </thead>
                         <tbody>{upcomingBills.map(bill => {
@@ -5829,16 +5011,16 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                             const isOverdue = new Date(bill.date) < todayStart;
                             return (
                                 <tr key={bill.id} className="border-b border-border-color/10 last:border-0 hover:bg-background/40 transition-colors h-10">
-                                    <td className="py-2 px-3 text-center text-text-secondary font-mono">{formatDate(bill.date)}</td>
-                                    <td className="py-2 px-3 text-center font-medium max-w-xs truncate mx-auto" title={bill.description}>{bill.description}</td>
-                                    <td className="py-2 px-3 text-center font-mono font-bold text-danger">{formatCurrency(bill.amount)}</td>
+                                    <td className="py-2 px-3 text-left text-text-secondary font-mono">{formatDate(bill.date)}</td>
+                                    <td className="py-2 px-3 text-left font-medium max-w-xs truncate" title={bill.description}>{bill.description}</td>
+                                    <td className="py-2 px-3 text-right font-mono font-bold text-danger">{formatCurrency(bill.amount)}</td>
                                     <td className="py-2 px-3 text-center">
                                         <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-bold ${isOverdue ? 'bg-danger/15 text-danger border border-danger/25' : 'bg-yellow-500/15 text-yellow-500 border border-yellow-500/25'}`}>
                                             {isOverdue ? 'VENCIDA' : 'PENDENTE'}
                                         </span>
                                     </td>
-                                    <td className="py-2 px-3 text-center">
-                                        <div className="flex justify-center">
+                                    <td className="py-2 px-3 text-right">
+                                        <div className="flex justify-end">
                                             <button 
                                                 onClick={() => handlePayClick(bill)} 
                                                 className="py-1 px-2.5 text-[10px] font-semibold bg-background hover:bg-success/10 border border-border-color/65 hover:border-success/30 rounded text-text-secondary hover:text-success flex items-center gap-1 transition-all"
@@ -5926,7 +5108,6 @@ const App: FC = () => {
     const [goals, setGoals] = useState<Goal[]>(getInitialGoals());
 
     const [partners, setPartners] = useState<Partner[]>([]);
-    const [valuationMultiple, setValuationMultiple] = useLocalStorage<number>('partnership_valuation_multiple', 5);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [importedRevenues, setImportedRevenues] = useState<ImportedRevenue[]>([]);
 
@@ -6345,8 +5526,7 @@ const App: FC = () => {
                     status: ExpenseStatus.PENDING,
                     nature: ExpenseNature.VARIABLE,
                     costCenter: 'conta-pj',
-                    advisorId: closingData.advisorId,
-                    origin: 'comissoes'
+                    advisorId: closingData.advisorId
                 };
                 const docRef = await saveTransaction(commissionData as any, user.uid);
                 commissionTransactionId = docRef.id;
@@ -6377,8 +5557,7 @@ const App: FC = () => {
                             status: ExpenseStatus.PENDING,
                             nature: ExpenseNature.VARIABLE,
                             costCenter: 'conta-pj',
-                            advisorId: referral.advisorId,
-                            origin: 'comissoes'
+                            advisorId: referral.advisorId
                         };
                         const docRef = await saveTransaction(referralData as any, user.uid);
                         referralTransactionIds[referral.advisorId] = docRef.id;
@@ -6412,8 +5591,7 @@ const App: FC = () => {
                         status: ExpenseStatus.PENDING,
                         nature: ExpenseNature.VARIABLE,
                         costCenter: 'conta-pj',
-                        advisorId: closingData.advisorId,
-                        origin: 'comissoes'
+                        advisorId: closingData.advisorId
                     };
                     const docRef = await saveTransaction(referralIncomeData as any, user.uid);
                     referralIncomeTransactionId = docRef.id;
@@ -6583,9 +5761,6 @@ const App: FC = () => {
                                     importedRevenues={importedRevenues}
                                     incomeCategories={incomeCategories}
                                     expenseCategories={expenseCategories}
-                                    globalTaxRate={globalTaxRate}
-                                    advisors={advisors}
-                                    valuationMultiple={valuationMultiple}
                                 />
                             )}
                             {activeView === 'goals' && (
@@ -6606,20 +5781,7 @@ const App: FC = () => {
                                     onDelete={async id => await deleteGoal(id)} 
                                 />
                             )}
-                            {activeView === 'partnership' && (
-                                <PartnershipView 
-                                    partners={partners} 
-                                    onSave={handleSavePartnership} 
-                                    transactions={transactions}
-                                    importedRevenues={importedRevenues}
-                                    incomeCategories={incomeCategories}
-                                    expenseCategories={expenseCategories}
-                                    globalTaxRate={globalTaxRate}
-                                    advisors={advisors}
-                                    valuationMultiple={valuationMultiple}
-                                    onValuationMultipleChange={setValuationMultiple}
-                                />
-                            )}
+                            {activeView === 'partnership' && <PartnershipView partners={partners} onSave={handleSavePartnership} />}
                             {activeView === 'settings' && (
                                 <SettingsView 
                                     incomeCategories={incomeCategories} 
