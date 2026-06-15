@@ -1,12 +1,12 @@
 
 import React, { useState, useMemo, FC, ReactNode, useEffect, useRef } from 'react';
-import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType, AdvisorSplit, ImportedRevenue, AdvisorCost, Partner, AdvisorParticipation, CommissionStatus, IncomeCategory, CategoryStructuralType } from './types';
+import { Transaction, Goal, TransactionType, View, ExpenseStatus, ExpenseNature, CostCenter, Advisor, ExpenseCategory, ExpenseType, AdvisorSplit, ImportedRevenue, AdvisorCost, Partner, AdvisorParticipation, CommissionStatus, IncomeCategory, CategoryStructuralType, Prospect } from './types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import Login from './Login';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { logoutUser } from './auth';
-import { getTransactions, saveTransaction, updateTransaction, deleteTransaction as deleteTransactionFromDb, getImportedRevenues, saveImportedRevenue, deleteImportedRevenue, getRevenuesByPeriod, getPartnership, savePartnership, updateImportedRevenue, deleteAllImportedRevenues, getAdvisors, saveAdvisor, updateAdvisor, deleteAdvisor, getGoals, saveGoal, updateGoal, deleteGoal, getSettings, saveSettings } from './firestore';
+import { getTransactions, saveTransaction, updateTransaction, deleteTransaction as deleteTransactionFromDb, getImportedRevenues, saveImportedRevenue, deleteImportedRevenue, getRevenuesByPeriod, getPartnership, savePartnership, updateImportedRevenue, deleteAllImportedRevenues, getAdvisors, saveAdvisor, updateAdvisor, deleteAdvisor, getGoals, saveGoal, updateGoal, deleteGoal, getSettings, saveSettings, getProspects, saveProspect, updateProspect, deleteProspect } from './firestore';
 import { collection, addDoc, serverTimestamp, onSnapshot, query, orderBy, where, doc } from "firebase/firestore";
 
 // --- UTILITÁRIOS GLOBAIS ---
@@ -654,10 +654,24 @@ const GoalsView: FC<{ goals: Goal[], onAdd: (g: any) => void, onUpdateProgress: 
     return (
         <div className="space-y-6 animate-fade-in">
              <div className="flex justify-between items-center">
-                <div><h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Metas Financeiras</h2><p className="text-text-secondary">Defina e acompanhe seus objetivos.</p></div>
+                <div><h2 className="text-2xl font-bold bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent uppercase tracking-tight">Metas Financeiras</h2><p className="text-text-secondary">Defina e acompanhe seus objetivos.</p></div>
                 <Button onClick={() => setIsAddModalOpen(true)} className="flex items-center gap-2"><PlusIcon className="w-5 h-5"/> Nova Meta</Button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {goals.length === 0 && (
+                  <div className="col-span-full flex flex-col items-center justify-center py-24 text-center">
+                    <div className="bg-primary/10 p-6 rounded-full mb-4">
+                      <TargetIcon className="w-12 h-12 text-primary opacity-60" />
+                    </div>
+                    <h3 className="text-lg font-bold text-text-primary mb-2">Nenhuma meta cadastrada</h3>
+                    <p className="text-text-secondary text-sm max-w-xs mb-6">
+                      Defina objetivos financeiros e acompanhe seu progresso ao longo do tempo.
+                    </p>
+                    <Button onClick={() => setIsAddModalOpen(true)} className="flex items-center gap-2">
+                      <PlusIcon className="w-5 h-5"/> Criar Primeira Meta
+                    </Button>
+                  </div>
+                )}
                 {goals.map(goal => {
                     const progress = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount) * 100 : 0;
                     return (
@@ -665,6 +679,14 @@ const GoalsView: FC<{ goals: Goal[], onAdd: (g: any) => void, onUpdateProgress: 
                             <div className="flex justify-between items-start mb-2"><h3 className="text-lg font-bold text-text-primary">{goal.name}</h3><button onClick={() => onDelete(goal.id)} className="text-text-secondary hover:text-danger opacity-0 group-hover:opacity-100 transition-opacity"><TrashIcon className="w-4 h-4"/></button></div>
                             <div className="mb-4"><div className="flex justify-between text-sm mb-1"><span className="text-text-secondary">Progresso</span><span className="font-bold text-primary">{Math.round(progress)}%</span></div><ProgressBar progress={progress} /></div>
                             <div className="flex justify-between items-center text-sm mb-4"><span className="font-mono text-text-primary">{formatCurrency(goal.currentAmount)}</span><span className="text-text-secondary">de {formatCurrency(goal.targetAmount)}</span></div>
+                            {goal.deadline && (
+                              <div className="text-[10px] text-text-secondary -mt-2 mb-4 flex items-center gap-1">
+                                <span>⏱</span>
+                                <span>
+                                  {Math.max(0, Math.ceil((new Date(goal.deadline).getTime() - Date.now()) / 86400000))} dias restantes
+                                </span>
+                              </div>
+                            )}
                             <Button onClick={() => openProgressModal(goal.id)} variant="secondary" className="w-full text-sm">Adicionar Valor</Button>
                         </Card>
                     )
@@ -690,6 +712,15 @@ const PartnershipView: FC<{ partners: Partner[], onSave: (partners: Partner[]) =
         const q = parseFloat(newQuotas);
         if (isNaN(p) || isNaN(q)) return;
         
+        const currentTotal = editingId 
+          ? partners.filter(partner => partner.id !== editingId).reduce((acc, partner) => acc + partner.percentage, 0)
+          : partners.reduce((acc, partner) => acc + partner.percentage, 0);
+          
+        if (currentTotal + p > 100.001) {
+          alert(`Atenção: O total de percentuais ficaria em ${(currentTotal + p).toFixed(4)}%, ultrapassando 100%.`);
+          return;
+        }
+
         let updated;
         if (editingId) {
             updated = partners.map(partner => 
@@ -757,7 +788,7 @@ const PartnershipView: FC<{ partners: Partner[], onSave: (partners: Partner[]) =
     return (
         <div className="space-y-6 animate-fade-in">
              <div className="flex justify-between items-center">
-                <div><h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Partnership ACI</h2><p className="text-text-secondary">Gerencie o quadro societário da empresa.</p></div>
+                <div><h2 className="text-2xl font-bold bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent uppercase tracking-tight">Partnership ACI</h2><p className="text-text-secondary">Gerencie o quadro societário da empresa.</p></div>
             </div>
             
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -846,6 +877,868 @@ const PartnershipView: FC<{ partners: Partner[], onSave: (partners: Partner[]) =
                     </div>
                 </Card>
             </div>
+        </div>
+    );
+};
+
+const INITIAL_IMPORT_LIST_TEMPLATE = `Nome;Empresa;Cargo;Email;Celular
+;Transportes Soares;;[gerencia@transportesoares.com.br](mailto:gerencia@transportesoares.com.br);(41) 99946-3909
+César Ricardo Hübsch;Hübsch Consultoria e Desenvolvimento;;[cesar.ricardo.consultoria@gmail.com](mailto:cesar.ricardo.consultoria@gmail.com);(41) 99667-7496
+Leandro Correa;Praxis Consultoria;;[adm.leandrocorrea@hotmail.com](mailto:adm.leandrocorrea@hotmail.com);(11) 94137-7204
+Jeferson J. Freitas;Delta;;[jjfreitas1371@gmail.com](mailto:jjfreitas1371@gmail.com);(41) 99915-4411
+Fábio Amarante de Souza;Amarante Gestão;;[fabio@amarantegestao.com.br](mailto:fabio@amarantegestao.com.br);(41) 98484-8491
+Marcelo Pessanha;Ademicon Consórcio e Investimento;;[marcelo.pessanha@autorizadoademicon.com.br](mailto:marcelo.pessanha@autorizadoademicon.com.br);(41) 99254-3435
+Sergio Luiz Beggiato Junior;DE:Risk GRC;;[sergio.beggiato@gmail.com](mailto:sergio.beggiato@gmail.com);(41) 99886-5193
+Vilmar Szigel;ACI Capital;;[szigelvilmar@gmail.com](mailto:szigelvilmar@gmail.com);(41) 99222-1976
+Paulo Jacinto Rosa;SCRYTA Assessoria Contábil Ltda.;;[paulo@scryta.com.br](mailto:paulo@scryta.com.br);(41) 98835-6532
+Isabela Terres;Terres Advocacia;;[isabelaterres1@gmail.com](mailto:isabelaterres1@gmail.com);(41) 98778-7631
+Patricia dos Santos;Ademicon;;[dossantospatricia07@gmail.com](mailto:dossantospatricia07@gmail.com);(41) 98793-9406
+Alessandro Ferreira Machado;Revisitar Desenvolvimento Humano;;[afmale.fm@gmail.com](mailto:afmale.fm@gmail.com);(41) 98822-9440
+Clarice Moreira Dias;Instituto Clarice;;[clarice.moreiradias1976@gmail.com](mailto:clarice.moreiradias1976@gmail.com);(41) 99676-0470
+Bruna Nakamura Nepomuceno Toledo;BNNT Delta Labs;;[bruna@deltadocliente.com](mailto:bruna@deltadocliente.com);(41) 99932-3333
+Beatrice Bueno;Bueno Advocacia e Consultoria Jurídica;;[beatricebueno.adv@gmail.com](mailto:beatricebueno.adv@gmail.com);(41) 99736-6859
+Davi Almeida Carvalho;Nxs Hub;;[davialmeidacarvalho59@gmail.com](mailto:davialmeidacarvalho59@gmail.com);(92) 98620-6811
+Vitor Edson Gerhardt;Veger Treinamentos;;[vitorgerhardt@gmail.com](mailto:vitorgerhardt@gmail.com);(41) 99930-7001
+Jaqueline Martins;MG Consultoria;;[jaquemartiins51@gmail.com](mailto:jaquemartiins51@gmail.com);(41) 99898-2776
+Andressa Cristina de Paula;Consolide Registro de Marcas e Patentes;;[negocios.depaulaa@gmail.com](mailto:negocios.depaulaa@gmail.com);(41) 99956-0819
+Helton Aguiar;Meu Garrafão;;[helton@meugarrafao.com](mailto:helton@meugarrafao.com);(41) 99920-1144
+Vivian Rosana de Campos Gomes;Vivian Campos - Psicanálise Conectamente;;[psicanalise.conectamente@gmail.com](mailto:psicanalise.conectamente@gmail.com);(41) 99664-0828
+Anauila Osternack;Restaurante Spring;;[anauilamosternack@gmail.com](mailto:anauilamosternack@gmail.com);(41) 99803-0666
+Klaus Stromberg;Lux Capital;;[klaus.stromberg@gmail.com](mailto:klaus.stromberg@gmail.com);(41) 98841-0089
+Simey Costa Batista;YOUPrime;;[siimey.batista@youprime.com.br](mailto:siimey.batista@youprime.com.br);(41) 98428-9688
+Jailson Silva;Tavi Máquinas;;[jailsonsilv@gmail.com](mailto:jailsonsilv@gmail.com);(41) 99119-9491
+Victor Peck;Acampar;;[acampar@acampar.com.br](mailto:acampar@acampar.com.br);(41) 99665-6807
+Karoline Teotonio;Flowbiz;;[karoline.teotonio@flowbiz.com.br](mailto:karoline.teotonio@flowbiz.com.br);(41) 99586-9900
+Elton Ribeiro;Unicoon Proteção Veicular;;[eltonribeiro.220783@gmail.com](mailto:eltonribeiro.220783@gmail.com);(41) 99942-5099
+Eliane da Silva;Safe Care Consultoria;;[eliane.bernardii@gmail.com](mailto:eliane.bernardii@gmail.com);(41) 99159-7980
+Henrique Cruz;Lavo na Vaga;;[henrique@lavonavaga.com.br](mailto:henrique@lavonavaga.com.br);(41) 99602-5324
+Edson Eduardo Tod;Identificare Soluções para Eventos Ltda;;[tod@identificare.com.br](mailto:tod@identificare.com.br);(41) 99261-6008
+Pedro Muschitz;Weagle Governance;;[pedro@weagle.com.br](mailto:pedro@weagle.com.br);(41) 99822-0727
+Valter Vieira Ribeiro;Jesus100 Editora Ltda;;[valter@sbdh.com.br](mailto:valter@sbdh.com.br);(41) 99972-2711
+Sandro Barbosa Cestaro;Cestaro Consultoria;;[sandro_cestaro@cestaroconsultoria.com](mailto:sandro_cestaro@cestaroconsultoria.com);(41) 98776-2108
+Luciana Fernandes Dias;Golden Lion Business & Imóveis;;[luciana.goldenlion@gmail.com](mailto:luciana.goldenlion@gmail.com);(41) 99907-0100
+Rogerio Kriger;Direct Marketing;;[rogerio@directmkt.com.br](mailto:rogerio@directmkt.com.br);(41) 98837-8862
+Marinela Llovet Canepa;53732767 Marinela Llovet Canepa;;[marinelacanepa@gmail.com](mailto:marinelacanepa@gmail.com);(41) 98844-3762
+Caue Damião;CNX Seguros;;[caue.damiao@cnxseguros.com.br](mailto:caue.damiao@cnxseguros.com.br);(41) 99646-0007
+Luiz Renato Roble;Datamaker Design;;[criacao@datamaker.com.br](mailto:criacao@datamaker.com.br);(41) 99911-5230
+Giancarlo Mina;RIP Memorial;;[giancarlo@ripmemorial.com](mailto:giancarlo@ripmemorial.com);(41) 98822-9187
+Maithê Lima;Maithê Lima Consórcios e Investimentos (Ademicon);;[amaithelima@gmail.com](mailto:amaithelima@gmail.com);(41) 99233-0454
+Diandra Miziara;Diandra Miziara Estética Avançada;;[diandra_f@hotmail.com](mailto:diandra_f@hotmail.com);(41) 99934-7200
+Rodrigo Banach;Target Invest;;[rodrigo.banach@targetinvest.com.br](mailto:rodrigo.banach@targetinvest.com.br);(41) 98835-3597
+Gabriela Guadagnin;Eletro São Marcos;;[gabi_guadagnin@hotmail.com](mailto:gabi_guadagnin@hotmail.com);(41) 99647-4007
+Edson Domingues Polizel;Edson Polizel Psicoterapeuta;;[edsonpolizelterapeuta@gmail.com](mailto:edsonpolizelterapeuta@gmail.com);(41) 98529-3064
+Jesse Gomes Adamuchio;Local Score / Gran Tour 360;;[jesseadamuchio@gmail.com](mailto:jesseadamuchio@gmail.com);(41) 99945-5042
+Renata Matos de Oliveira;Conectar Contabilidade;;[renatamo0110@gmail.com](mailto:renatamo0110@gmail.com);(41) 99887-5108
+Reginaldo dos Santos Cordeiro;Impacto Consultoria e Treinamentos;;[regy.cordeiro@gmail.com](mailto:regy.cordeiro@gmail.com);(41) 99543-3024
+Ariane Grazielle de Jesus;Sarai Saias;;[arii__morena@hotmail.com](mailto:arii__morena@hotmail.com);(43) 99652-7958
+Suziani Seli da Silva Coutinho;Sarai Saias;;[suzimz@hotmail.com](mailto:suzimz@hotmail.com);(41) 99637-7044
+Monica de Moraes Zanelatto;Monica de Moraes Zanelatto;;[monizanelatto@gmail.com](mailto:monizanelatto@gmail.com);(41) 99953-3065
+Daniel Bueno Coutinho;Needsclear;;[danielbueno921@hotmail.com](mailto:danielbueno921@hotmail.com);(41) 99960-5112
+Denise Santos de Souza;DS Realty;;[denise@dsrealty.com.br](mailto:denise@dsrealty.com.br);(41) 98817-8022
+Jose Mauricio Ferreira Dieguez;Roda +;;[mauricio@rodamaisgroup.com](mailto:mauricio@rodamaisgroup.com);(41) 99709-6630
+Douglas Egeia;Douglas Egeia;;[douglasegeia@gmail.com](mailto:douglasegeia@gmail.com);(41) 99552-5482
+Debora Waz;Brand To Win;;[debora.waz@gmail.com](mailto:debora.waz@gmail.com);(41) 99280-8182
+Veronica Letícia Pacheco;Toda Comunicação;;[redacao@todacomunicacao.com.br](mailto:redacao@todacomunicacao.com.br);(41) 98846-9535
+Antoine Najib Ahee;Hass Consórcio;;[antoine.najib@gmail.com](mailto:antoine.najib@gmail.com);(41) 98808-7510
+Valdeni da Costa Lima;Live Empreendimentos;;[valdeni478@gmail.com](mailto:valdeni478@gmail.com);(41) 99191-9779
+Klebia de Oliveira Chagas;Aba Saúde e Segurança do Trabalho;;[klebia@abaocupacional.com.br](mailto:klebia@abaocupacional.com.br);(41) 98430-8127
+Claudio Marcos Araujo;CMA Consultoria Telecom;;[claudio.araujo.cwb@gmail.com](mailto:claudio.araujo.cwb@gmail.com);(41) 99679-1619
+Paulo Dias Fernandes;PD Consultoria LTDA;;[paulo@pdconsultoria.com.br](mailto:paulo@pdconsultoria.com.br);(41) 99142-4046
+Lilian Oliveira;Sursuma Soluções em RH;;[lilian.oliveira@sursuma.com.br](ilian.oliveira@sursuma.com.br);(41) 99695-9587
+Robson Sudario;CMA Consultoria Telecom;;[pr.robsonsudario@gmail.com](mailto:pr.robsonsudario@gmail.com);(41) 99523-9448
+Alline Fieker Freiberger;Alline Fieker Desenvolvimento Humano;;[allinefieker@gmail.com](mailto:allinefieker@gmail.com);(41) 99699-5002
+Alex Moises Malca Lopes da Silva;BORNE Engenharia;;[alex@energiaborne.com.br](mailto:alex@energiaborne.com.br);(41) 99224-1002
+Cledisson Ribeiro Gama de Oliveira;Escritório Advocacia;;[cledissongama@gmail.com](mailto:cledissongama@gmail.com);(41) 8441-9345
+Priscila de Lima;Priscila Lima;;[priscila.lverissimo@gmail.com](mailto:priscila.lverissimo@gmail.com);(41) 98846-4519
+Rafaelly Zanelatto;RR Gestão;;[diretoria@rrgroup.live](mailto:diretoria@rrgroup.live);(41) 99213-9511
+Valdireni Alves;S.Clara Comunicação;;[valdirenialves@gmail.com](mailto:valdirenialves@gmail.com);(41) 99288-5787
+Davi Barbosa;Tim;;[dbarbosa@xcelltelecom.com](mailto:dbarbosa@xcelltelecom.com);(41) 99501-0461
+Franciele Brião Guilherme;13096438000167;;[fbriao@xcelltelecom.com.br](mailto:fbriao@xcelltelecom.com.br);(41) 99949-0121
+Gabriel Mendonça Gama de Oliveira;Escritório Advocacia;;[ggama0308@gmail.com](mailto:ggama0308@gmail.com);(41) 99104-8017
+Ana Paula Richarde;Chama o Marketing;;[ana@chamaomarketing.com.br](mailto:ana@chamaomarketing.com.br);(44) 99923-4924
+Juliano Moreira;AT1 Digital;;[juliano@at1.digital](mailto:juliano@at1.digital);(31) 99676-0210
+Eduardo Anderson Honjo;Carteirinha Digital;;[eduardo@honjo.com.br](mailto:eduardo@honjo.com.br);(48) 99140-5003
+Thaiane Andretta;Consultório Thaiane Andretta;;[thaiandretta@hotmail.com](mailto:thaiandretta@hotmail.com);(41) 98829-9129
+Amanda Graziela Gaspar;Ademicon;;[amanda.gaspar@autorizadoademicon.com.br](mailto:amanda.gaspar@autorizadoademicon.com.br);(41) 99747-5301
+Manuela Araujo Gabardo Guimarães;Integra Benefícios;;[manuela@integrabeneficios.com](mailto:manuela@integrabeneficios.com);(41) 99924-0027
+Wilson Luiz Azevedo Junior;Consórcio Servopa;;[wilsonlaj@hotmail.com](mailto:wilsonlaj@hotmail.com);(41) 99991-9171
+Thiago Berardi Rocha Almeida;TBS Group Marketing Estratégico;;[thiago@tbsgroup.marketing](mailto:thiago@tbsgroup.marketing);(11) 99556-7878
+Eduardo Morais Pereira;Ademicon;;[edump016@gmail.com](mailto:edump016@gmail.com);(16) 98859-5978
+Zulmeia de Almeida;Profissional Liberal;;[zulmeia.almeida@gmail.com](mailto:zulmeia.almeida@gmail.com);(41) 99835-3537
+Edmondo Scupino;Scupino Representações;;[escupino@gmail.com](mailto:escupino@gmail.com);(41) 99908-1249
+Sandro Berton da Costa;JF Weld;;[sandroberton75@gmail.com](mailto:sandroberton75@gmail.com);(41) 98857-4007
+Márcia De Lazari;De Lazari Corretora de Seguros;;[contato@delazaricorretora.com.br](mailto:contato@delazaricorretora.com.br);(41) 98866-5974
+Bruno Castro;B. Castro Consultoria;;[comercial@bcastroconsultoria.com](mailto:comercial@bcastroconsultoria.com);(41) 99952-8310
+Ana Paula Westphal;De Lazari Corretora de Seguros;;[paulinharibas@hotmail.com](mailto:paulinharibas@hotmail.com);(41) 8499-2159
+Lucas da Silva Barbosa;Kinder Park;;[lucascomercialkinderpark@gmail.com](mailto:lucascomercialkinderpark@gmail.com);(41) 99537-0900
+Rosirlei Aparecida dos Santos Godinho;Dique Corretora de Seguros;;[rosirlei@diquecorretora.com.br](mailto:rosirlei@diquecorretora.com.br);(41) 98864-7533
+Magali Garcia Rodrigues;Dedicata Intermediação Ltda.;;[magali.dedicata2016@gmail.com](mailto:magali.dedicata2016@gmail.com);(41) 99992-0285
+Elmar Storck Borges;E2 Importação e Comércio LTDA;;[elmar@e2bright.com](mailto:elmar@e2bright.com);(41) 99681-9660
+Bruna Rocha Carneiro;Hospital Pequeno Príncipe;;[bruna.carneiro@hpp.org.br](mailto:bruna.carneiro@hpp.org.br);(55) 99629-8610
+Camila Santiago Crucillo da Silva;Hospital Pequeno Príncipe;;[camila.crucillo@hpp.org.br](mailto:camila.crucillo@hpp.org.br);(41) 99786-7214
+Enrique Pigatto de Mello;W1 Capital;;[enriquepigatto@gmail.com](mailto:enriquepigatto@gmail.com);(41) 99646-8519
+Edmundo L. V. Barbosa;Youfirst;;[esmundo_barbosa@hotmail.com](mailto:esmundo_barbosa@hotmail.com);(41) 99969-4460`;
+
+// --- CLIENTE PROSPECÇÃO (CRM) VIEW ---
+const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ advisors, userId }) => {
+    const [prospects, setProspects] = useState<Prospect[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    // Filter states
+    const [statusFilter, setStatusFilter] = useState<string>('all');
+    const [advisorFilter, setAdvisorFilter] = useState<string>('all');
+    const [sourceFilter, setSourceFilter] = useState<string>('all');
+    const [searchQuery, setSearchQuery] = useState<string>('');
+
+    // Modal states
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isInteractionModalOpen, setIsInteractionModalOpen] = useState(false);
+    const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+    const [editingProspect, setEditingProspect] = useState<Prospect | null>(null);
+    const [selectedProspect, setSelectedProspect] = useState<Prospect | null>(null);
+
+    // Import states
+    const [importText, setImportText] = useState(INITIAL_IMPORT_LIST_TEMPLATE);
+    const [importResponsible, setImportResponsible] = useState('');
+    const [importSource, setImportSource] = useState<'indicacao' | 'evento' | 'networking' | 'Instagram' | 'outro'>('networking');
+    const [importStatus, setImportStatus] = useState<Prospect['status']>('Novo contato');
+    const [isImporting, setIsImporting] = useState(false);
+
+    useEffect(() => {
+        if (advisors && advisors.length > 0 && !importResponsible) {
+            setImportResponsible(advisors[0].name);
+        }
+    }, [advisors, importResponsible]);
+
+    // Form states
+    const [formName, setFormName] = useState('');
+    const [formCompany, setFormCompany] = useState('');
+    const [formRole, setFormRole] = useState('');
+    const [formEmail, setFormEmail] = useState('');
+    const [formPhone, setFormPhone] = useState('');
+    const [formSource, setFormSource] = useState<'indicacao' | 'evento' | 'networking' | 'Instagram' | 'outro'>('indicacao');
+    const [formStatus, setFormStatus] = useState<Prospect['status']>('Novo contato');
+    const [formFirstContactDate, setFormFirstContactDate] = useState('');
+    const [formResponsible, setFormResponsible] = useState('');
+    const [formNotes, setFormNotes] = useState('');
+
+    // Log Interaction states
+    const [selectedProspectForInteraction, setSelectedProspectForInteraction] = useState<Prospect | null>(null);
+    const [interactionText, setInteractionText] = useState('');
+
+    useEffect(() => {
+        const q = query(collection(db, "prospects"));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const list: Prospect[] = [];
+            snapshot.forEach((doc) => {
+                list.push({ id: doc.id, ...doc.data() } as Prospect);
+            });
+            setProspects(list);
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!formName || !formResponsible) {
+            alert("Nome e Assessor Responsável são obrigatórios.");
+            return;
+        }
+
+        const data = {
+            name: formName,
+            company: formCompany || '',
+            role: formRole || '',
+            email: formEmail || '',
+            phone: formPhone || '',
+            source: formSource,
+            status: formStatus,
+            firstContactDate: formFirstContactDate || new Date().toISOString().split('T')[0],
+            responsible: formResponsible,
+            notes: formNotes || '',
+            lastInteraction: editingProspect?.lastInteraction || ''
+        };
+
+        try {
+            if (editingProspect) {
+                await updateProspect(editingProspect.id, data);
+            } else {
+                await saveProspect(data, userId);
+            }
+            setIsModalOpen(false);
+            resetForm();
+        } catch (err) {
+            console.error("Erro ao salvar prospecto:", err);
+            alert("Ocorreu um erro ao salvar o prospecto.");
+        }
+    };
+
+    const handleLogInteractionSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedProspectForInteraction || !interactionText) return;
+
+        const todayStr = new Date().toLocaleDateString('pt-BR');
+        const updatedNotes = `${selectedProspectForInteraction.notes || ''}\n[${todayStr}] ${interactionText}`.trim();
+        const updatedInteraction = `[${todayStr}] ${interactionText}`;
+
+        try {
+            await updateProspect(selectedProspectForInteraction.id, {
+                notes: updatedNotes,
+                lastInteraction: updatedInteraction
+            });
+            setIsInteractionModalOpen(false);
+            setSelectedProspectForInteraction(null);
+            setInteractionText('');
+        } catch (err) {
+            console.error("Erro ao registrar interação:", err);
+            alert("Ocorreu um erro ao registrar a interação.");
+        }
+    };
+
+    const handleImportSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!importText.trim()) {
+            alert("Cole a lista para importar.");
+            return;
+        }
+        if (!importResponsible) {
+            alert("Selecione o Assessor Responsável Padrão para estes contatos.");
+            return;
+        }
+
+        setIsImporting(true);
+        try {
+            const lines = importText.split(/\r?\n/);
+            let successCount = 0;
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (!line || line.startsWith('Nome;') || line.toLowerCase().startsWith('nome;empresa;')) {
+                    continue;
+                }
+
+                const parts = line.split(';');
+                if (parts.length < 2) continue;
+
+                let rawName = parts[0]?.trim() || '';
+                let rawCompany = parts[1]?.trim() || '';
+                let rawRole = parts[2]?.trim() || '';
+                let rawEmail = parts[3]?.trim() || '';
+                let rawPhone = parts[4]?.trim() || '';
+
+                if (rawEmail.startsWith('[') && rawEmail.includes('](mailto:')) {
+                    const match = rawEmail.match(/\[([^\]]+)\]/);
+                    if (match) {
+                        rawEmail = match[1].trim();
+                    }
+                }
+
+                if (!rawName) {
+                    if (rawCompany) {
+                        rawName = `Contato [${rawCompany}]`;
+                    } else {
+                        rawName = `Lead Sem Nome #${i}`;
+                    }
+                }
+
+                const data = {
+                    name: rawName,
+                    company: rawCompany,
+                    role: rawRole,
+                    email: rawEmail,
+                    phone: rawPhone,
+                    source: importSource,
+                    status: importStatus,
+                    firstContactDate: new Date().toISOString().split('T')[0],
+                    responsible: importResponsible,
+                    notes: 'Importado em lote via lista padrão.',
+                    lastInteraction: ''
+                };
+
+                await saveProspect(data, userId);
+                successCount++;
+            }
+
+            alert(`Importação concluída! ${successCount} leads importados com sucesso.`);
+            setIsImportModalOpen(false);
+        } catch (err) {
+            console.error("Erro na importação em lote:", err);
+            alert("Ocorreu um erro durante a importação.");
+        } finally {
+            setIsImporting(false);
+        }
+    };
+
+    const openEditModal = (p: Prospect) => {
+        setEditingProspect(p);
+        setFormName(p.name);
+        setFormCompany(p.company || '');
+        setFormRole(p.role || '');
+        setFormEmail(p.email || '');
+        setFormPhone(p.phone || '');
+        setFormSource(p.source);
+        setFormStatus(p.status);
+        setFormFirstContactDate(p.firstContactDate || '');
+        setFormResponsible(p.responsible);
+        setFormNotes(p.notes || '');
+        setIsModalOpen(true);
+    };
+
+    const resetForm = () => {
+        setEditingProspect(null);
+        setFormName('');
+        setFormCompany('');
+        setFormRole('');
+        setFormEmail('');
+        setFormPhone('');
+        setFormSource('indicacao');
+        setFormStatus('Novo contato');
+        setFormFirstContactDate(new Date().toISOString().split('T')[0]);
+        setFormResponsible('');
+        setFormNotes('');
+    };
+
+    const handleDelete = async (id: string) => {
+        if (confirm("Deseja realmente remover este prospecto comercial?")) {
+            await deleteProspect(id);
+        }
+    };
+
+    const filteredProspects = useMemo(() => {
+        return prospects.filter(p => {
+            const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
+            const matchesAdvisor = advisorFilter === 'all' || p.responsible === advisorFilter;
+            const matchesSource = sourceFilter === 'all' || p.source === sourceFilter;
+            const matchesSearch = !searchQuery || 
+                p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (p.company && p.company.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                (p.responsible && p.responsible.toLowerCase().includes(searchQuery.toLowerCase()));
+
+            return matchesStatus && matchesAdvisor && matchesSource && matchesSearch;
+        });
+    }, [prospects, statusFilter, advisorFilter, sourceFilter, searchQuery]);
+
+    const totalCount = prospects.length;
+    const inNegotiationCount = prospects.filter(p => 
+        p.status === 'Em análise' || 
+        p.status === 'Reunião marcada' || 
+        p.status === 'Primeiro contato realizado'
+    ).length;
+    const convertedCount = prospects.filter(p => p.status === 'Cliente convertido').length;
+
+    const getStatusBadgeStyle = (status: Prospect['status']) => {
+        switch (status) {
+            case 'Novo contato': return 'bg-blue-500/10 text-blue-400 border border-blue-500/20';
+            case 'Primeiro contato realizado': return 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20';
+            case 'Reunião marcada': return 'bg-amber-500/10 text-amber-400 border border-amber-500/20';
+            case 'Em análise': return 'bg-orange-500/10 text-orange-400 border border-orange-500/20';
+            case 'Cliente convertido': return 'bg-green-500/10 text-green-400 border border-green-500/20';
+            case 'Perdido': return 'bg-red-500/10 text-red-400 border border-red-500/20';
+            default: return 'bg-zinc-500/10 text-zinc-400 border border-zinc-500/20';
+        }
+    };
+
+    const getSourceLabel = (src: Prospect['source']) => {
+        switch (src) {
+            case 'indicacao': return 'Indicação';
+            case 'evento': return 'Evento';
+            case 'networking': return 'Networking';
+            case 'Instagram': return 'Instagram';
+            case 'outro': return 'Outro';
+            default: return src;
+        }
+    };
+
+    if (loading) {
+        return <div className="p-8 text-center text-text-secondary italic">Carregando CRM de Prospecção...</div>;
+    }
+
+    return (
+        <div className="space-y-6 animate-fade-in">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h2 className="text-2xl font-bold bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent uppercase tracking-tight">Prospecção (CRM)</h2>
+                    <p className="text-text-secondary">Controle de funil comercial e novos clientes associados.</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    <Button onClick={() => setIsImportModalOpen(true)} className="text-sm bg-blue-600 hover:bg-blue-700 hover:text-white text-white border-none">
+                        <UploadIcon className="w-4 h-4 mr-1.5" /> Importar Lista
+                    </Button>
+                    <Button onClick={() => { resetForm(); setIsModalOpen(true); }} className="text-sm">
+                        <PlusIcon className="w-4 h-4 mr-2" /> Novo Prospecto
+                    </Button>
+                </div>
+            </div>
+
+            {/* Totalizadores Counters */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="bg-surface border border-border-color p-4 rounded-xl flex items-center gap-4">
+                    <div className="bg-primary/10 p-3 rounded-full text-primary">
+                        <PartnershipIcon className="w-6 h-6" />
+                    </div>
+                    <div>
+                        <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider block">Total de Prospects</span>
+                        <p className="text-2xl font-extrabold text-text-primary mt-0.5 font-mono">{totalCount}</p>
+                    </div>
+                </div>
+                <div className="bg-surface border border-border-color p-4 rounded-xl flex items-center gap-4">
+                    <div className="bg-amber-500/10 p-3 rounded-full text-amber-500">
+                        <GoalsIcon className="w-6 h-6" />
+                    </div>
+                    <div>
+                        <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider block">Em Negociação</span>
+                        <p className="text-2xl font-extrabold text-amber-500 mt-0.5 font-mono">{inNegotiationCount}</p>
+                    </div>
+                </div>
+                <div className="bg-surface border border-border-color p-4 rounded-xl flex items-center gap-4">
+                    <div className="bg-green-500/10 p-3 rounded-full text-green-500">
+                        <svg className="w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    </div>
+                    <div>
+                        <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider block">Clientes Convertidos</span>
+                        <p className="text-2xl font-extrabold text-green-400 mt-0.5 font-mono">{convertedCount}</p>
+                    </div>
+                </div>
+            </div>
+
+            {/* Toolbar Filtros */}
+            <Card className="p-4">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                    <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1">Status do Funil</label>
+                        <select 
+                            value={statusFilter} 
+                            onChange={(e) => setStatusFilter(e.target.value)}
+                            className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary"
+                        >
+                            <option value="all">Todos os Status</option>
+                            <option value="Novo contato">Novo contato</option>
+                            <option value="Primeiro contato realizado">Primeiro contato realizado</option>
+                            <option value="Reunião marcada">Reunião marcada</option>
+                            <option value="Em análise">Em análise</option>
+                            <option value="Cliente convertido">Cliente convertido</option>
+                            <option value="Perdido">Perdido</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1">Assessor Responsável</label>
+                        <select 
+                            value={advisorFilter} 
+                            onChange={(e) => setAdvisorFilter(e.target.value)}
+                            className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary"
+                        >
+                            <option value="all">Todos os Assessores</option>
+                            {advisors.map(adv => <option key={adv.id} value={adv.name}>{adv.name}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1">Origem do Lead</label>
+                        <select 
+                            value={sourceFilter} 
+                            onChange={(e) => setSourceFilter(e.target.value)}
+                            className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary"
+                        >
+                            <option value="all">Todas as Origens</option>
+                            <option value="indicacao">Indicação</option>
+                            <option value="evento">Evento</option>
+                            <option value="networking">Networking</option>
+                            <option value="Instagram">Instagram</option>
+                            <option value="outro">Outro</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1 font-sans">Buscar por Nome / Empresa</label>
+                        <div className="relative">
+                            <input 
+                                type="text" 
+                                value={searchQuery} 
+                                onChange={(e) => setSearchQuery(e.target.value)} 
+                                placeholder="Buscar..." 
+                                className="w-full bg-background border border-border-color rounded-md pl-8 pr-3 py-2 text-sm focus:ring-primary focus:border-primary" 
+                            />
+                            <SearchIcon className="w-4 h-4 text-text-secondary absolute left-2.5 top-2.5" />
+                        </div>
+                    </div>
+                </div>
+            </Card>
+
+            {/* List Table */}
+            <Card className="overflow-hidden p-0">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left whitespace-nowrap text-[11px] sm:text-xs">
+                        <thead className="bg-background/50 uppercase text-text-secondary font-bold">
+                            <tr>
+                                <th className="p-4">Nome completo</th>
+                                <th className="p-4">Empresa / Cargo</th>
+                                <th className="p-4">Email / Telefone</th>
+                                <th className="p-4 text-center">Origem</th>
+                                <th className="p-4 text-center">Data 1º Contato</th>
+                                <th className="p-4">Última Interação</th>
+                                <th className="p-4">Responsável</th>
+                                <th className="p-4 text-center">Status</th>
+                                <th className="p-4 text-right">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border-color/30">
+                            {filteredProspects.map(p => (
+                                <tr key={p.id} className="hover:bg-background/50 transition-colors">
+                                    <td className="p-4 font-bold text-text-primary">
+                                        <button 
+                                            onClick={() => { setSelectedProspect(p); setIsDetailsModalOpen(true); }}
+                                            className="text-left font-bold text-text-primary hover:text-primary transition-all underline decoration-dotted"
+                                        >
+                                            {p.name}
+                                        </button>
+                                    </td>
+                                    <td className="p-4">
+                                        <div className="font-medium text-text-primary">{p.company || '-'}</div>
+                                        <div className="text-[10px] text-text-secondary">{p.role || '-'}</div>
+                                    </td>
+                                    <td className="p-4">
+                                        <div className="text-text-primary font-medium">{p.phone || '-'}</div>
+                                        <div className="text-[10px] text-text-secondary">{p.email || '-'}</div>
+                                    </td>
+                                    <td className="p-4 text-center">
+                                        <span className="px-2 py-0.5 rounded bg-surface border border-border-color/60 font-medium text-[10px]">
+                                            {getSourceLabel(p.source)}
+                                        </span>
+                                    </td>
+                                    <td className="p-4 text-center font-mono">
+                                        {p.firstContactDate ? new Date(p.firstContactDate + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
+                                    </td>
+                                    <td className="p-4 max-w-[200px] truncate" title={p.lastInteraction}>
+                                        {p.lastInteraction || <span className="text-text-secondary italic">Nenhuma interação registrada</span>}
+                                    </td>
+                                    <td className="p-4 font-semibold text-text-secondary">{p.responsible}</td>
+                                    <td className="p-4 text-center">
+                                        <span className={`px-2 py-1 rounded-full text-[9px] font-bold uppercase ${getStatusBadgeStyle(p.status)}`}>
+                                            {p.status}
+                                        </span>
+                                    </td>
+                                    <td className="p-4 text-right">
+                                        <div className="flex justify-end items-center gap-1">
+                                            <Button 
+                                                variant="secondary" 
+                                                className="p-1 px-2 text-[10px] font-bold uppercase flex items-center gap-1"
+                                                onClick={() => { setSelectedProspectForInteraction(p); setIsInteractionModalOpen(true); }}
+                                            >
+                                                <span>💬</span> Interagir
+                                            </Button>
+                                            <Button variant="ghost" className="p-1" onClick={() => openEditModal(p)}><EditIcon className="w-3.5 h-3.5"/></Button>
+                                            <Button variant="ghostDanger" className="p-1" onClick={() => handleDelete(p.id)}><TrashIcon className="w-3.5 h-3.5"/></Button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                            {filteredProspects.length === 0 && (
+                                <tr>
+                                    <td colSpan={9} className="p-10 text-center text-text-secondary italic">Nenhum prospecto encontrado no filtro selecionado.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </Card>
+
+            {/* Modal: Cadastro/Edição Prospect */}
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingProspect ? "Editar Prospect" : "Novo Prospect"}>
+                <form onSubmit={handleSubmit} className="space-y-4 text-text-primary">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="col-span-2">
+                            <label className="block text-xs font-bold uppercase text-text-secondary mb-1">Nome Completo *</label>
+                            <input 
+                                type="text" 
+                                required 
+                                value={formName} 
+                                onChange={(e) => setFormName(e.target.value)} 
+                                className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary outline-none" 
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold uppercase text-text-secondary mb-1">Empresa</label>
+                            <input 
+                                type="text" 
+                                value={formCompany} 
+                                onChange={(e) => setFormCompany(e.target.value)} 
+                                className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary outline-none" 
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold uppercase text-text-secondary mb-1">Cargo</label>
+                            <input 
+                                type="text" 
+                                value={formRole} 
+                                onChange={(e) => setFormRole(e.target.value)} 
+                                className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary outline-none" 
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold uppercase text-text-secondary mb-1">E-mail</label>
+                            <input 
+                                type="email" 
+                                value={formEmail} 
+                                onChange={(e) => setFormEmail(e.target.value)} 
+                                className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary outline-none" 
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold uppercase text-text-secondary mb-1">Celular / Telefone</label>
+                            <input 
+                                type="text" 
+                                placeholder="(00) 00000-0000" 
+                                value={formPhone} 
+                                onChange={(e) => setFormPhone(e.target.value)} 
+                                className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary outline-none" 
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold uppercase text-text-secondary mb-1">Origem do contato</label>
+                            <select 
+                                value={formSource} 
+                                onChange={(e) => setFormSource(e.target.value as any)} 
+                                className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary outline-none"
+                            >
+                                <option value="indicacao">Indicação</option>
+                                <option value="evento">Evento</option>
+                                <option value="networking">Networking (Relações)</option>
+                                <option value="Instagram">Instagram</option>
+                                <option value="outro">Outro</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold uppercase text-text-secondary mb-1">Status Comercial</label>
+                            <select 
+                                value={formStatus} 
+                                onChange={(e) => setFormStatus(e.target.value as any)} 
+                                className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary outline-none"
+                            >
+                                <option value="Novo contato">Novo contato</option>
+                                <option value="Primeiro contato realizado">Primeiro contato realizado</option>
+                                <option value="Reunião marcada">Reunião marcada</option>
+                                <option value="Em análise">Em análise</option>
+                                <option value="Cliente convertido">Cliente convertido</option>
+                                <option value="Perdido">Perdido</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold uppercase text-text-secondary mb-1">Data Primeiro Contato</label>
+                            <input 
+                                type="date" 
+                                value={formFirstContactDate} 
+                                onChange={(e) => setFormFirstContactDate(e.target.value)} 
+                                className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary outline-none" 
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold uppercase text-text-secondary mb-1">Assessor Responsável *</label>
+                            <select 
+                                required 
+                                value={formResponsible} 
+                                onChange={(e) => setFormResponsible(e.target.value)} 
+                                className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary outline-none"
+                            >
+                                <option value="">Selecione...</option>
+                                {advisors.map(adv => <option key={adv.id} value={adv.name}>{adv.name}</option>)}
+                            </select>
+                        </div>
+                        <div className="col-span-2">
+                            <label className="block text-xs font-bold uppercase text-text-secondary mb-1">Histórico de Observações / Follow-up</label>
+                            <textarea 
+                                rows={3} 
+                                value={formNotes} 
+                                onChange={(e) => setFormNotes(e.target.value)} 
+                                placeholder="Descreva os passos e observações deste Lead comercial..." 
+                                className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary outline-none font-sans" 
+                            />
+                        </div>
+                    </div>
+                    <div className="flex justify-end gap-2 pt-2">
+                        <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
+                        <Button type="submit" variant="success">Salvar Prospecto</Button>
+                    </div>
+                </form>
+            </Modal>
+
+            {/* Modal: Registrar Interação */}
+            <Modal isOpen={isInteractionModalOpen} onClose={() => { setIsInteractionModalOpen(false); setSelectedProspectForInteraction(null); }} title="Registrar Nova Interação">
+                <form onSubmit={handleLogInteractionSubmit} className="space-y-4 text-text-primary">
+                    <div>
+                        <span className="block text-xs font-bold uppercase text-text-secondary mb-1">Lead Selecionado</span>
+                        <p className="text-sm font-bold text-text-primary">{selectedProspectForInteraction?.name}</p>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold uppercase text-text-secondary mb-1">O que foi conversado/feito? *</label>
+                        <textarea 
+                            rows={4} 
+                            required 
+                            value={interactionText} 
+                            onChange={(e) => setInteractionText(e.target.value)} 
+                            placeholder="Ex: Liguei para apresentar a proposta e agendamos a segunda reunião..." 
+                            className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary outline-none font-sans" 
+                        />
+                    </div>
+                    <div className="flex justify-end gap-2 pt-2">
+                        <Button type="button" variant="ghost" onClick={() => { setIsInteractionModalOpen(false); setSelectedProspectForInteraction(null); }}>Cancelar</Button>
+                        <Button type="submit" variant="success">Registrar e Atualizar</Button>
+                    </div>
+                </form>
+            </Modal>
+
+            {/* Modal: Detalhes do Prospecto */}
+            <Modal isOpen={isDetailsModalOpen} onClose={() => { setIsDetailsModalOpen(false); setSelectedProspect(null); }} title="Ficha Completa do Prospecto">
+                {selectedProspect && (
+                    <div className="space-y-4 text-text-primary">
+                        <div className="grid grid-cols-2 gap-4 border-b border-border-color pb-4">
+                            <div>
+                                <span className="block text-[10px] font-bold text-text-secondary uppercase">Nome</span>
+                                <p className="text-sm font-extrabold text-primary">{selectedProspect.name}</p>
+                            </div>
+                            <div>
+                                <span className="block text-[10px] font-bold text-text-secondary uppercase">Assessor Responsável</span>
+                                <p className="text-sm font-bold">{selectedProspect.responsible}</p>
+                            </div>
+                            <div>
+                                <span className="block text-[10px] font-bold text-text-secondary uppercase">Empresa / Cargo</span>
+                                <p className="text-xs font-semibold">{selectedProspect.company || '-'} ({selectedProspect.role || '-'})</p>
+                            </div>
+                            <div>
+                                <span className="block text-[10px] font-bold text-text-secondary uppercase">Status</span>
+                                <span className={`inline-block mt-1 px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase ${getStatusBadgeStyle(selectedProspect.status)}`}>
+                                    {selectedProspect.status}
+                                </span>
+                            </div>
+                            <div>
+                                <span className="block text-[10px] font-bold text-text-secondary uppercase">Celular</span>
+                                <p className="text-xs font-mono font-bold">{selectedProspect.phone || '-'}</p>
+                            </div>
+                            <div>
+                                <span className="block text-[10px] font-bold text-text-secondary uppercase">E-mail</span>
+                                <p className="text-xs text-text-secondary">{selectedProspect.email || '-'}</p>
+                            </div>
+                            <div>
+                                <span className="block text-[10px] font-bold text-text-secondary uppercase">Origem</span>
+                                <p className="text-xs font-medium">{getSourceLabel(selectedProspect.source)}</p>
+                            </div>
+                            <div>
+                                <span className="block text-[10px] font-bold text-text-secondary uppercase">Primeiro Contato</span>
+                                <p className="text-xs font-mono">{selectedProspect.firstContactDate ? new Date(selectedProspect.firstContactDate + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}</p>
+                            </div>
+                        </div>
+
+                        <div>
+                            <span className="block text-[10px] font-bold text-text-secondary uppercase mb-1">Última Interação registrada</span>
+                            <div className="bg-background/40 p-3 rounded-lg border border-border-color/60 font-mono text-xs text-text-primary whitespace-pre-line">
+                                {selectedProspect.lastInteraction || 'Nenhuma registrada'}
+                            </div>
+                        </div>
+
+                        <div>
+                            <span className="block text-[10px] font-bold text-text-secondary uppercase mb-1 font-sans">Histórico de Observações & Log de Atividades</span>
+                            <div className="bg-background/20 p-3 rounded-lg border border-border-color/30 text-xs text-text-secondary max-h-48 overflow-y-auto whitespace-pre-line font-sans">
+                                {selectedProspect.notes || 'Sem observações adicionadas.'}
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end pt-2 border-t border-border-color">
+                            <Button variant="secondary" onClick={() => { setIsDetailsModalOpen(false); openEditModal(selectedProspect); }}>Editar Dados</Button>
+                            <Button variant="ghost" onClick={() => { setIsDetailsModalOpen(false); setSelectedProspect(null); }}>Fechar</Button>
+                        </div>
+                    </div>
+                )}
+            </Modal>
+
+            {/* Modal: Importar Prospects em Lote */}
+            <Modal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} title="Importar Lista de Prospects" size="xl">
+                <form onSubmit={handleImportSubmit} className="space-y-4 text-text-primary">
+                    <div>
+                        <p className="text-xs text-text-secondary">
+                            Cole sua lista de contatos abaixo. O formato deve conter os cabeçalhos: <code className="bg-background px-1 py-0.5 rounded text-primary">Nome;Empresa;Cargo;Email;Celular</code>.
+                        </p>
+                        <p className="text-xs text-text-secondary mt-1">
+                            Se o nome estiver em branco, o sistema usará a empresa como nome de referência. Links de e-mail como <code className="bg-background px-1 py-0.5 text-text-secondary select-all font-mono">[email@domain.com](mailto:...)</code> serão limpos automaticamente.
+                        </p>
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-bold uppercase text-text-secondary mb-1">Dados dos Prospects (CSV semi-colon)</label>
+                        <textarea 
+                            rows={12} 
+                            required
+                            value={importText} 
+                            onChange={(e) => setImportText(e.target.value)} 
+                            placeholder="Nome;Empresa;Cargo;Email;Celular&#10;João;Empresa X;Diretor;joao@email.com;(11) 99999-9999" 
+                            className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-xs focus:ring-primary focus:border-primary outline-none font-mono" 
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div>
+                            <label className="block text-xs font-bold uppercase text-text-secondary mb-1 font-sans">Assessor Responsável Padrão *</label>
+                            <select 
+                                required 
+                                value={importResponsible} 
+                                onChange={(e) => setImportResponsible(e.target.value)} 
+                                className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary outline-none"
+                            >
+                                <option value="">Selecione...</option>
+                                {advisors.map(adv => <option key={adv.id} value={adv.name}>{adv.name}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold uppercase text-text-secondary mb-1 font-sans">Origem Padrão</label>
+                            <select 
+                                value={importSource} 
+                                onChange={(e) => setImportSource(e.target.value as any)} 
+                                className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary outline-none"
+                            >
+                                <option value="indicacao">Indicação</option>
+                                <option value="evento">Evento</option>
+                                <option value="networking">Networking (Relações)</option>
+                                <option value="Instagram">Instagram</option>
+                                <option value="outro">Outro</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold uppercase text-text-secondary mb-1 font-sans">Status Comercial Padrão</label>
+                            <select 
+                                value={importStatus} 
+                                onChange={(e) => setImportStatus(e.target.value as any)} 
+                                className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary outline-none"
+                            >
+                                <option value="Novo contato">Novo contato</option>
+                                <option value="Primeiro contato realizado">Primeiro contato realizado</option>
+                                <option value="Reunião marcada">Reunião marcada</option>
+                                <option value="Em análise">Em análise</option>
+                                <option value="Cliente convertido">Cliente convertido</option>
+                                <option value="Perdido">Perdido</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-4 border-t border-border-color/30">
+                        <button 
+                            type="button" 
+                            onClick={() => {
+                                if (confirm("Deseja redefinir os dados para restaurar a lista padrão de 96 contatos enviada?")) {
+                                    setImportText(INITIAL_IMPORT_LIST_TEMPLATE);
+                                }
+                            }}
+                            className="text-xs text-primary hover:underline font-medium"
+                        >
+                            Restaurar lista original de 96 contatos
+                        </button>
+                        <div className="flex gap-2 w-full sm:w-auto justify-end">
+                            <Button type="button" variant="ghost" onClick={() => setIsImportModalOpen(false)}>Cancelar</Button>
+                            <Button type="submit" variant="success" disabled={isImporting}>
+                                {isImporting ? 'Importando...' : 'Processar & Importar'}
+                            </Button>
+                        </div>
+                    </div>
+                </form>
+            </Modal>
         </div>
     );
 };
@@ -1202,8 +2095,8 @@ const SettingsView: FC<SettingsViewProps> = ({
                     onClick={() => setActiveSettingsTab('categorias')}
                     className={`flex-1 min-w-[110px] text-center px-3 py-2 text-xs font-semibold rounded-md transition-all ${
                         activeSettingsTab === 'categorias' 
-                        ? 'bg-primary text-background font-bold shadow' 
-                        : 'text-text-secondary hover:text-text-primary hover:bg-background/40'
+                        ? 'bg-primary text-white font-extrabold shadow-lg scale-[1.02]' 
+                        : 'text-text-secondary hover:text-white bg-surface/30'
                     }`}
                 >
                     Categorias DRE
@@ -1212,8 +2105,8 @@ const SettingsView: FC<SettingsViewProps> = ({
                     onClick={() => setActiveSettingsTab('assessores')}
                     className={`flex-1 min-w-[110px] text-center px-3 py-2 text-xs font-semibold rounded-md transition-all ${
                         activeSettingsTab === 'assessores' 
-                        ? 'bg-primary text-background font-bold shadow' 
-                        : 'text-text-secondary hover:text-text-primary hover:bg-background/40'
+                        ? 'bg-primary text-white font-extrabold shadow-lg scale-[1.02]' 
+                        : 'text-text-secondary hover:text-white bg-surface/30'
                     }`}
                 >
                     Assessores & CRM
@@ -1222,8 +2115,8 @@ const SettingsView: FC<SettingsViewProps> = ({
                     onClick={() => setActiveSettingsTab('impostos')}
                     className={`flex-1 min-w-[110px] text-center px-3 py-2 text-xs font-semibold rounded-md transition-all ${
                         activeSettingsTab === 'impostos' 
-                        ? 'bg-primary text-background font-bold shadow' 
-                        : 'text-text-secondary hover:text-text-primary hover:bg-background/40'
+                        ? 'bg-primary text-white font-extrabold shadow-lg scale-[1.02]' 
+                        : 'text-text-secondary hover:text-white bg-surface/30'
                     }`}
                 >
                     Impostos & Alíquotas
@@ -1232,8 +2125,8 @@ const SettingsView: FC<SettingsViewProps> = ({
                     onClick={() => setActiveSettingsTab('centros')}
                     className={`flex-1 min-w-[110px] text-center px-3 py-2 text-xs font-semibold rounded-md transition-all ${
                         activeSettingsTab === 'centros' 
-                        ? 'bg-primary text-background font-bold shadow' 
-                        : 'text-text-secondary hover:text-text-primary hover:bg-background/40'
+                        ? 'bg-primary text-white font-extrabold shadow-lg scale-[1.02]' 
+                        : 'text-text-secondary hover:text-white bg-surface/30'
                     }`}
                 >
                     Centros de Custo
@@ -1242,8 +2135,8 @@ const SettingsView: FC<SettingsViewProps> = ({
                     onClick={() => setActiveSettingsTab('pagamentos')}
                     className={`flex-1 min-w-[110px] text-center px-3 py-2 text-xs font-semibold rounded-md transition-all ${
                         activeSettingsTab === 'pagamentos' 
-                        ? 'bg-primary text-background font-bold shadow' 
-                        : 'text-text-secondary hover:text-text-primary hover:bg-background/40'
+                        ? 'bg-primary text-white font-extrabold shadow-lg scale-[1.02]' 
+                        : 'text-text-secondary hover:text-white bg-surface/30'
                     }`}
                 >
                     Formas de Pagamento
@@ -1670,6 +2563,7 @@ const Sidebar: FC<{ activeView: View; setActiveView: (view: View) => void; isSid
         { view: 'dashboard', label: 'Dashboard', icon: <DashboardIcon className="w-6 h-6"/> },
         { view: 'transactions', label: 'Transações', icon: <TransactionsIcon className="w-6 h-6"/> },
         { view: 'imported-revenues', label: 'Comissões', icon: <FileTextIcon className="w-6 h-6"/> },
+        { view: 'prospects', label: 'Prospecção', icon: <svg className="w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg> },
         { view: 'reports', label: 'Relatórios', icon: <ReportsIcon className="w-6 h-6"/> },
         { view: 'goals', label: 'Metas', icon: <GoalsIcon className="w-6 h-6"/> },
         { view: 'partnership', label: 'Partnership ACI', icon: <PartnershipIcon className="w-6 h-6"/> },
@@ -1687,7 +2581,17 @@ const Sidebar: FC<{ activeView: View; setActiveView: (view: View) => void; isSid
             </nav>
             <div className="border-t border-border-color pt-4 mt-4">
                  <div className="px-2 mb-4">
-                    <p className="text-sm font-bold text-text-primary truncate" title={getUserDisplayName(user)}>{getUserDisplayName(user)}</p>
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center flex-shrink-0">
+                        <span className="text-xs font-bold text-primary animate-pulse">
+                          {getUserDisplayName(user).charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      <div className="min-w-0 flex-grow">
+                        <p className="text-sm font-bold text-text-primary truncate">{getUserDisplayName(user)}</p>
+                        <p className="text-[10px] text-text-secondary truncate">{user?.email || ''}</p>
+                      </div>
+                    </div>
                  </div>
                  <button onClick={logoutUser} className="w-full px-4 py-3 text-sm font-semibold rounded-lg flex items-center justify-start gap-3 transition-colors duration-200 text-text-secondary hover:bg-danger hover:text-white">
                     <LogoutIcon className="w-5 h-5"/> Sair
@@ -1939,7 +2843,7 @@ const TransactionsView: FC<{
              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div className="flex items-center gap-4">
                     <div>
-                        <h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Transações</h2>
+                        <h2 className="text-2xl font-bold bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent uppercase tracking-tight">Transações</h2>
                         <p className="text-text-secondary text-sm">Gerencie suas receitas e despesas.</p>
                     </div>
                 </div>
@@ -2613,6 +3517,7 @@ const ImportedRevenuesView: FC<{
     const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all');
     const [selectedAdvisorId, setSelectedAdvisorId] = useState<string>('all');
     const [clientSearch, setClientSearch] = useState('');
+    const [comisTab, setComisTab] = useState<'lancamentos' | 'clientes'>('lancamentos');
     const [isEntryModalOpen, setIsEntryModalOpen] = useState(false);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [isClosingModalOpen, setIsClosingModalOpen] = useState(false);
@@ -2698,6 +3603,73 @@ const ImportedRevenuesView: FC<{
         });
         return deduplicateById(filtered);
     }, [importedRevenues, selectedYear, selectedMonth, selectedAdvisorId, clientSearch, advisors]);
+
+    const clientRevenuesSummary = useMemo(() => {
+        const clientGroups: Record<string, {
+            cliente: string;
+            advisorName: string;
+            revenueBruta: number;
+            impostos: number;
+            revenueLiquida: number;
+            comissaoAssessor: number;
+            resultadoEscritorio: number;
+        }> = {};
+
+        filteredRevenues.forEach(r => {
+            const clientName = r.cliente || 'Sem Cliente';
+            const key = clientName.trim().toLowerCase();
+
+            if (!clientGroups[key]) {
+                clientGroups[key] = {
+                    cliente: clientName,
+                    advisorName: r.advisorName || 'Não Atribuído',
+                    revenueBruta: 0,
+                    impostos: 0,
+                    revenueLiquida: 0,
+                    comissaoAssessor: 0,
+                    resultadoEscritorio: 0,
+                };
+            }
+
+            const bruta = r.revenueAmount || 0;
+            const net = r.estimatedNetRevenue || (bruta * (1 - (r.taxRate || 0) / 100));
+            const cTax = round(bruta * ((r.taxRate || 0) / 100));
+            const comm = r.advisorShare || round(net * 0.70);
+            const officeResult = r.officeShare || round(net * 0.30);
+
+            clientGroups[key].revenueBruta += bruta;
+            clientGroups[key].impostos += cTax;
+            clientGroups[key].revenueLiquida += net;
+            clientGroups[key].comissaoAssessor += comm;
+            clientGroups[key].resultadoEscritorio += officeResult;
+        });
+
+        const list = Object.values(clientGroups).map(c => ({
+            ...c,
+            revenueBruta: round(c.revenueBruta),
+            impostos: round(c.impostos),
+            revenueLiquida: round(c.revenueLiquida),
+            comissaoAssessor: round(c.comissaoAssessor),
+            resultadoEscritorio: round(c.resultadoEscritorio)
+        }));
+
+        const totalBruta = list.reduce((sum, item) => sum + item.revenueBruta, 0);
+        const totalImpostos = list.reduce((sum, item) => sum + item.impostos, 0);
+        const totalLiquida = list.reduce((sum, item) => sum + item.revenueLiquida, 0);
+        const totalComissao = list.reduce((sum, item) => sum + item.comissaoAssessor, 0);
+        const totalEscritorio = list.reduce((sum, item) => sum + item.resultadoEscritorio, 0);
+
+        return {
+            list,
+            totals: {
+                totalBruta: round(totalBruta),
+                totalImpostos: round(totalImpostos),
+                totalLiquida: round(totalLiquida),
+                totalComissao: round(totalComissao),
+                totalEscritorio: round(totalEscritorio)
+            }
+        };
+    }, [filteredRevenues]);
 
     // Limpar seleção ao mudar filtros
     useEffect(() => {
@@ -3310,7 +4282,7 @@ const ImportedRevenuesView: FC<{
          <div className="space-y-6 animate-fade-in">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                    <h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Comissões</h2>
+                    <h2 className="text-2xl font-bold bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent uppercase tracking-tight">Comissões</h2>
                     <p className="text-text-secondary">Controle de comissões e divisão de receitas.</p>
                 </div>
                 <div className="no-print flex flex-wrap gap-2">
@@ -3389,6 +4361,30 @@ const ImportedRevenuesView: FC<{
                     </div>
                 </div>
             </Card>
+
+            {/* Sub-abas de Comissionamento */}
+            <div className="no-print flex border-b border-border-color/30 gap-6 my-2">
+                <button
+                    onClick={() => setComisTab('lancamentos')}
+                    className={`pb-3 text-xs sm:text-sm font-bold transition-all border-b-2 uppercase tracking-wide flex items-center gap-2 ${
+                        comisTab === 'lancamentos' 
+                        ? 'border-primary text-text-primary' 
+                        : 'border-transparent text-text-secondary hover:text-text-primary'
+                    }`}
+                >
+                    <span>📑</span> Lançamentos e Fechamento
+                </button>
+                <button
+                    onClick={() => setComisTab('clientes')}
+                    className={`pb-3 text-xs sm:text-sm font-bold transition-all border-b-2 uppercase tracking-wide flex items-center gap-2 ${
+                        comisTab === 'clientes' 
+                        ? 'border-primary text-text-primary' 
+                        : 'border-transparent text-text-secondary hover:text-text-primary'
+                    }`}
+                >
+                    <span>👥</span> Receita por Cliente (Analítico)
+                </button>
+            </div>
             
             <div style={{ background: 'transparent', padding: '0', borderRadius: '16px' }}>
                 <div style={{ fontSize: '10px', fontWeight: 500, color: 'rgba(255,255,255,0.50)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '10px' }} className="!text-[rgba(255,255,255,0.50)]">
@@ -3659,22 +4655,16 @@ const ImportedRevenuesView: FC<{
                         <div>
                             <h3 className="text-sm font-bold text-primary uppercase tracking-tight">Resumo: {advisorSummary.name}</h3>
                             <p className="text-xs text-text-secondary">Consolidado do período selecionado</p>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-6 w-full md:w-auto">
-                            <div>
-                                <label className="block text-[10px] text-text-secondary uppercase">Receita Gerada</label>
-                                <p className="text-sm font-bold">{formatCurrency(advisorSummary.generatedRevenue)}</p>
-                            </div>
-                            <div>
-                                <label className="block text-[10px] text-text-secondary uppercase">Comissão Total</label>
+                             <div>
+                                <label className="block text-[10px] text-text-secondary uppercase font-medium">Comissão Total</label>
                                 <p className="text-sm font-bold text-primary">{formatCurrency(advisorSummary.totalCommission)}</p>
                             </div>
                             <div>
-                                <label className="block text-[10px] text-text-secondary uppercase">Indicações Recebidas</label>
+                                <label className="block text-[10px] text-text-secondary uppercase font-medium">Indicações Recebidas</label>
                                 <p className="text-sm font-bold text-green-400">{formatCurrency(advisorSummary.referralsPaid)}</p>
                             </div>
                             <div>
-                                <label className="block text-[10px] text-text-secondary uppercase">Resultado do Escritório na Produção</label>
+                                <label className="block text-[10px] text-text-secondary uppercase font-medium">Resultado do Escritório na Produção</label>
                                 <p className={`text-sm font-bold ${advisorSummary.operationalResult < 0 ? 'text-danger' : 'text-green-400'}`}>
                                     {formatCurrency(advisorSummary.operationalResult)}
                                 </p>
@@ -3684,134 +4674,211 @@ const ImportedRevenuesView: FC<{
                 </Card>
             )}
 
-            <Card className="overflow-hidden p-0">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left whitespace-nowrap text-[10px] sm:text-xs">
-                        <thead className="bg-background/50 uppercase text-text-secondary">
-                            <tr>
-                                <th className="no-print p-4 w-10">
-                                    <input 
-                                        type="checkbox" 
-                                        className="rounded border-border-color bg-background text-primary focus:ring-primary"
-                                        checked={selectedRevenueIds.size > 0 && selectedRevenueIds.size === filteredRevenues.filter(r => r.status !== CommissionStatus.COMPLETED && !r.lancamentosRealizados).length}
-                                        onChange={toggleSelectAll}
-                                    />
-                                </th>
-                                <th className="p-4">Data</th>
-                                <th className="p-4">Referência / Cliente</th>
-                                <th className="p-4">Assessor Resp.</th>
-                                <th className="p-4">Receita Gerada</th>
-                                <th className="print-only-cell p-4">Imposto (%)</th>
-                                <th className="print-only-cell p-4">Partilha Assessor</th>
-                                <th className="print-only-cell p-4">Partilha Escritório</th>
-                                <th className="print-only-cell p-4">Imposto Assessor</th>
-                                <th className="print-only-cell p-4">Imposto Escritório</th>
-                                <th className="print-only-cell p-4">Provisão Total Imposto</th>
-                                <th className="print-only-cell p-4">Receita Líq. Escritório</th>
-                                <th className="p-4">Indicação</th>
-                                <th className="p-4">Comissão Líquida</th>
-                                <th className="print-only-cell p-4">Custo CRM</th>
-                                <th className="print-only-cell p-4">Resultado Produção</th>
-                                <th className="p-4">Resultado do Escritório na Produção</th>
-                                <th className="print-only-cell p-4">Resultado Caixa</th>
-                                <th className="print-only-cell p-4">Entrada Caixa</th>
-                                <th className="print-only-cell p-4">Observação</th>
-                                <th className="p-4 text-center">Status Financeiro</th>
-                                <th className="no-print p-4 text-right">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border-color/30">
-                            {filteredRevenues.map(r => (
-                                <tr key={r.id} className={`hover:bg-background/50 ${selectedRevenueIds.has(r.id) ? 'bg-primary/5' : ''}`}>
-                                    <td className="no-print p-4">
+            {comisTab === 'lancamentos' ? (
+                <Card className="overflow-hidden p-0">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left whitespace-nowrap text-[10px] sm:text-xs">
+                            <thead className="bg-background/50 uppercase text-text-secondary">
+                                <tr>
+                                    <th className="no-print p-4 w-10">
                                         <input 
                                             type="checkbox" 
                                             className="rounded border-border-color bg-background text-primary focus:ring-primary"
-                                            checked={selectedRevenueIds.has(r.id)}
-                                            onChange={() => toggleSelect(r.id)}
-                                            disabled={r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados}
+                                            checked={selectedRevenueIds.size > 0 && selectedRevenueIds.size === filteredRevenues.filter(r => r.status !== CommissionStatus.COMPLETED && !r.lancamentosRealizados).length}
+                                            onChange={toggleSelectAll}
                                         />
-                                    </td>
-                                    <td className="p-4">{formatDate(r.date)}</td>
-                                    <td className="p-4 font-medium max-w-[150px] truncate" title={`${r.conta ? '[' + r.conta + '] ' : ''}${r.cliente}`}>
-                                        {r.conta && <span className="text-text-secondary mr-1">[{r.conta}]</span>}
-                                        {r.cliente}
-                                    </td>
-                                    <td className="p-4">{r.advisorName}</td>
-                                    <td className="p-4 font-bold">{formatCurrency(r.revenueAmount || 0)}</td>
-                                    <td className="print-only-cell p-4">{r.taxRate}%</td>
-                                    <td className="print-only-cell p-4">{formatCurrency(r.advisorShare || 0)}</td>
-                                    <td className="print-only-cell p-4">{formatCurrency(r.officeShare || 0)}</td>
-                                    <td className="print-only-cell p-4">{formatCurrency(r.advisorTax || 0)}</td>
-                                    <td className="print-only-cell p-4">{formatCurrency(r.officeTax || 0)}</td>
-                                    <td className="print-only-cell p-4">{formatCurrency(r.totalTaxProvision || 0)}</td>
-                                    <td className="print-only-cell p-4">{formatCurrency(r.officeNetRevenue || 0)}</td>
-                                    <td className="p-4">
-                                        {r.referralAdvisorId ? (
-                                            <div className="flex flex-col">
-                                                <span className="font-medium">{r.referralAdvisorName}</span>
-                                                <span className="text-[9px] text-text-secondary">{r.referralPercentage}% ({formatCurrency(r.referralAmount)})</span>
-                                            </div>
-                                        ) : (
-                                            <div className="flex justify-center opacity-20">
-                                                <InfoIcon className="w-3 h-3" />
-                                            </div>
-                                        )}
-                                    </td>
-                                    <td className="p-4 text-primary font-bold">
-                                        <div className="flex flex-col">
-                                            <span>{formatCurrency(r.advisorNetTotal || 0)}</span>
-                                            {r.referralAdvisorId && (
-                                                <span className="text-[9px] text-text-secondary font-normal">Resp: {formatCurrency(r.responsibleAdvisorNet)}</span>
+                                    </th>
+                                    <th className="p-4">Data</th>
+                                    <th className="p-4">Referência / Cliente</th>
+                                    <th className="p-4">Assessor Resp.</th>
+                                    <th className="p-4">Receita Gerada</th>
+                                    <th className="print-only-cell p-4">Imposto (%)</th>
+                                    <th className="print-only-cell p-4">Partilha Assessor</th>
+                                    <th className="print-only-cell p-4">Partilha Escritório</th>
+                                    <th className="print-only-cell p-4">Imposto Assessor</th>
+                                    <th className="print-only-cell p-4">Imposto Escritório</th>
+                                    <th className="print-only-cell p-4">Provisão Total Imposto</th>
+                                    <th className="print-only-cell p-4">Receita Líq. Escritório</th>
+                                    <th className="p-4">Indicação</th>
+                                    <th className="p-4">Comissão Líquida</th>
+                                    <th className="print-only-cell p-4">Custo CRM</th>
+                                    <th className="print-only-cell p-4">Resultado Produção</th>
+                                    <th className="p-4">Resultado do Escritório na Produção</th>
+                                    <th className="print-only-cell p-4">Resultado Caixa</th>
+                                    <th className="print-only-cell p-4">Entrada Caixa</th>
+                                    <th className="print-only-cell p-4">Observação</th>
+                                    <th className="p-4 text-center">Status Financeiro</th>
+                                    <th className="no-print p-4 text-right">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border-color/30">
+                                {filteredRevenues.map(r => (
+                                    <tr key={r.id} className={`hover:bg-background/50 ${selectedRevenueIds.has(r.id) ? 'bg-primary/5' : ''}`}>
+                                        <td className="no-print p-4">
+                                            <input 
+                                                type="checkbox" 
+                                                className="rounded border-border-color bg-background text-primary focus:ring-primary"
+                                                checked={selectedRevenueIds.has(r.id)}
+                                                onChange={() => toggleSelect(r.id)}
+                                                disabled={r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados}
+                                            />
+                                        </td>
+                                        <td className="p-4">{formatDate(r.date)}</td>
+                                        <td className="p-4 font-medium max-w-[150px] truncate" title={`${r.conta ? '[' + r.conta + '] ' : ''}${r.cliente}`}>
+                                            {r.conta && <span className="text-text-secondary mr-1">[{r.conta}]</span>}
+                                            {r.cliente}
+                                        </td>
+                                        <td className="p-4">{r.advisorName}</td>
+                                        <td className="p-4 font-bold">{formatCurrency(r.revenueAmount || 0)}</td>
+                                        <td className="print-only-cell p-4">{r.taxRate}%</td>
+                                        <td className="print-only-cell p-4">{formatCurrency(r.advisorShare || 0)}</td>
+                                        <td className="print-only-cell p-4">{formatCurrency(r.officeShare || 0)}</td>
+                                        <td className="print-only-cell p-4">{formatCurrency(r.advisorTax || 0)}</td>
+                                        <td className="print-only-cell p-4">{formatCurrency(r.officeTax || 0)}</td>
+                                        <td className="print-only-cell p-4">{formatCurrency(r.totalTaxProvision || 0)}</td>
+                                        <td className="print-only-cell p-4">{formatCurrency(r.officeNetRevenue || 0)}</td>
+                                        <td className="p-4">
+                                            {r.referralAdvisorId ? (
+                                                <div className="flex flex-col">
+                                                    <span className="font-medium">{r.referralAdvisorName}</span>
+                                                    <span className="text-[9px] text-text-secondary">{r.referralPercentage}% ({formatCurrency(r.referralAmount)})</span>
+                                                </div>
+                                            ) : (
+                                                <div className="flex justify-center opacity-20">
+                                                    <InfoIcon className="w-3 h-3" />
+                                                </div>
                                             )}
-                                        </div>
-                                    </td>
-                                    <td className="print-only-cell p-4">{formatCurrency(r.crmCost || 0)}</td>
-                                    <td className="print-only-cell p-4">{formatCurrency(r.productionResult || 0)}</td>
-                                    <td className={`p-4 font-bold ${r.advisorOperationalResult !== undefined && r.advisorOperationalResult < 0 ? 'text-danger' : 'text-green-400'}`}>
-                                        {r.advisorOperationalResult !== undefined ? formatCurrency(r.advisorOperationalResult) : '-'}
-                                    </td>
-                                    <td className="print-only-cell p-4">{formatCurrency(r.cashResult || 0)}</td>
-                                    <td className="print-only-cell p-4">{formatCurrency(r.cashEntryAmount || 0)}</td>
-                                    <td className="print-only-cell p-4">{r.observacao || '-'}</td>
-                                    <td className="p-4 text-center">
-                                        <div className="flex flex-col items-center gap-1">
-                                            <select 
-                                                className={`px-2 py-1 rounded text-[9px] font-bold uppercase cursor-pointer text-center select-none border border-white/5 focus:outline-none focus:ring-1 focus:ring-primary/40 ${getStatusLabel(r.status, r.lancamentosRealizados).bg || 'bg-background'} ${getStatusLabel(r.status, r.lancamentosRealizados).color || 'text-text-secondary'}`}
-                                                style={{...getStatusLabel(r.status, r.lancamentosRealizados).style, WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none', textAlignLast: 'center'}}
-                                                value={getEffectiveStatus(r.status, r.lancamentosRealizados)}
-                                                onChange={async (e) => {
-                                                    const val = e.target.value as CommissionStatus;
-                                                    const lancamentosRealizados = val === CommissionStatus.COMPLETED;
-                                                    await onUpdate(r.id, { status: val, lancamentosRealizados });
-                                                }}
-                                            >
-                                                <option className="bg-[#1e293b] text-text-secondary" value={CommissionStatus.PENDING}>Pendente de Lançamento</option>
-                                                <option className="bg-[#1e293b] text-blue-400" value={CommissionStatus.COMMISSION_LAUNCHED}>Comissão Lançada</option>
-                                                <option className="bg-[#1e293b] text-indigo-400" value={CommissionStatus.REVENUE_LAUNCHED}>Receita Lançada</option>
-                                                <option className="bg-[#1e293b] text-orange-400" value={CommissionStatus.TAX_PROVISIONED}>Impostos Provisionados</option>
-                                                <option className="bg-[#1e293b] text-teal-400" value={CommissionStatus.REFERRAL_SETTLED}>Indicação Quitada (Parcial)</option>
-                                                 <option className="bg-[#1e293b] text-green-400" value={CommissionStatus.COMPLETED}>Lançamento Completo</option>
-                                            </select>
-                                        </div>
-                                    </td>
-                                    <td className="no-print p-4 text-right">
-                                        <div className="flex justify-end gap-1">
-                                            <Button variant="ghost" className="p-1" onClick={() => handleEdit(r)} disabled={r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados}><EditIcon className="w-3 h-3"/></Button>
-                                            <Button variant="ghostDanger" className="p-1" onClick={() => onDelete(r.id)}><TrashIcon className="w-3 h-3"/></Button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                            {filteredRevenues.length === 0 && (
-                                <tr>
-                                    <td colSpan={10} className="p-8 text-center text-text-secondary italic">Nenhum registro encontrado.</td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
+                                        </td>
+                                        <td className="p-4 text-primary font-bold">
+                                            <div className="flex flex-col">
+                                                <span>{formatCurrency(r.advisorNetTotal || 0)}</span>
+                                                {r.referralAdvisorId && (
+                                                    <span className="text-[9px] text-text-secondary font-normal">Resp: {formatCurrency(r.responsibleAdvisorNet)}</span>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="print-only-cell p-4">{formatCurrency(r.crmCost || 0)}</td>
+                                        <td className="print-only-cell p-4">{formatCurrency(r.productionResult || 0)}</td>
+                                        <td className={`p-4 font-bold ${r.advisorOperationalResult !== undefined && r.advisorOperationalResult < 0 ? 'text-danger' : 'text-green-400'}`}>
+                                            {r.advisorOperationalResult !== undefined ? formatCurrency(r.advisorOperationalResult) : '-'}
+                                        </td>
+                                        <td className="print-only-cell p-4">{formatCurrency(r.cashResult || 0)}</td>
+                                        <td className="print-only-cell p-4">{formatCurrency(r.cashEntryAmount || 0)}</td>
+                                        <td className="print-only-cell p-4">{r.observacao || '-'}</td>
+                                        <td className="p-4 text-center">
+                                            <div className="flex flex-col items-center gap-1">
+                                                <select 
+                                                    className={`px-2 py-1 rounded text-[9px] font-bold uppercase cursor-pointer text-center select-none border border-white/5 focus:outline-none focus:ring-1 focus:ring-primary/40 ${getStatusLabel(r.status, r.lancamentosRealizados).bg || 'bg-background'} ${getStatusLabel(r.status, r.lancamentosRealizados).color || 'text-text-secondary'}`}
+                                                    style={{...getStatusLabel(r.status, r.lancamentosRealizados).style, WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none', textAlignLast: 'center'}}
+                                                    value={getEffectiveStatus(r.status, r.lancamentosRealizados)}
+                                                    onChange={async (e) => {
+                                                        const val = e.target.value as CommissionStatus;
+                                                        const lancamentosRealizados = val === CommissionStatus.COMPLETED;
+                                                        await onUpdate(r.id, { status: val, lancamentosRealizados });
+                                                    }}
+                                                >
+                                                    <option className="bg-[#1e293b] text-text-secondary" value={CommissionStatus.PENDING}>Pendente de Lançamento</option>
+                                                    <option className="bg-[#1e293b] text-blue-400" value={CommissionStatus.COMMISSION_LAUNCHED}>Comissão Lançada</option>
+                                                    <option className="bg-[#1e293b] text-indigo-400" value={CommissionStatus.REVENUE_LAUNCHED}>Receita Lançada</option>
+                                                    <option className="bg-[#1e293b] text-orange-400" value={CommissionStatus.TAX_PROVISIONED}>Impostos Provisionados</option>
+                                                    <option className="bg-[#1e293b] text-teal-400" value={CommissionStatus.REFERRAL_SETTLED}>Indicação Quitada (Parcial)</option>
+                                                    <option className="bg-[#1e293b] text-green-400" value={CommissionStatus.COMPLETED}>Lançamento Completo</option>
+                                                </select>
+                                            </div>
+                                        </td>
+                                        <td className="no-print p-4 text-right">
+                                            <div className="flex justify-end gap-1">
+                                                <Button variant="ghost" className="p-1" onClick={() => handleEdit(r)} disabled={r.status === CommissionStatus.COMPLETED || r.lancamentosRealizados}><EditIcon className="w-3 h-3"/></Button>
+                                                <Button variant="ghostDanger" className="p-1" onClick={() => onDelete(r.id)}><TrashIcon className="w-3 h-3"/></Button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {filteredRevenues.length === 0 && (
+                                    <tr>
+                                        <td colSpan={10} className="p-8 text-center text-text-secondary italic">Nenhum registro encontrado.</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </Card>
+            ) : (
+                <div className="space-y-6">
+                    {/* Grid de Totalizadores de Clientes */}
+                    <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
+                        <div className="bg-surface border border-border-color/60 p-4 rounded-xl">
+                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider block">Receita Bruta</span>
+                            <p className="text-lg font-extrabold text-text-primary mt-1 font-mono">{formatCurrency(clientRevenuesSummary.totals.totalBruta)}</p>
+                        </div>
+                        <div className="bg-surface border border-border-color/60 p-4 rounded-xl">
+                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider block">Impostos</span>
+                            <p className="text-lg font-extrabold text-danger/90 mt-1 font-mono">-{formatCurrency(clientRevenuesSummary.totals.totalImpostos)}</p>
+                        </div>
+                        <div className="bg-surface border border-border-color/60 p-4 rounded-xl">
+                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider block">Receita Líquida</span>
+                            <p className="text-lg font-extrabold text-green-400 mt-1 font-mono">{formatCurrency(clientRevenuesSummary.totals.totalLiquida)}</p>
+                        </div>
+                        <div className="bg-surface border border-border-color/60 p-4 rounded-xl">
+                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider block">Repasse Assessores</span>
+                            <p className="text-lg font-extrabold text-primary mt-1 font-mono">{formatCurrency(clientRevenuesSummary.totals.totalComissao)}</p>
+                        </div>
+                        <div className="bg-surface border border-border-color/60 p-4 rounded-xl">
+                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider block">Resultado Escritório</span>
+                            <p className="text-lg font-extrabold text-amber-500 mt-1 font-mono">{formatCurrency(clientRevenuesSummary.totals.totalEscritorio)}</p>
+                        </div>
+                    </div>
+
+                    {/* Tabela de Clientes */}
+                    <Card className="overflow-hidden p-0">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left whitespace-nowrap text-[10px] sm:text-xs">
+                                <thead className="bg-background/50 uppercase text-text-secondary">
+                                    <tr>
+                                        <th className="p-4">Cliente</th>
+                                        <th className="p-4">Assessor Responsável</th>
+                                        <th className="p-4 text-right">Receita Bruta Gerada</th>
+                                        <th className="p-4 text-right text-danger">Impostos</th>
+                                        <th className="p-4 text-right text-green-400">Receita Líquida</th>
+                                        <th className="p-4 text-right text-primary">Comissão Assessor</th>
+                                        <th className="p-4 text-right text-amber-500">Resultado Escritório</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border-color/30">
+                                    {clientRevenuesSummary.list.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={7} className="p-8 text-center text-text-secondary italic">Nenhum cliente com lançamentos no período filtrado.</td>
+                                        </tr>
+                                    ) : (
+                                        clientRevenuesSummary.list.map((c, i) => (
+                                            <tr key={i} className="hover:bg-background/50 transition-colors">
+                                                <td className="p-4 font-bold text-text-primary">{c.cliente}</td>
+                                                <td className="p-4 font-medium text-text-secondary">{c.advisorName}</td>
+                                                <td className="p-4 text-right font-mono font-bold">{formatCurrency(c.revenueBruta)}</td>
+                                                <td className="p-4 text-right font-mono text-danger">-{formatCurrency(c.impostos)}</td>
+                                                <td className="p-4 text-right font-mono text-green-400 font-bold">{formatCurrency(c.revenueLiquida)}</td>
+                                                <td className="p-4 text-right font-mono text-primary font-bold">{formatCurrency(c.comissaoAssessor)}</td>
+                                                <td className="p-4 text-right font-mono text-amber-500 font-bold">{formatCurrency(c.resultadoEscritorio)}</td>
+                                            </tr>
+                                        ))
+                                    )}
+                                    {/* Linha Totalizadora final */}
+                                    {clientRevenuesSummary.list.length > 0 && (
+                                        <tr className="bg-background/60 font-bold border-t-2 border-border-color">
+                                            <td className="p-4 text-text-primary" colSpan={2}>SUBTOTAL CONSOLIDADO ({clientRevenuesSummary.list.length} clientes)</td>
+                                            <td className="p-4 text-right font-mono text-text-primary">{formatCurrency(clientRevenuesSummary.totals.totalBruta)}</td>
+                                            <td className="p-4 text-right font-mono text-danger">-{formatCurrency(clientRevenuesSummary.totals.totalImpostos)}</td>
+                                            <td className="p-4 text-right font-mono text-green-400">{formatCurrency(clientRevenuesSummary.totals.totalLiquida)}</td>
+                                            <td className="p-4 text-right font-mono text-primary">{formatCurrency(clientRevenuesSummary.totals.totalComissao)}</td>
+                                            <td className="p-4 text-right font-mono text-amber-500">{formatCurrency(clientRevenuesSummary.totals.totalEscritorio)}</td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </Card>
                 </div>
-            </Card>
+            )}
 
             <Modal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} title="Confirmar Importação">
                 <div className="space-y-4">
@@ -4642,6 +5709,86 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         return { totalIncome: income, totalExpense: expense, resultadoPeriodo: round(Number(income) - Number(expense)) };
     }, [filteredTransactions, importedRevenues, incomeCategories, expenseCategories, selectedYear, selectedMonth, dashboardDreRegime]);
 
+    const { previousPeriodIncome, previousPeriodExpense, previousResultadoPeriodo, previousAchievedGoals } = useMemo(() => {
+        let prevYear: number | 'all' = selectedYear;
+        let prevMonth: number | 'all' = selectedMonth;
+
+        if (selectedMonth !== 'all') {
+            if (selectedMonth === 0) {
+                prevMonth = 11;
+                if (selectedYear !== 'all') {
+                    prevYear = selectedYear - 1;
+                }
+            } else {
+                prevMonth = selectedMonth - 1;
+            }
+        } else if (selectedYear !== 'all') {
+            prevYear = selectedYear - 1;
+        }
+
+        const prevFilteredTransactions = transactions.filter(t => {
+            const date = new Date(t.date);
+            const year = date.getUTCFullYear();
+            const month = date.getUTCMonth();
+            return (prevYear === 'all' || year === prevYear) && (prevMonth === 'all' || month === prevMonth);
+        });
+
+        const getStructuralInfo = (t: Transaction) => {
+            if (t.type === TransactionType.INCOME) {
+                const cat = incomeCategories.find(c => c.name === t.category);
+                return {
+                    tipoEstrutural: cat?.tipoEstrutural || CategoryStructuralType.RECEITA_OPERACIONAL,
+                    impactaDRE: cat?.impactaDRE ?? true
+                };
+            } else {
+                const cat = expenseCategories.find(c => c.name === t.category);
+                return {
+                    tipoEstrutural: cat?.tipoEstrutural || CategoryStructuralType.DESPESA_OPERACIONAL,
+                    impactaDRE: cat?.impactaDRE ?? true
+                };
+            }
+        };
+
+        const drePrevTransactions = prevFilteredTransactions.filter(t => {
+            const info = getStructuralInfo(t);
+            if (!info.impactaDRE) return false;
+            if (t.type === TransactionType.EXPENSE) {
+                if (dashboardDreRegime === 'caixa') {
+                    return t.status === ExpenseStatus.PAID || t.status === ExpenseStatus.CLEARED;
+                } else {
+                    return true;
+                }
+            }
+            return true;
+        });
+
+        const manualIncome = drePrevTransactions
+            .filter(t => t.type === TransactionType.INCOME && t.origin !== 'comissoes')
+            .reduce<number>((acc, t) => acc + t.amount, 0);
+        
+        const importedIncome = importedRevenues
+            .filter(r => {
+                const date = new Date(r.date);
+                const year = date.getUTCFullYear();
+                const month = date.getUTCMonth();
+                const periodMatch = (prevYear === 'all' || year === prevYear) && (prevMonth === 'all' || month === prevMonth);
+                return periodMatch && !r.lancamentosRealizados;
+            })
+            .reduce((sum, r) => sum + (r.officeNetRevenue || 0), 0);
+
+        const income = round(manualIncome + importedIncome);
+        const expense = round(drePrevTransactions.filter(t => t.type === TransactionType.EXPENSE).reduce<number>((acc, t) => acc + t.amount, 0));
+        
+        const prevAchieved = goals.filter(g => (Number(g.currentAmount) || 0) >= g.targetAmount).length;
+
+        return {
+            previousPeriodIncome: income,
+            previousPeriodExpense: expense,
+            previousResultadoPeriodo: round(income - expense),
+            previousAchievedGoals: prevAchieved
+        };
+    }, [transactions, importedRevenues, incomeCategories, expenseCategories, selectedYear, selectedMonth, dashboardDreRegime, goals]);
+
     const saldoHoje = useMemo(() => round(transactions.reduce((acc: number, t: Transaction) => {
         const txDate = new Date(t.date).getTime();
         const now = new Date().getTime();
@@ -4690,6 +5837,40 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         return transactions
             .filter(t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PENDING && new Date(t.date).getTime() <= threshold)
             .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    }, [transactions]);
+
+    const overdueCount = useMemo(() => {
+        const now = new Date();
+        return upcomingBills.filter(b => new Date(b.date) < now).length;
+    }, [upcomingBills]);
+
+    const contasAPagarStats = useMemo(() => {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+
+        const pendingExpenses = transactions.filter(
+            t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PENDING
+        );
+
+        const vencidas = pendingExpenses.filter(t => new Date(t.date) < todayStart);
+        const vencidasCount = vencidas.length;
+        const vencidasTotal = round(vencidas.reduce((sum, t) => sum + t.amount, 0));
+
+        const pendentes = pendingExpenses.filter(t => new Date(t.date) >= todayStart);
+        const pendentesCount = pendentes.length;
+        const pendentesTotal = round(pendentes.reduce((sum, t) => sum + t.amount, 0));
+
+        const totalCount = pendingExpenses.length;
+        const totalAmount = round(pendingExpenses.reduce((sum, t) => sum + t.amount, 0));
+
+        return {
+            vencidasCount,
+            vencidasTotal,
+            pendentesCount,
+            pendentesTotal,
+            totalCount,
+            totalAmount
+        };
     }, [transactions]);
 
     const expenseSubcategoryData = useMemo(() => {
@@ -4834,7 +6015,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
             {/* Cabeçalho da página */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2">
                 <div>
-                    <h2 className="text-2xl font-bold text-text-primary tracking-tight">Painel de Controle</h2>
+                    <h2 className="text-2xl font-bold bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent uppercase tracking-tight">Painel de Controle</h2>
                     <p className="text-text-secondary text-xs sm:text-sm">Visão instantânea do fluxo de caixa e progresso de metas.</p>
                 </div>
             </div>
@@ -4936,6 +6117,15 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                         <div className="mt-4">
                             <p className="text-2xl font-bold text-success tracking-tight">{formatCurrency(totalIncome)}</p>
                             <span className="text-[10px] text-text-secondary mt-1 block">Receitas manuais + comissões abertas</span>
+                            {(() => {
+                                const delta = ((totalIncome - previousPeriodIncome) / Math.abs(previousPeriodIncome || 1)) * 100;
+                                return (
+                                    <div className={`flex items-center gap-1 text-[10px] mt-1.5 ${delta >= 0 ? 'text-green-400' : 'text-danger'}`}>
+                                        {delta >= 0 ? <ArrowUpIcon className="w-3 h-3"/> : <ArrowDownIcon className="w-3 h-3"/>}
+                                        <span>{Math.abs(delta).toFixed(1)}% vs período anterior</span>
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </div>
 
@@ -4952,6 +6142,15 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                             <span className="text-[10px] text-text-secondary mt-1 block">
                                 {dashboardDreRegime === 'competencia' ? 'Contas pagas + pendentes' : 'Apenas contas pagas'}
                             </span>
+                            {(() => {
+                                const delta = ((totalExpense - previousPeriodExpense) / Math.abs(previousPeriodExpense || 1)) * 100;
+                                return (
+                                    <div className={`flex items-center gap-1 text-[10px] mt-1.5 ${delta >= 0 ? 'text-green-400' : 'text-danger'}`}>
+                                        {delta >= 0 ? <ArrowUpIcon className="w-3 h-3"/> : <ArrowDownIcon className="w-3 h-3"/>}
+                                        <span>{Math.abs(delta).toFixed(1)}% vs período anterior</span>
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </div>
 
@@ -4968,6 +6167,15 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                             <span className="text-[10px] text-text-secondary mt-1 block">
                                 Demonstrativo por {dashboardDreRegime === 'competencia' ? 'competência' : 'caixa'}
                             </span>
+                            {(() => {
+                                const delta = ((resultadoPeriodo - previousResultadoPeriodo) / Math.abs(previousResultadoPeriodo || 1)) * 100;
+                                return (
+                                    <div className={`flex items-center gap-1 text-[10px] mt-1.5 ${delta >= 0 ? 'text-green-400' : 'text-danger'}`}>
+                                        {delta >= 0 ? <ArrowUpIcon className="w-3 h-3"/> : <ArrowDownIcon className="w-3 h-3"/>}
+                                        <span>{Math.abs(delta).toFixed(1)}% vs período anterior</span>
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </div>
 
@@ -4984,59 +6192,146 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                                 {achievedGoals} <span className="text-sm font-normal text-text-secondary">/ {goals.length}</span>
                             </p>
                             <span className="text-[10px] text-text-secondary mt-1 block">Metas com progresso concluído</span>
+                            {(() => {
+                                const delta = ((achievedGoals - previousAchievedGoals) / Math.abs(previousAchievedGoals || 1)) * 100;
+                                return (
+                                    <div className={`flex items-center gap-1 text-[10px] mt-1.5 ${delta >= 0 ? 'text-green-400' : 'text-danger'}`}>
+                                        {delta >= 0 ? <ArrowUpIcon className="w-3 h-3"/> : <ArrowDownIcon className="w-3 h-3"/>}
+                                        <span>{Math.abs(delta).toFixed(1)}% vs período anterior</span>
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </div>
                 </div>
             </div>
 
-            {upcomingBills.length > 0 && (
-                <div className="bg-surface border border-border-color rounded-xl p-3 sm:p-6">
-                    <div className="flex items-center gap-3 mb-3">
+            <div className="bg-surface border border-border-color rounded-xl p-4 sm:p-6 shadow-sm space-y-4">
+                <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-3">
                         <div className="bg-danger/10 p-2 rounded-full"><AlertCircleIcon className="w-5 h-5 text-danger" /></div>
-                        <div><h3 className="text-base font-bold uppercase tracking-tight">Contas a Pagar</h3></div>
+                        <div>
+                            <h3 className="text-lg font-bold uppercase tracking-tight text-text-primary flex items-center gap-2">
+                                <span>Contas a Pagar</span>
+                            </h3>
+                            <p className="text-text-secondary text-xs">Despesas pendentes nos próximos 10 dias.</p>
+                        </div>
                     </div>
-                    <table className="w-full border-collapse text-xs">
+                </div>
+
+                {/* Cards Resumo Contas a Pagar */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    {/* Contas Vencidas */}
+                    <div className="bg-background/20 border border-border-color/40 rounded-xl p-3.5 flex flex-col justify-between hover:border-danger/30 transition-colors">
+                        <div className="flex justify-between items-start">
+                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Contas Vencidas</span>
+                            <div className="bg-danger/10 p-1 rounded text-danger">
+                                <AlertCircleIcon className="w-3.5 h-3.5" />
+                            </div>
+                        </div>
+                        <div className="mt-2 text-left">
+                            <p className="text-lg font-bold text-danger/90 tracking-tight">{formatCurrency(contasAPagarStats.vencidasTotal)}</p>
+                            <span className="text-[10px] text-text-secondary mt-0.5 block font-medium">
+                                {contasAPagarStats.vencidasCount} {contasAPagarStats.vencidasCount === 1 ? 'conta vencida' : 'contas vencidas'}
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Contas Pendentes */}
+                    <div className="bg-background/20 border border-border-color/40 rounded-xl p-3.5 flex flex-col justify-between hover:border-yellow-500/30 transition-colors">
+                        <div className="flex justify-between items-start">
+                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Contas Pendentes</span>
+                            <div className="bg-yellow-500/10 p-1 rounded text-yellow-500">
+                                <RefreshCwIcon className="w-3.5 h-3.5" />
+                            </div>
+                        </div>
+                        <div className="mt-2 text-left">
+                            <p className="text-lg font-bold text-yellow-500 tracking-tight">{formatCurrency(contasAPagarStats.pendentesTotal)}</p>
+                            <span className="text-[10px] text-text-secondary mt-0.5 block font-medium">
+                                {contasAPagarStats.pendentesCount} {contasAPagarStats.pendentesCount === 1 ? 'conta a vencer' : 'contas a vencer'}
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Valor Total a Pagar */}
+                    <div className="relative overflow-hidden bg-gradient-to-br from-primary/15 via-background/20 to-background/30 border border-primary/25 rounded-xl p-3.5 flex flex-col justify-between hover:border-primary/45 hover:shadow-md hover:shadow-primary/5 transition-all duration-300 group">
+                        <div className="absolute top-0 right-0 w-16 h-16 bg-primary/10 rounded-full blur-xl -mr-4 -mt-4 group-hover:bg-primary/15 transition-all duration-500 pointer-events-none" />
+                        <div className="flex justify-between items-start relative z-10">
+                            <span className="text-[10px] font-bold text-primary uppercase tracking-wider">Total a Pagar</span>
+                            <div className="bg-primary/20 p-1 rounded-lg text-primary shadow-xs group-hover:scale-105 transition-transform duration-300">
+                                <WalletIcon className="w-3.5 h-3.5" />
+                            </div>
+                        </div>
+                        <div className="mt-2 text-left relative z-10">
+                            <p className="text-lg font-extrabold text-text-primary tracking-tight group-hover:text-primary transition-colors duration-300">{formatCurrency(contasAPagarStats.totalAmount)}</p>
+                            <span className="text-[10px] text-text-secondary mt-0.5 block font-medium flex items-center gap-1.5">
+                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                                <span>{contasAPagarStats.totalCount} {contasAPagarStats.totalCount === 1 ? 'conta em aberto' : 'contas em aberto'}</span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="overflow-x-auto rounded-lg border border-border-color/30">
+                    <table className="w-full text-center border-collapse text-xs">
                         <thead>
-                            <tr className="text-text-secondary border-b border-border-color/30 uppercase text-[9px] tracking-wider">
-                                <th className="py-2.5 px-3 text-left font-semibold">Vencimento</th>
-                                <th className="py-2.5 px-3 text-left font-semibold">Descrição</th>
-                                <th className="py-2.5 px-3 text-right font-semibold">Valor</th>
-                                <th className="py-2.5 px-3 text-center font-semibold">Status</th>
-                                <th className="py-2.5 px-3 text-right font-semibold">Ação</th>
+                            <tr className="text-text-secondary bg-surface/50 border-b border-border-color/30 uppercase text-[9px] tracking-wider">
+                                <th className="py-3 px-4 text-center font-semibold whitespace-nowrap">Vencimento</th>
+                                <th className="py-3 px-4 text-center font-semibold">Descrição</th>
+                                <th className="py-3 px-4 text-center font-semibold whitespace-nowrap">Categoria</th>
+                                <th className="py-3 px-4 text-center font-semibold whitespace-nowrap">Valor</th>
+                                <th className="py-3 px-4 text-center font-semibold whitespace-nowrap">Status</th>
+                                <th className="py-3 px-4 text-center font-semibold whitespace-nowrap">Ação</th>
                             </tr>
                         </thead>
-                        <tbody>{upcomingBills.map(bill => {
-                            const todayStart = new Date();
-                            todayStart.setHours(0,0,0,0);
-                            const isOverdue = new Date(bill.date) < todayStart;
-                            return (
-                                <tr key={bill.id} className="border-b border-border-color/10 last:border-0 hover:bg-background/40 transition-colors h-10">
-                                    <td className="py-2 px-3 text-left text-text-secondary font-mono">{formatDate(bill.date)}</td>
-                                    <td className="py-2 px-3 text-left font-medium max-w-xs truncate" title={bill.description}>{bill.description}</td>
-                                    <td className="py-2 px-3 text-right font-mono font-bold text-danger">{formatCurrency(bill.amount)}</td>
-                                    <td className="py-2 px-3 text-center">
-                                        <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-bold ${isOverdue ? 'bg-danger/15 text-danger border border-danger/25' : 'bg-yellow-500/15 text-yellow-500 border border-yellow-500/25'}`}>
-                                            {isOverdue ? 'VENCIDA' : 'PENDENTE'}
-                                        </span>
-                                    </td>
-                                    <td className="py-2 px-3 text-right">
-                                        <div className="flex justify-end">
-                                            <button 
-                                                onClick={() => handlePayClick(bill)} 
-                                                className="py-1 px-2.5 text-[10px] font-semibold bg-background hover:bg-success/10 border border-border-color/65 hover:border-success/30 rounded text-text-secondary hover:text-success flex items-center gap-1 transition-all"
-                                                title="Marcar como pago"
-                                            >
-                                                <CheckCircleIcon className="w-3.5 h-3.5" />
-                                                <span>Pagar</span>
-                                            </button>
-                                        </div>
+                        <tbody>
+                            {upcomingBills.length === 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="py-8 text-center text-text-secondary text-sm animate-pulse">
+                                        Nenhum vencimento para os próximos 10 dias.
                                     </td>
                                 </tr>
-                            );
-                        })}</tbody>
+                            ) : (
+                                upcomingBills.map(bill => {
+                                    const todayStart = new Date();
+                                    todayStart.setHours(0,0,0,0);
+                                    const isPaid = bill.status === ExpenseStatus.PAID || bill.status === ExpenseStatus.CLEARED;
+                                    const isOverdue = !isPaid && new Date(bill.date) < todayStart;
+                                    return (
+                                        <tr key={bill.id} className="border-b border-border-color/10 last:border-0 hover:bg-background/40 transition-colors h-11">
+                                            <td className="py-2.5 px-4 text-center text-text-secondary font-mono whitespace-nowrap">{formatDate(bill.date)}</td>
+                                            <td className="py-2.5 px-4 text-center font-medium max-w-xs truncate mx-auto" title={bill.description}>{bill.description}</td>
+                                            <td className="py-2.5 px-4 text-center whitespace-nowrap"><span className="text-text-secondary bg-background/50 px-2 py-0.5 rounded text-[10px]">{bill.category}</span></td>
+                                            <td className="py-2.5 px-4 text-center font-mono font-bold text-danger/90 whitespace-nowrap">{formatCurrency(bill.amount)}</td>
+                                            <td className="py-2.5 px-4 text-center whitespace-nowrap">
+                                                <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                                                    isOverdue 
+                                                        ? 'bg-danger/15 text-danger border border-danger/25 animate-pulse' 
+                                                        : 'bg-yellow-500/15 text-yellow-500 border border-yellow-500/25'
+                                                }`}>
+                                                    {isOverdue ? 'VENCIDA' : 'PENDENTE'}
+                                                </span>
+                                            </td>
+                                            <td className="py-2.5 px-4 text-center">
+                                                <div className="flex justify-center">
+                                                    <button 
+                                                        onClick={() => handlePayClick(bill)} 
+                                                        className="py-1 px-3 text-[10px] font-bold bg-success text-white hover:bg-success/95 rounded-lg flex items-center gap-1 transition-all shadow-xs"
+                                                        title="Marcar como pago"
+                                                    >
+                                                        <CheckCircleIcon className="w-3.5 h-3.5" />
+                                                        <span>Pagar</span>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })
+                            )}
+                        </tbody>
                     </table>
                 </div>
-            )}
+            </div>
 
              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <Card className="lg:col-span-2 h-[400px] flex flex-col">
@@ -5748,7 +7043,7 @@ const App: FC = () => {
         <div className="flex h-screen bg-background text-text-primary overflow-hidden font-sans">
              <Sidebar activeView={activeView} setActiveView={(v) => { setActiveView(v); setIsSidebarOpen(false); }} isSidebarOpen={isSidebarOpen} user={user} />
              <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
-                <Header pageTitle={activeView === 'dashboard' ? 'Dashboard' : activeView === 'transactions' ? 'Transações' : activeView === 'imported-revenues' ? 'Comissões' : activeView === 'reports' ? 'Relatórios' : activeView === 'goals' ? 'Metas' : activeView === 'partnership' ? 'Partnership ACI' : 'Configurações'} onMenuClick={() => setIsSidebarOpen(true)} />
+                <Header pageTitle={activeView === 'dashboard' ? 'Dashboard' : activeView === 'transactions' ? 'Transações' : activeView === 'imported-revenues' ? 'Comissões' : activeView === 'reports' ? 'Relatórios' : activeView === 'goals' ? 'Metas' : activeView === 'partnership' ? 'Partnership ACI' : activeView === 'prospects' ? 'Prospecção (CRM)' : 'Configurações'} onMenuClick={() => setIsSidebarOpen(true)} />
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-background p-4 md:p-6 relative">
                     {loadingData ? <div className="flex items-center justify-center h-full">Carregando dados...</div> : (
                         <>
@@ -5782,6 +7077,7 @@ const App: FC = () => {
                                 />
                             )}
                             {activeView === 'partnership' && <PartnershipView partners={partners} onSave={handleSavePartnership} />}
+                            {activeView === 'prospects' && <ProspectsView advisors={advisors} userId={user.uid} />}
                             {activeView === 'settings' && (
                                 <SettingsView 
                                     incomeCategories={incomeCategories} 

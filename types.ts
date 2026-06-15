@@ -196,6 +196,21 @@ export interface Partner {
   quotas: number;
 }
 
-export type View = 'dashboard' | 'transactions' | 'imported-revenues' | 'goals' | 'reports' | 'settings' | 'partnership';
+export type View = 'dashboard' | 'transactions' | 'imported-revenues' | 'goals' | 'reports' | 'settings' | 'partnership' | 'prospects' | 'auditoria';
+
+export interface Prospect {
+  id: string;
+  name: string;
+  company?: string;
+  role?: string;
+  email?: string;
+  phone?: string;
+  source: 'indicacao' | 'evento' | 'networking' | 'Instagram' | 'outro';
+  status: 'Novo contato' | 'Primeiro contato realizado' | 'Reunião marcada' | 'Em análise' | 'Cliente convertido' | 'Perdido';
+  firstContactDate?: string;
+  lastInteraction?: string;
+  responsible: string;
+  notes?: string;
+}
 
 export type AspectRatio = "1:1" | "3:4" | "4:3" | "9:16" | "16:9";

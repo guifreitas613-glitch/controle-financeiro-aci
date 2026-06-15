@@ -14,7 +14,7 @@ import {
   serverTimestamp,
   where
 } from "firebase/firestore";
-import { Transaction, Partner, ImportedRevenue } from './types';
+import { Transaction, Partner, ImportedRevenue, Prospect } from './types';
 
 type TransactionData = Omit<Transaction, 'id'>;
 
@@ -214,3 +214,30 @@ export async function deduplicateImportedRevenues() {
     }
     return { deletedCount, updatedCount: docs.length - deletedCount };
 }
+
+// --- Prospecção ---
+
+export function getProspects() {
+  const prospectsCol = collection(db, "prospects");
+  return getDocs(prospectsCol);
+}
+
+export function saveProspect(data: Omit<Prospect, 'id'>, userId: string) {
+  const prospectsCol = collection(db, "prospects");
+  return addDoc(prospectsCol, sanitizeFirestoreData({
+    ...data,
+    criadoPor: userId,
+    criadoEm: serverTimestamp()
+  }));
+}
+
+export function updateProspect(id: string, data: Partial<Omit<Prospect, 'id'>>) {
+  const prospectDoc = doc(db, "prospects", id);
+  return updateDoc(prospectDoc, sanitizeFirestoreData(data));
+}
+
+export function deleteProspect(id: string) {
+  const prospectDoc = doc(db, "prospects", id);
+  return deleteDoc(prospectDoc);
+}
+
