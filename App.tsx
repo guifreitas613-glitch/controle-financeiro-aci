@@ -218,7 +218,7 @@ const initialCostCenters: CostCenter[] = [
 const initialAdvisors: Advisor[] = [];
 
 // --- COMPONENTES DE UI REUTILIZÁVEIS ---
-const Card: FC<{ children: ReactNode; className?: string; title?: string }> = ({ children, className = '', title }) => (<div className={`bg-surface border border-border-color/65 rounded-xl shadow-md shadow-[#010204]/40 p-5 md:p-6 ${className}`}>{children}</div>);
+const Card: FC<{ children: ReactNode; className?: string; title?: string }> = ({ children, className = '', title }) => (<div className={`bg-surface/80 border border-border-color/40 rounded-xl shadow-[0_8px_30px_rgb(0,0,0,0.355)] p-6 md:p-7 backdrop-blur-xs transition-all duration-300 ${className}`}>{children}</div>);
 const Button: FC<{ onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void; children: ReactNode; variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'ghostDanger' | 'success'; className?: string; type?: "button" | "submit" | "reset"; disabled?: boolean; as?: 'button' | 'label'; htmlFor?: string; title?: string }> = ({ onClick, children, variant = 'primary', className = '', type = 'button', disabled = false, as = 'button', htmlFor, title }) => {
   const baseClasses = 'px-4 py-2 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transform';
   const variantClasses = {
@@ -5992,6 +5992,31 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         return [...historyCashFlow, ...projectionPoints];
     }, [historyCashFlow, showProjection, transactions, importedRevenues]);
 
+    const periodoAnalisado = useMemo(() => {
+        if (selectedYear === 'all' && selectedMonth === 'all') return 'Consolidado';
+        if (selectedMonth === 'all') return `Exercício ${selectedYear}`;
+        return `${months[selectedMonth]} / ${selectedYear}`;
+    }, [selectedYear, selectedMonth]);
+
+    const avgMonthlyExpense = useMemo(() => {
+        const paidExpenses = transactions.filter(t => t.type === TransactionType.EXPENSE && (t.status === ExpenseStatus.PAID || t.status === ExpenseStatus.CLEARED));
+        if (paidExpenses.length === 0) return 0;
+        const dates = paidExpenses.map(t => new Date(t.date).getTime());
+        const minDate = Math.min(...dates);
+        const maxDate = Math.max(...dates);
+        const monthsDiff = Math.max(1, Math.round((maxDate - minDate) / (1000 * 60 * 60 * 24 * 30.4)));
+        const totalPaid = paidExpenses.reduce((sum, e) => sum + e.amount, 0);
+        return round(totalPaid / monthsDiff);
+    }, [transactions]);
+
+    const mesesSobrevivencia = useMemo(() => {
+        const divisor = avgMonthlyExpense > 0 ? avgMonthlyExpense : (totalExpense > 0 ? totalExpense : 1000);
+        const value = saldoDisponivel / divisor;
+        if (value <= 0) return '0.0m';
+        if (value > 99) return '>99m';
+        return `${value.toFixed(1)} meses`;
+    }, [saldoDisponivel, avgMonthlyExpense, totalExpense]);
+
     const chartData = useMemo(() => {
         const data = showProjection ? cashFlowData : historyCashFlow;
         const lastRealIndex = data.map(d => d.isProjection).lastIndexOf(false);
@@ -6010,7 +6035,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
     const handlePayClick = (bill: Transaction) => { setEditingTransaction({ ...bill, status: ExpenseStatus.PAID }); setIsModalOpen(true); };
     const handleFormSubmit = (data: TransactionFormValues) => { if (editingTransaction) onEdit(editingTransaction.id, data); setIsModalOpen(false); setEditingTransaction(null); };
 
-     return (
+    return (
         <div className="space-y-6 animate-fade-in pr-1">
             {/* Cabeçalho da página */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2">
@@ -6021,55 +6046,62 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
             </div>
 
             {/* SEÇÃO 1: CAIXA (Visão de Liquidez) */}
-            <div className="bg-surface/50 border border-border-color/60 rounded-xl p-5 md:p-6 shadow-sm">
-                <div className="flex items-center gap-3 mb-4">
-                    <div className="bg-secondary/15 p-2 rounded-lg text-secondary">
-                        <WalletIcon className="w-5 h-5"/>
-                    </div>
+            <div className="bg-surface/80 border border-border-color/40 rounded-xl p-6 shadow-[0_8px_30px_rgb(0,0,0,0.35)]">
+                <div className="flex justify-between items-center mb-6 pb-4 border-b border-border-color/20">
                     <div>
-                        <h3 className="text-sm font-bold uppercase tracking-wider text-text-primary">Controle de Caixa (Posição Geral)</h3>
-                        <p className="text-xs text-text-secondary">Saldos reais e provisões acumuladas em conta</p>
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary/60">Posição Consolidada</h3>
+                        <p className="text-lg font-extrabold tracking-tight text-text-primary">Controle de Caixa</p>
                     </div>
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                     {/* Saldo Bruto */}
-                    <div className="bg-background/40 border border-border-color/40 rounded-xl p-4.5 flex flex-col justify-between">
+                    <div className="bg-surface border border-border-color/40 rounded-xl p-6 flex flex-col justify-between shadow-[0_4px_20px_rgba(0,0,0,0.2)] hover:border-slate-800 transition-all duration-300">
                         <div>
-                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Saldo Bruto em Conta</span>
-                            <p className={`text-xl font-bold mt-1.5 ${saldoHoje >= 0 ? 'text-text-primary' : 'text-danger'}`}>{formatCurrency(saldoHoje)}</p>
+                            <span className="text-[10px] font-bold text-text-secondary/60 uppercase tracking-wider block">Saldo Bruto em Conta</span>
+                            <p className={`text-2xl font-extrabold tracking-tight mt-2 ${saldoHoje >= 0 ? 'text-[#f8fafc]' : 'text-danger'}`}>{formatCurrency(saldoHoje)}</p>
                         </div>
-                        <span className="text-[10px] text-text-secondary/85 mt-3">Soma de todas as entradas menos despesas pagas</span>
+                        <div className="mt-4 pt-3 border-t border-border-color/25">
+                            <span className="text-[10px] text-text-secondary/50 block font-medium">Fluxo financeiro bruto (Entradas - Saídas pagas)</span>
+                        </div>
                     </div>
 
                     {/* Provisão de Impostos */}
-                    <div className="bg-background/40 border border-border-color/40 rounded-xl p-4.5 flex flex-col justify-between">
+                    <div className="bg-surface border border-border-color/40 rounded-xl p-6 flex flex-col justify-between shadow-[0_4px_20px_rgba(0,0,0,0.2)] hover:border-slate-800 transition-all duration-300">
                         <div>
-                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Reserva de Impostos (Provisão)</span>
-                            <p className="text-xl font-bold mt-1.5 text-orange-400">{formatCurrency(saldoProvisaoHoje)}</p>
+                            <span className="text-[10px] font-bold text-text-secondary/60 uppercase tracking-wider block">Reserva de Impostos (Provisão)</span>
+                            <p className="text-2xl font-extrabold tracking-tight mt-2 text-[#ff7a00]">{formatCurrency(saldoProvisaoHoje)}</p>
                         </div>
-                        <span className="text-[10px] text-text-secondary/85 mt-3">Valor provisionado para tributações futuras</span>
+                        <div className="mt-4 pt-3 border-t border-border-color/25">
+                            <span className="text-[10px] text-text-secondary/50 block font-medium">Provisões tributárias acumuladas em lançamentos</span>
+                        </div>
                     </div>
 
                     {/* Saldo Disponível */}
-                    <div className="bg-secondary/5 border border-secondary/15 rounded-xl p-4.5 flex flex-col justify-between shadow-xs">
+                    <div className="bg-surface border border-border-color/40 rounded-xl p-6 flex flex-col justify-between shadow-[0_4px_20px_rgba(0,0,0,0.2)] hover:border-slate-800 transition-all duration-300">
                         <div>
-                            <span className="text-[10px] font-bold text-secondary uppercase tracking-wider block">Saldo Disponível Real (Livre)</span>
-                            <p className={`text-2xl font-bold mt-1.5 ${saldoDisponivel >= 0 ? 'text-success' : 'text-danger'}`}>{formatCurrency(saldoDisponivel)}</p>
+                            <div className="flex justify-between items-start">
+                                <span className="text-[10px] font-bold text-secondary uppercase tracking-wider block">Saldo Disponível Real (Livre)</span>
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-secondary/10 text-secondary border border-secondary/20">Livre</span>
+                            </div>
+                            <p className={`text-2xl font-extrabold tracking-tight mt-2 ${saldoDisponivel >= 0 ? 'text-[#10b981]' : 'text-danger'}`}>{formatCurrency(saldoDisponivel)}</p>
                         </div>
-                        <span className="text-[10px] text-secondary/80 mt-3 font-medium">Recurso financeiro livre (Saldo Bruto - Provisão)</span>
+                        <div className="mt-4 pt-3 border-t border-border-color/25 flex justify-between items-center text-[10px]">
+                            <span className="text-text-secondary/50 font-medium">Sobrevivência estimada:</span>
+                            <span className="font-mono font-bold text-secondary">{mesesSobrevivencia}</span>
+                        </div>
                     </div>
                 </div>
             </div>
 
             {/* SEÇÃO 2: RESULTADO DO PERÍODO (Filtragem por competência/caixa) */}
-            <div className="border-t border-border-color/40 pt-6">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-5">
+            <div className="pt-6 border-t border-border-color/20">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                     <div>
-                        <h3 className="text-sm font-bold uppercase tracking-wider text-text-primary">
-                            Desempenho no Período ({dashboardDreRegime === 'competencia' ? 'Competência' : 'Caixa'})
-                        </h3>
-                        <p className="text-xs text-text-secondary">Estatísticas calculadas a partir das datas filtradas</p>
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary/60">Análise de Performance</h3>
+                        <p className="text-lg font-extrabold tracking-tight text-text-primary">
+                            Desempenho no Período: {dashboardDreRegime === 'competencia' ? 'Competência' : 'Caixa'}
+                        </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 self-stretch sm:self-auto">
                         <div className="inline-flex bg-background/60 rounded-lg p-0.5 border border-border-color/40 text-[11px] font-semibold mr-1 h-9 items-center">
@@ -6107,166 +6139,187 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
                     {/* Receita Líquida */}
-                    <div className="bg-surface border border-border-color/65 rounded-xl p-5 flex flex-col justify-between shadow-xs">
-                        <div className="flex justify-between items-start">
-                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Receita Líquida</span>
-                            <div className="bg-success/10 p-1.5 rounded-lg text-success">
-                                <ArrowUpRightIcon className="w-4 h-4" />
+                    <div className="bg-surface/80 border border-border-color/40 rounded-xl p-6 flex flex-col justify-between shadow-[0_8px_30px_rgb(0,0,0,0.3)] hover:border-slate-800 transition-all duration-300">
+                        <div>
+                            <div className="flex justify-between items-start">
+                                <span className="text-[10px] font-bold text-text-secondary/60 uppercase tracking-wider">Receita Líquida</span>
+                                {(() => {
+                                    const delta = ((totalIncome - previousPeriodIncome) / Math.abs(previousPeriodIncome || 1)) * 100;
+                                    const isPositive = delta >= 0;
+                                    return (
+                                        <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold font-mono ${isPositive ? 'text-[#10b981] bg-[#10b981]/15 border border-[#10b981]/20' : 'text-danger bg-danger/15 border border-danger/20'}`}>
+                                            {isPositive ? '↑' : '↓'} {Math.abs(delta).toFixed(1)}%
+                                        </span>
+                                    );
+                                })()}
                             </div>
+                            <p className="text-2xl md:text-3xl font-extrabold tracking-tight text-[#f8fafc] mt-2">{formatCurrency(totalIncome)}</p>
                         </div>
-                        <div className="mt-4">
-                            <p className="text-2xl font-bold text-success tracking-tight">{formatCurrency(totalIncome)}</p>
-                            <span className="text-[10px] text-text-secondary mt-1 block">Receitas manuais + comissões abertas</span>
-                            {(() => {
-                                const delta = ((totalIncome - previousPeriodIncome) / Math.abs(previousPeriodIncome || 1)) * 100;
-                                return (
-                                    <div className={`flex items-center gap-1 text-[10px] mt-1.5 ${delta >= 0 ? 'text-green-400' : 'text-danger'}`}>
-                                        {delta >= 0 ? <ArrowUpIcon className="w-3 h-3"/> : <ArrowDownIcon className="w-3 h-3"/>}
-                                        <span>{Math.abs(delta).toFixed(1)}% vs período anterior</span>
-                                    </div>
-                                );
-                            })()}
+                        <div className="mt-5 pt-3 border-t border-border-color/25 space-y-1.5">
+                            <div className="flex justify-between text-[10px]">
+                                <span className="text-text-secondary/50 font-medium">Período analisado:</span>
+                                <span className="text-text-primary font-mono font-medium">{periodoAnalisado}</span>
+                            </div>
+                            <div className="flex justify-between text-[10px]">
+                                <span className="text-text-secondary/50 font-medium">Tendência:</span>
+                                {(() => {
+                                    const delta = ((totalIncome - previousPeriodIncome) / Math.abs(previousPeriodIncome || 1)) * 100;
+                                    let tendency = 'Estável';
+                                    let color = 'text-text-secondary';
+                                    if (delta > 0.01) { tendency = 'Alta'; color = 'text-[#10b981]'; }
+                                    else if (delta < -0.01) { tendency = 'Queda'; color = 'text-[#ef4444]'; }
+                                    return <span className={`font-semibold ${color}`}>{tendency}</span>;
+                                })()}
+                            </div>
                         </div>
                     </div>
 
                     {/* Despesa Total */}
-                    <div className="bg-surface border border-border-color/65 rounded-xl p-5 flex flex-col justify-between shadow-xs">
-                        <div className="flex justify-between items-start">
-                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Despesa Total</span>
-                            <div className="bg-danger/10 p-1.5 rounded-lg text-danger">
-                                <ArrowDownRightIcon className="w-4 h-4" />
+                    <div className="bg-surface/80 border border-border-color/40 rounded-xl p-6 flex flex-col justify-between shadow-[0_8px_30px_rgb(0,0,0,0.3)] hover:border-slate-800 transition-all duration-300">
+                        <div>
+                            <div className="flex justify-between items-start">
+                                <span className="text-[10px] font-bold text-text-secondary/60 uppercase tracking-wider">Despesa Total</span>
+                                {(() => {
+                                    const delta = ((totalExpense - previousPeriodExpense) / Math.abs(previousPeriodExpense || 1)) * 100;
+                                    const isUp = delta >= 0;
+                                    return (
+                                        <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold font-mono ${isUp ? 'text-amber-500 bg-amber-500/10 border border-amber-500/20' : 'text-[#10b981] bg-[#10b981]/15 border border-[#10b981]/20'}`}>
+                                            {isUp ? '↑' : '↓'} {Math.abs(delta).toFixed(1)}%
+                                        </span>
+                                    );
+                                })()}
                             </div>
+                            <p className="text-2xl md:text-3xl font-extrabold tracking-tight text-[#f8fafc] mt-2">{formatCurrency(totalExpense)}</p>
                         </div>
-                        <div className="mt-4">
-                            <p className="text-2xl font-bold text-danger tracking-tight">{formatCurrency(totalExpense)}</p>
-                            <span className="text-[10px] text-text-secondary mt-1 block">
-                                {dashboardDreRegime === 'competencia' ? 'Contas pagas + pendentes' : 'Apenas contas pagas'}
-                            </span>
-                            {(() => {
-                                const delta = ((totalExpense - previousPeriodExpense) / Math.abs(previousPeriodExpense || 1)) * 100;
-                                return (
-                                    <div className={`flex items-center gap-1 text-[10px] mt-1.5 ${delta >= 0 ? 'text-green-400' : 'text-danger'}`}>
-                                        {delta >= 0 ? <ArrowUpIcon className="w-3 h-3"/> : <ArrowDownIcon className="w-3 h-3"/>}
-                                        <span>{Math.abs(delta).toFixed(1)}% vs período anterior</span>
-                                    </div>
-                                );
-                            })()}
+                        <div className="mt-5 pt-3 border-t border-border-color/25 space-y-1.5">
+                            <div className="flex justify-between text-[10px]">
+                                <span className="text-text-secondary/50 font-medium">Comprometimento:</span>
+                                <span className="text-text-primary font-mono font-medium">{totalIncome > 0 ? ((totalExpense / totalIncome) * 100).toFixed(1) : '0.0'}% da receita</span>
+                            </div>
+                            <div className="flex justify-between text-[10px]">
+                                <span className="text-text-secondary/50 font-medium">Evolução de despesa:</span>
+                                {(() => {
+                                    const delta = ((totalExpense - previousPeriodExpense) / Math.abs(previousPeriodExpense || 1)) * 100;
+                                    return <span className="text-text-primary font-mono font-medium">{delta >= 0 ? 'Aumento' : 'Redução'} de {Math.abs(delta).toFixed(1)}%</span>;
+                                })()}
+                            </div>
                         </div>
                     </div>
 
                     {/* Resultado do Período */}
-                    <div className="bg-surface border border-border-color/65 rounded-xl p-5 flex flex-col justify-between shadow-xs">
-                        <div className="flex justify-between items-start">
-                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Resultado do Período</span>
-                            <div className={`p-1.5 rounded-lg ${resultadoPeriodo >= 0 ? 'bg-secondary/10 text-secondary' : 'bg-danger/10 text-danger'}`}>
-                                <ScaleIcon className="w-4 h-4" />
+                    <div className="bg-surface/80 border border-border-color/40 rounded-xl p-6 flex flex-col justify-between shadow-[0_8px_30px_rgb(0,0,0,0.3)] hover:border-slate-800 transition-all duration-300">
+                        <div>
+                            <div className="flex justify-between items-start">
+                                <span className="text-[10px] font-bold text-text-secondary/60 uppercase tracking-wider">Resultado do Período</span>
+                                {(() => {
+                                    const delta = ((resultadoPeriodo - previousResultadoPeriodo) / Math.abs(previousResultadoPeriodo || 1)) * 100;
+                                    const isPositive = delta >= 0;
+                                    return (
+                                        <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold font-mono ${isPositive ? 'text-[#10b981] bg-[#10b981]/15 border border-[#10b981]/20' : 'text-[#ef4444] bg-[#ef4444]/15 border border-[#ef4444]/20'}`}>
+                                            {isPositive ? '↑' : '↓'} {Math.abs(delta).toFixed(1)}%
+                                        </span>
+                                    );
+                                })()}
                             </div>
+                            <p className={`text-2xl md:text-3xl font-extrabold tracking-tight mt-2 ${resultadoPeriodo >= 0 ? 'text-[#10b981]' : 'text-[#ef4444]/90'}`}>
+                                {formatCurrency(resultadoPeriodo)}
+                            </p>
                         </div>
-                        <div className="mt-4">
-                            <p className={`text-2xl font-bold tracking-tight ${resultadoPeriodo >= 0 ? 'text-[#10b981]' : 'text-danger'}`}>{formatCurrency(resultadoPeriodo)}</p>
-                            <span className="text-[10px] text-text-secondary mt-1 block">
-                                Demonstrativo por {dashboardDreRegime === 'competencia' ? 'competência' : 'caixa'}
-                            </span>
-                            {(() => {
-                                const delta = ((resultadoPeriodo - previousResultadoPeriodo) / Math.abs(previousResultadoPeriodo || 1)) * 100;
-                                return (
-                                    <div className={`flex items-center gap-1 text-[10px] mt-1.5 ${delta >= 0 ? 'text-green-400' : 'text-danger'}`}>
-                                        {delta >= 0 ? <ArrowUpIcon className="w-3 h-3"/> : <ArrowDownIcon className="w-3 h-3"/>}
-                                        <span>{Math.abs(delta).toFixed(1)}% vs período anterior</span>
-                                    </div>
-                                );
-                            })()}
+                        <div className="mt-5 pt-3 border-t border-border-color/25 space-y-1.5">
+                            <div className="flex justify-between text-[10px]">
+                                <span className="text-text-secondary/50 font-medium">Margem Operacional:</span>
+                                <span className="text-text-primary font-mono font-medium">{totalIncome > 0 ? ((resultadoPeriodo / totalIncome) * 100).toFixed(1) : '0.0'}%</span>
+                            </div>
+                            <div className="flex justify-between text-[10px]">
+                                <span className="text-text-secondary/50 font-medium">Status Resultado:</span>
+                                <span className={`font-semibold ${resultadoPeriodo >= 0 ? 'text-[#10b981]' : 'text-[#ef4444]'}`}>
+                                    {resultadoPeriodo >= 0 ? 'Superavitário' : 'Deficitário'}
+                                </span>
+                            </div>
                         </div>
                     </div>
 
                     {/* Metas Atingidas */}
-                    <div className="bg-surface border border-border-color/65 rounded-xl p-5 flex flex-col justify-between shadow-xs">
-                        <div className="flex justify-between items-start">
-                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Metas Atingidas</span>
-                            <div className="bg-purple-500/10 p-1.5 rounded-lg text-purple-400">
-                                <TargetIcon className="w-4 h-4" />
+                    <div className="bg-surface/80 border border-border-color/40 rounded-xl p-6 flex flex-col justify-between shadow-[0_8px_30px_rgb(0,0,0,0.3)] hover:border-slate-800 transition-all duration-300">
+                        <div>
+                            <div className="flex justify-between items-start">
+                                <span className="text-[10px] font-bold text-text-secondary/60 uppercase tracking-wider">Metas Atingidas</span>
+                                {(() => {
+                                    const delta = ((achievedGoals - previousAchievedGoals) / Math.abs(previousAchievedGoals || 1)) * 100;
+                                    const isPositive = delta >= 0;
+                                    return (
+                                        <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold font-mono ${delta === 0 ? 'text-slate-400 bg-slate-500/10 border border-slate-500/20' : (isPositive ? 'text-[#10b981] bg-[#10b981]/15 border border-[#10b981]/20' : 'text-[#ef4444] bg-[#ef4444]/15 border border-[#ef4444]/20')}`}>
+                                            {delta > 0 ? `+${delta.toFixed(0)}%` : delta === 0 ? '0%' : `${delta.toFixed(0)}%`}
+                                        </span>
+                                    );
+                                })()}
                             </div>
-                        </div>
-                        <div className="mt-4">
-                            <p className="text-2xl font-bold text-purple-400 tracking-tight">
-                                {achievedGoals} <span className="text-sm font-normal text-text-secondary">/ {goals.length}</span>
+                            <p className="text-2xl md:text-3xl font-extrabold tracking-tight text-secondary mt-2">
+                                {achievedGoals} <span className="text-sm font-normal text-text-secondary/60">/ {goals.length}</span>
                             </p>
-                            <span className="text-[10px] text-text-secondary mt-1 block">Metas com progresso concluído</span>
-                            {(() => {
-                                const delta = ((achievedGoals - previousAchievedGoals) / Math.abs(previousAchievedGoals || 1)) * 100;
-                                return (
-                                    <div className={`flex items-center gap-1 text-[10px] mt-1.5 ${delta >= 0 ? 'text-green-400' : 'text-danger'}`}>
-                                        {delta >= 0 ? <ArrowUpIcon className="w-3 h-3"/> : <ArrowDownIcon className="w-3 h-3"/>}
-                                        <span>{Math.abs(delta).toFixed(1)}% vs período anterior</span>
-                                    </div>
-                                );
-                            })()}
+                        </div>
+                        <div className="mt-5 pt-3 border-t border-border-color/25 space-y-1.5">
+                            <div className="flex justify-between text-[10px]">
+                                <span className="text-text-secondary/50 font-medium">Aproveitamento:</span>
+                                <span className="text-text-primary font-mono font-medium">{goals.length > 0 ? ((achievedGoals / goals.length) * 100).toFixed(0) : '0'}% das Metas</span>
+                            </div>
+                            <div className="flex justify-between text-[10px]">
+                                <span className="text-text-secondary/50 font-medium">Acompanhamento:</span>
+                                <span className="text-text-primary font-medium">{goals.length - achievedGoals} pendentes</span>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div className="bg-surface border border-border-color rounded-xl p-4 sm:p-6 shadow-sm space-y-4">
-                <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-danger/10 p-2 rounded-full"><AlertCircleIcon className="w-5 h-5 text-danger" /></div>
-                        <div>
-                            <h3 className="text-lg font-bold uppercase tracking-tight text-text-primary flex items-center gap-2">
-                                <span>Contas a Pagar</span>
-                            </h3>
-                            <p className="text-text-secondary text-xs">Despesas pendentes nos próximos 10 dias.</p>
-                        </div>
+            <div className="bg-surface/80 border border-border-color/0 shadow-[0_8px_30px_rgb(0,0,0,0.35)] rounded-xl p-6 space-y-6">
+                <div className="flex justify-between items-center pb-4 border-b border-border-color/20">
+                    <div>
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary/60 font-mono">Controle de Saídas</h3>
+                        <h3 className="text-lg font-extrabold tracking-tight text-text-primary flex items-center gap-2">
+                            Contas a Pagar
+                        </h3>
+                        <p className="text-text-secondary/60 text-[11px] mt-0.5">Lançamentos de despesas pendentes com vencimento nos próximos 10 dias.</p>
                     </div>
                 </div>
 
                 {/* Cards Resumo Contas a Pagar */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     {/* Contas Vencidas */}
-                    <div className="bg-background/20 border border-border-color/40 rounded-xl p-3.5 flex flex-col justify-between hover:border-danger/30 transition-colors">
-                        <div className="flex justify-between items-start">
-                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Contas Vencidas</span>
-                            <div className="bg-danger/10 p-1 rounded text-danger">
-                                <AlertCircleIcon className="w-3.5 h-3.5" />
-                            </div>
+                    <div className="bg-surface/80 border border-border-color/40 rounded-xl p-5 flex flex-col justify-between shadow-[0_4px_20px_rgba(0,0,0,0.3)] hover:border-slate-800 transition-all duration-300">
+                        <div>
+                            <span className="text-[10px] font-bold text-text-secondary/60 uppercase tracking-wider block">Contas Vencidas</span>
+                            <p className="text-xl font-extrabold text-[#ef4444] tracking-tight mt-1.5">{formatCurrency(contasAPagarStats.vencidasTotal)}</p>
                         </div>
-                        <div className="mt-2 text-left">
-                            <p className="text-lg font-bold text-danger/90 tracking-tight">{formatCurrency(contasAPagarStats.vencidasTotal)}</p>
-                            <span className="text-[10px] text-text-secondary mt-0.5 block font-medium">
-                                {contasAPagarStats.vencidasCount} {contasAPagarStats.vencidasCount === 1 ? 'conta vencida' : 'contas vencidas'}
+                        <div className="mt-3 pt-2.5 border-t border-border-color/25">
+                            <span className="text-[10px] text-text-secondary/60 block font-medium">
+                                {contasAPagarStats.vencidasCount} {contasAPagarStats.vencidasCount === 1 ? 'lançamento vencido' : 'lançamentos vencidos'}
                             </span>
                         </div>
                     </div>
 
                     {/* Contas Pendentes */}
-                    <div className="bg-background/20 border border-border-color/40 rounded-xl p-3.5 flex flex-col justify-between hover:border-yellow-500/30 transition-colors">
-                        <div className="flex justify-between items-start">
-                            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Contas Pendentes</span>
-                            <div className="bg-yellow-500/10 p-1 rounded text-yellow-500">
-                                <RefreshCwIcon className="w-3.5 h-3.5" />
-                            </div>
+                    <div className="bg-surface/80 border border-border-color/40 rounded-xl p-5 flex flex-col justify-between shadow-[0_4px_20px_rgba(0,0,0,0.3)] hover:border-slate-800 transition-all duration-300">
+                        <div>
+                            <span className="text-[10px] font-bold text-text-secondary/60 uppercase tracking-wider block">Contas Pendentes</span>
+                            <p className="text-xl font-extrabold text-amber-500 tracking-tight mt-1.5">{formatCurrency(contasAPagarStats.pendentesTotal)}</p>
                         </div>
-                        <div className="mt-2 text-left">
-                            <p className="text-lg font-bold text-yellow-500 tracking-tight">{formatCurrency(contasAPagarStats.pendentesTotal)}</p>
-                            <span className="text-[10px] text-text-secondary mt-0.5 block font-medium">
-                                {contasAPagarStats.pendentesCount} {contasAPagarStats.pendentesCount === 1 ? 'conta a vencer' : 'contas a vencer'}
+                        <div className="mt-3 pt-2.5 border-t border-border-color/25">
+                            <span className="text-[10px] text-text-secondary/60 block font-medium">
+                                {contasAPagarStats.pendentesCount} {contasAPagarStats.pendentesCount === 1 ? 'lançamento a vencer' : 'lançamentos a vencer'}
                             </span>
                         </div>
                     </div>
 
                     {/* Valor Total a Pagar */}
-                    <div className="relative overflow-hidden bg-gradient-to-br from-primary/15 via-background/20 to-background/30 border border-primary/25 rounded-xl p-3.5 flex flex-col justify-between hover:border-primary/45 hover:shadow-md hover:shadow-primary/5 transition-all duration-300 group">
-                        <div className="absolute top-0 right-0 w-16 h-16 bg-primary/10 rounded-full blur-xl -mr-4 -mt-4 group-hover:bg-primary/15 transition-all duration-500 pointer-events-none" />
-                        <div className="flex justify-between items-start relative z-10">
-                            <span className="text-[10px] font-bold text-primary uppercase tracking-wider">Total a Pagar</span>
-                            <div className="bg-primary/20 p-1 rounded-lg text-primary shadow-xs group-hover:scale-105 transition-transform duration-300">
-                                <WalletIcon className="w-3.5 h-3.5" />
-                            </div>
+                    <div className="bg-surface/80 border border-border-color/40 rounded-xl p-5 flex flex-col justify-between shadow-[0_4px_20px_rgba(0,0,0,0.3)] hover:border-slate-800 transition-all duration-300">
+                        <div>
+                            <span className="text-[10px] font-bold text-text-secondary/60 uppercase tracking-wider block">Total a Pagar (Aberto)</span>
+                            <p className="text-xl font-extrabold text-[#f8fafc] tracking-tight mt-1.5">{formatCurrency(contasAPagarStats.totalAmount)}</p>
                         </div>
-                        <div className="mt-2 text-left relative z-10">
-                            <p className="text-lg font-extrabold text-text-primary tracking-tight group-hover:text-primary transition-colors duration-300">{formatCurrency(contasAPagarStats.totalAmount)}</p>
-                            <span className="text-[10px] text-text-secondary mt-0.5 block font-medium flex items-center gap-1.5">
-                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                                <span>{contasAPagarStats.totalCount} {contasAPagarStats.totalCount === 1 ? 'conta em aberto' : 'contas em aberto'}</span>
+                        <div className="mt-3 pt-2.5 border-t border-border-color/25">
+                            <span className="text-[10px] text-text-secondary/60 block font-medium">
+                                {contasAPagarStats.totalCount} {contasAPagarStats.totalCount === 1 ? 'obrigação em aberto' : 'obrigações em aberto'}
                             </span>
                         </div>
                     </div>
