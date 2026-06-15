@@ -5753,7 +5753,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
             return (selectedYear === 'all' || year === selectedYear) && (selectedMonth === 'all' || month === selectedMonth);
         }), [transactions, selectedYear, selectedMonth]);
 
-    const { totalIncome, totalExpense, resultadoPeriodo } = useMemo(() => {
+    const { totalIncome, totalExpense, resultadoPeriodo, custosOperacionais, despesasOperacionais } = useMemo(() => {
         const getStructuralInfo = (t: Transaction) => {
             if (t.type === TransactionType.INCOME) {
                 const cat = incomeCategories.find(c => c.name === t.category);
@@ -5799,12 +5799,31 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
             .reduce((sum, r) => sum + (r.officeNetRevenue || 0), 0);
 
         const income = round(manualIncome + importedIncome);
-        const expense = round(dreTransactions.filter(t => t.type === TransactionType.EXPENSE).reduce<number>((acc, t) => acc + t.amount, 0));
+        const custos = round(dreTransactions
+            .filter(t => t.type === TransactionType.EXPENSE && (getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.CUSTO || getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.DEDUCAO_RECEITA))
+            .reduce<number>((acc, t) => acc + t.amount, 0));
+        const despesas = round(dreTransactions
+            .filter(t => t.type === TransactionType.EXPENSE && getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.DESPESA_OPERACIONAL)
+            .reduce<number>((acc, t) => acc + t.amount, 0));
+        const expense = round(custos + despesas);
         
-        return { totalIncome: income, totalExpense: expense, resultadoPeriodo: round(Number(income) - Number(expense)) };
+        return { 
+            totalIncome: income, 
+            totalExpense: expense, 
+            resultadoPeriodo: round(Number(income) - Number(expense)),
+            custosOperacionais: custos,
+            despesasOperacionais: despesas
+        };
     }, [filteredTransactions, importedRevenues, incomeCategories, expenseCategories, selectedYear, selectedMonth, dashboardDreRegime]);
 
-    const { previousPeriodIncome, previousPeriodExpense, previousResultadoPeriodo, previousAchievedGoals } = useMemo(() => {
+    const { 
+        previousPeriodIncome, 
+        previousPeriodExpense, 
+        previousResultadoPeriodo, 
+        previousPeriodCustos,
+        previousPeriodDespesas,
+        previousAchievedGoals 
+    } = useMemo(() => {
         let prevYear: number | 'all' = selectedYear;
         let prevMonth: number | 'all' = selectedMonth;
 
@@ -5872,7 +5891,13 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
             .reduce((sum, r) => sum + (r.officeNetRevenue || 0), 0);
 
         const income = round(manualIncome + importedIncome);
-        const expense = round(drePrevTransactions.filter(t => t.type === TransactionType.EXPENSE).reduce<number>((acc, t) => acc + t.amount, 0));
+        const prevCustos = round(drePrevTransactions
+            .filter(t => t.type === TransactionType.EXPENSE && (getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.CUSTO || getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.DEDUCAO_RECEITA))
+            .reduce<number>((acc, t) => acc + t.amount, 0));
+        const prevDespesas = round(drePrevTransactions
+            .filter(t => t.type === TransactionType.EXPENSE && getStructuralInfo(t).tipoEstrutural === CategoryStructuralType.DESPESA_OPERACIONAL)
+            .reduce<number>((acc, t) => acc + t.amount, 0));
+        const expense = round(prevCustos + prevDespesas);
         
         const prevAchieved = goals.filter(g => (Number(g.currentAmount) || 0) >= g.targetAmount).length;
 
@@ -5880,6 +5905,8 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
             previousPeriodIncome: income,
             previousPeriodExpense: expense,
             previousResultadoPeriodo: round(income - expense),
+            previousPeriodCustos: prevCustos,
+            previousPeriodDespesas: prevDespesas,
             previousAchievedGoals: prevAchieved
         };
     }, [transactions, importedRevenues, incomeCategories, expenseCategories, selectedYear, selectedMonth, dashboardDreRegime, goals]);
@@ -5915,6 +5942,25 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
     }, 0)), [transactions]);
 
     const saldoDisponivel = useMemo(() => round(saldoHoje - saldoProvisaoHoje), [saldoHoje, saldoProvisaoHoje]);
+
+    const financePosition = useMemo(() => {
+        const aportes = transactions
+            .filter(t => {
+                if (t.type !== TransactionType.INCOME) return false;
+                const cat = incomeCategories.find(c => c.name === t.category);
+                return cat?.tipoEstrutural === CategoryStructuralType.SOCIETARIO || cat?.impactaDRE === false;
+            })
+            .reduce<number>((sum, t) => sum + t.amount, 0);
+
+        const saidasRealizadas = transactions
+            .filter(t => t.type === TransactionType.EXPENSE && (t.status === ExpenseStatus.PAID || t.status === ExpenseStatus.CLEARED))
+            .reduce<number>((sum, t) => sum + t.amount, 0);
+
+        return {
+            totalAportes: round(aportes),
+            totalSaidasRealizadas: round(saidasRealizadas)
+        };
+    }, [transactions, incomeCategories]);
 
     const achievedGoals = useMemo(() => goals.filter(g => (Number(g.currentAmount) || 0) >= g.targetAmount).length, [goals]);
     
@@ -6132,70 +6178,27 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2">
                 <div>
                     <h2 className="text-2xl font-bold bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent uppercase tracking-tight">Painel de Controle</h2>
-                    <p className="text-text-secondary text-xs sm:text-sm">Visão instantânea do fluxo de caixa e progresso de metas.</p>
+                    <p className="text-text-secondary text-xs sm:text-sm">Visão instantânea do fluxo de caixa e de indicadores operacionais.</p>
                 </div>
+                {goals.length > 0 && (
+                    <div className="inline-flex items-center gap-2 bg-secondary/15 border border-secondary/30 rounded-xl px-4 py-2 self-start md:self-center">
+                        <svg className="w-4 h-4 text-secondary animate-pulse" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                        <span className="text-xs font-semibold text-text-primary">
+                            Metas Atingidas: <strong className="text-secondary">{achievedGoals}</strong> / {goals.length} ({goals.length > 0 ? ((achievedGoals/goals.length)*100).toFixed(0) : 0}%)
+                        </span>
+                    </div>
+                )}
             </div>
 
-            {/* SEÇÃO 1: CAIXA (Visão de Liquidez) */}
+            {/* SEÇÃO 1: RESULTADO OPERACIONAL */}
             <div className="bg-surface/80 border border-border-color/40 rounded-xl p-6 shadow-[0_8px_30px_rgb(0,0,0,0.35)]">
-                <div className="flex justify-between items-center mb-6 pb-4 border-b border-border-color/20">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 pb-4 border-b border-border-color/20">
                     <div>
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary/60">Posição Consolidada</h3>
-                        <p className="text-lg font-extrabold tracking-tight text-text-primary">Controle de Caixa</p>
-                    </div>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                    {/* Saldo Bruto */}
-                    <div className="bg-surface border border-border-color/40 rounded-xl p-6 flex flex-col justify-between shadow-[0_4px_20px_rgba(0,0,0,0.2)] hover:border-slate-800 transition-all duration-300">
-                        <div>
-                            <span className="text-[10px] font-bold text-text-secondary/60 uppercase tracking-wider block">Saldo Bruto em Conta</span>
-                            <p className={`text-2xl font-extrabold tracking-tight mt-2 ${saldoHoje >= 0 ? 'text-[#f8fafc]' : 'text-danger'}`}>{formatCurrency(saldoHoje)}</p>
-                        </div>
-                        <div className="mt-4 pt-3 border-t border-border-color/25">
-                            <span className="text-[10px] text-text-secondary/50 block font-medium">Fluxo financeiro bruto (Entradas - Saídas pagas)</span>
-                        </div>
-                    </div>
-
-                    {/* Provisão de Impostos */}
-                    <div className="bg-surface border border-border-color/40 rounded-xl p-6 flex flex-col justify-between shadow-[0_4px_20px_rgba(0,0,0,0.2)] hover:border-slate-800 transition-all duration-300">
-                        <div>
-                            <span className="text-[10px] font-bold text-text-secondary/60 uppercase tracking-wider block">Reserva de Impostos (Provisão)</span>
-                            <p className="text-2xl font-extrabold tracking-tight mt-2 text-[#ff7a00]">{formatCurrency(saldoProvisaoHoje)}</p>
-                        </div>
-                        <div className="mt-4 pt-3 border-t border-border-color/25">
-                            <span className="text-[10px] text-text-secondary/50 block font-medium">Provisões tributárias acumuladas em lançamentos</span>
-                        </div>
-                    </div>
-
-                    {/* Saldo Disponível */}
-                    <div className="bg-surface border border-border-color/40 rounded-xl p-6 flex flex-col justify-between shadow-[0_4px_20px_rgba(0,0,0,0.2)] hover:border-slate-800 transition-all duration-300">
-                        <div>
-                            <div className="flex justify-between items-start">
-                                <span className="text-[10px] font-bold text-secondary uppercase tracking-wider block">Saldo Disponível Real (Livre)</span>
-                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-secondary/10 text-secondary border border-secondary/20">Livre</span>
-                            </div>
-                            <p className={`text-2xl font-extrabold tracking-tight mt-2 ${saldoDisponivel >= 0 ? 'text-[#10b981]' : 'text-danger'}`}>{formatCurrency(saldoDisponivel)}</p>
-                        </div>
-                        <div className="mt-4 pt-3 border-t border-border-color/25 flex justify-between items-center text-[10px]">
-                            <span className="text-text-secondary/50 font-medium">Sobrevivência estimada:</span>
-                            <span className="font-mono font-bold text-secondary">{mesesSobrevivencia}</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* SEÇÃO 2: RESULTADO DO PERÍODO (Filtragem por competência/caixa) */}
-            <div className="pt-6 border-t border-border-color/20">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-                    <div>
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary/60">Análise de Performance</h3>
-                        <p className="text-lg font-extrabold tracking-tight text-text-primary">
-                            Desempenho no Período: {dashboardDreRegime === 'competencia' ? 'Competência' : 'Caixa'}
-                        </p>
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary/60 font-mono">DRE do Período</h3>
+                        <p className="text-lg font-extrabold tracking-tight text-text-primary">Resultado Operacional</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 self-stretch sm:self-auto">
-                        <div className="inline-flex bg-background/60 rounded-lg p-0.5 border border-border-color/40 text-[11px] font-semibold mr-1 h-9 items-center">
+                        <div className="inline-flex bg-background/60 rounded-lg p-0.5 border border-border-color/40 text-[11px] font-semibold mr-1 h-9 items-center font-mono">
                             <button
                                 onClick={() => setDashboardDreRegime('competencia')}
                                 className={`px-2.5 py-1 rounded-md transition-all h-7 flex items-center ${dashboardDreRegime === 'competencia' ? 'bg-primary text-background font-bold shadow-xs' : 'text-text-secondary hover:text-text-primary'}`}
@@ -6211,29 +6214,28 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                                 Caixa
                             </button>
                         </div>
-                        <Button 
-                            onClick={() => setShowProjection(!showProjection)} 
-                            variant={showProjection ? "primary" : "secondary"} 
-                            className="text-xs py-1.5 px-3 h-9 animate-none"
-                            title="Projetar fluxo para os próximos 12 meses baseado em histórico robusto"
-                        >
-                            <TrendingUpIcon className="w-4 h-4"/> {showProjection ? "Ocultar Projeção" : "Projetar 12m"}
-                        </Button>
                         <select value={selectedYear} onChange={e => setSelectedYear(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-surface border border-border-color/80 rounded-lg p-2 text-xs h-9 text-text-primary hover:border-slate-600 focus:outline-none transition-colors">
                             <option value="all">Todo o Período</option>{availableYears.map((year: any) => <option key={year} value={year}>{year}</option>)}
                         </select>
-                        <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-surface border border-border-color/80 rounded-lg p-2 text-xs h-9 text-text-primary hover:border-slate-600 focus:outline-none transition-colors">
+                        <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="bg-surface border border-border-color/80 rounded-lg p-2 text-xs h-9 text-text-primary hover:border-slate-600 focus:outline-none transition-colors font-mono">
                             <option value="all">Todos os Meses</option>{['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'].map((m, i) => <option key={m} value={i}>{m}</option>)}
                         </select>
                     </div>
                 </div>
 
+                <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 flex items-start gap-3 mb-6 text-[#3b82f6]">
+                    <svg className="w-5 h-5 shrink-0 mt-0.5 text-blue-400" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                    <span className="text-xs sm:text-sm font-medium">
+                        <strong>Resultado Operacional:</strong> Mede se a operação de assessoria gera resultado próprio (considerando se as receitas cobrem os custos e despesas).
+                    </span>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-                    {/* Receita Líquida */}
-                    <div className="bg-surface/80 border border-border-color/40 rounded-xl p-6 flex flex-col justify-between shadow-[0_8px_30px_rgb(0,0,0,0.3)] hover:border-slate-800 transition-all duration-300">
+                    {/* Receita Operacional */}
+                    <div className="bg-surface border border-border-color/40 rounded-xl p-6 flex flex-col justify-between shadow-[0_4px_20px_rgba(0,0,0,0.2)] hover:border-slate-800 transition-all duration-300">
                         <div>
                             <div className="flex justify-between items-start">
-                                <span className="text-[10px] font-bold text-text-secondary/60 uppercase tracking-wider">Receita Líquida</span>
+                                <span className="text-[10px] font-bold text-text-secondary/60 uppercase tracking-wider block">Receita Operacional</span>
                                 {(() => {
                                     const delta = ((totalIncome - previousPeriodIncome) / Math.abs(previousPeriodIncome || 1)) * 100;
                                     const isPositive = delta >= 0;
@@ -6244,34 +6246,23 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                                     );
                                 })()}
                             </div>
-                            <p className="text-2xl md:text-3xl font-extrabold tracking-tight text-[#f8fafc] mt-2">{formatCurrency(totalIncome)}</p>
+                            <p className="text-2xl font-extrabold tracking-tight text-[#f8fafc] mt-2">{formatCurrency(totalIncome)}</p>
                         </div>
-                        <div className="mt-5 pt-3 border-t border-border-color/25 space-y-1.5">
+                        <div className="mt-5 pt-3 border-t border-border-color/25 space-y-1">
                             <div className="flex justify-between text-[10px]">
-                                <span className="text-text-secondary/50 font-medium">Período analisado:</span>
-                                <span className="text-text-primary font-mono font-medium">{periodoAnalisado}</span>
-                            </div>
-                            <div className="flex justify-between text-[10px]">
-                                <span className="text-text-secondary/50 font-medium">Tendência:</span>
-                                {(() => {
-                                    const delta = ((totalIncome - previousPeriodIncome) / Math.abs(previousPeriodIncome || 1)) * 100;
-                                    let tendency = 'Estável';
-                                    let color = 'text-text-secondary';
-                                    if (delta > 0.01) { tendency = 'Alta'; color = 'text-[#10b981]'; }
-                                    else if (delta < -0.01) { tendency = 'Queda'; color = 'text-[#ef4444]'; }
-                                    return <span className={`font-semibold ${color}`}>{tendency}</span>;
-                                })()}
+                                <span className="text-text-secondary/50 font-medium font-mono">Período analisado:</span>
+                                <span className="text-text-primary font-medium font-mono">{periodoAnalisado}</span>
                             </div>
                         </div>
                     </div>
 
-                    {/* Despesa Total */}
-                    <div className="bg-surface/80 border border-border-color/40 rounded-xl p-6 flex flex-col justify-between shadow-[0_8px_30px_rgb(0,0,0,0.3)] hover:border-slate-800 transition-all duration-300">
+                    {/* Custos Operacionais */}
+                    <div className="bg-surface border border-border-color/40 rounded-xl p-6 flex flex-col justify-between shadow-[0_4px_20px_rgba(0,0,0,0.2)] hover:border-slate-800 transition-all duration-300">
                         <div>
                             <div className="flex justify-between items-start">
-                                <span className="text-[10px] font-bold text-text-secondary/60 uppercase tracking-wider">Despesa Total</span>
+                                <span className="text-[10px] font-bold text-text-secondary/60 uppercase tracking-wider block">(-) Custos Operacionais</span>
                                 {(() => {
-                                    const delta = ((totalExpense - previousPeriodExpense) / Math.abs(previousPeriodExpense || 1)) * 100;
+                                    const delta = ((custosOperacionais - previousPeriodCustos) / Math.abs(previousPeriodCustos || 1)) * 100;
                                     const isUp = delta >= 0;
                                     return (
                                         <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold font-mono ${isUp ? 'text-amber-500 bg-amber-500/10 border border-amber-500/20' : 'text-[#10b981] bg-[#10b981]/15 border border-[#10b981]/20'}`}>
@@ -6280,28 +6271,44 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                                     );
                                 })()}
                             </div>
-                            <p className="text-2xl md:text-3xl font-extrabold tracking-tight text-[#f8fafc] mt-2">{formatCurrency(totalExpense)}</p>
+                            <p className="text-2xl font-extrabold tracking-tight text-[#f8fafc] mt-2">{formatCurrency(custosOperacionais)}</p>
                         </div>
-                        <div className="mt-5 pt-3 border-t border-border-color/25 space-y-1.5">
+                        <div className="mt-5 pt-3 border-t border-border-color/25 space-y-1">
                             <div className="flex justify-between text-[10px]">
-                                <span className="text-text-secondary/50 font-medium">Comprometimento:</span>
-                                <span className="text-text-primary font-mono font-medium">{totalIncome > 0 ? ((totalExpense / totalIncome) * 100).toFixed(1) : '0.0'}% da receita</span>
-                            </div>
-                            <div className="flex justify-between text-[10px]">
-                                <span className="text-text-secondary/50 font-medium">Evolução de despesa:</span>
-                                {(() => {
-                                    const delta = ((totalExpense - previousPeriodExpense) / Math.abs(previousPeriodExpense || 1)) * 100;
-                                    return <span className="text-text-primary font-mono font-medium">{delta >= 0 ? 'Aumento' : 'Redução'} de {Math.abs(delta).toFixed(1)}%</span>;
-                                })()}
+                                <span className="text-text-secondary/50 font-medium">Repasses, impostos e custos produtivos</span>
                             </div>
                         </div>
                     </div>
 
-                    {/* Resultado do Período */}
-                    <div className="bg-surface/80 border border-border-color/40 rounded-xl p-6 flex flex-col justify-between shadow-[0_8px_30px_rgb(0,0,0,0.3)] hover:border-slate-800 transition-all duration-300">
+                    {/* Despesas Operacionais */}
+                    <div className="bg-surface border border-border-color/40 rounded-xl p-6 flex flex-col justify-between shadow-[0_4px_20px_rgba(0,0,0,0.2)] hover:border-slate-800 transition-all duration-300">
                         <div>
                             <div className="flex justify-between items-start">
-                                <span className="text-[10px] font-bold text-text-secondary/60 uppercase tracking-wider">Resultado do Período</span>
+                                <span className="text-[10px] font-bold text-text-secondary/60 uppercase tracking-wider block">(-) Despesas Operacionais</span>
+                                {(() => {
+                                    const delta = ((despesasOperacionais - previousPeriodDespesas) / Math.abs(previousPeriodDespesas || 1)) * 100;
+                                    const isUp = delta >= 0;
+                                    return (
+                                        <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold font-mono ${isUp ? 'text-amber-500 bg-amber-500/10 border border-amber-500/20' : 'text-[#10b981] bg-[#10b981]/15 border border-[#10b981]/20'}`}>
+                                            {isUp ? '↑' : '↓'} {Math.abs(delta).toFixed(1)}%
+                                        </span>
+                                    );
+                                })()}
+                            </div>
+                            <p className="text-2xl font-extrabold tracking-tight text-[#f8fafc] mt-2">{formatCurrency(despesasOperacionais)}</p>
+                        </div>
+                        <div className="mt-5 pt-3 border-t border-border-color/25 space-y-1">
+                            <div className="flex justify-between text-[10px]">
+                                <span className="text-text-secondary/50 font-medium">Plataformas, adm, marketing e estrutura</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Resultado Operacional */}
+                    <div className="bg-surface border border-border-color/40 rounded-xl p-6 flex flex-col justify-between shadow-[0_4px_20px_rgba(0,0,0,0.2)] hover:border-slate-850 transition-all duration-300">
+                        <div>
+                            <div className="flex justify-between items-start">
+                                <span className="text-[10px] font-bold text-secondary uppercase tracking-wider block">(=) Resultado Operacional</span>
                                 {(() => {
                                     const delta = ((resultadoPeriodo - previousResultadoPeriodo) / Math.abs(previousResultadoPeriodo || 1)) * 100;
                                     const isPositive = delta >= 0;
@@ -6312,58 +6319,112 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
                                     );
                                 })()}
                             </div>
-                            <p className={`text-2xl md:text-3xl font-extrabold tracking-tight mt-2 ${resultadoPeriodo >= 0 ? 'text-[#10b981]' : 'text-[#ef4444]/90'}`}>
+                            <p className={`text-2xl font-extrabold tracking-tight mt-2 ${resultadoPeriodo >= 0 ? 'text-[#10b981]' : 'text-[#ef4444]/90'}`}>
                                 {formatCurrency(resultadoPeriodo)}
                             </p>
                         </div>
-                        <div className="mt-5 pt-3 border-t border-border-color/25 space-y-1.5">
+                        <div className="mt-5 pt-3 border-t border-border-color/25 space-y-1">
                             <div className="flex justify-between text-[10px]">
-                                <span className="text-text-secondary/50 font-medium">Margem Operacional:</span>
-                                <span className="text-text-primary font-mono font-medium">{totalIncome > 0 ? ((resultadoPeriodo / totalIncome) * 100).toFixed(1) : '0.0'}%</span>
-                            </div>
-                            <div className="flex justify-between text-[10px]">
-                                <span className="text-text-secondary/50 font-medium">Status Resultado:</span>
+                                <span className="text-text-secondary/50 font-medium">Status do período:</span>
                                 <span className={`font-semibold ${resultadoPeriodo >= 0 ? 'text-[#10b981]' : 'text-[#ef4444]'}`}>
                                     {resultadoPeriodo >= 0 ? 'Superavitário' : 'Deficitário'}
                                 </span>
                             </div>
                         </div>
                     </div>
-
-                    {/* Metas Atingidas */}
-                    <div className="bg-surface/80 border border-border-color/40 rounded-xl p-6 flex flex-col justify-between shadow-[0_8px_30px_rgb(0,0,0,0.3)] hover:border-slate-800 transition-all duration-300">
-                        <div>
-                            <div className="flex justify-between items-start">
-                                <span className="text-[10px] font-bold text-text-secondary/60 uppercase tracking-wider">Metas Atingidas</span>
-                                {(() => {
-                                    const delta = ((achievedGoals - previousAchievedGoals) / Math.abs(previousAchievedGoals || 1)) * 100;
-                                    const isPositive = delta >= 0;
-                                    return (
-                                        <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold font-mono ${delta === 0 ? 'text-slate-400 bg-slate-500/10 border border-slate-500/20' : (isPositive ? 'text-[#10b981] bg-[#10b981]/15 border border-[#10b981]/20' : 'text-[#ef4444] bg-[#ef4444]/15 border border-[#ef4444]/20')}`}>
-                                            {delta > 0 ? `+${delta.toFixed(0)}%` : delta === 0 ? '0%' : `${delta.toFixed(0)}%`}
-                                        </span>
-                                    );
-                                })()}
-                            </div>
-                            <p className="text-2xl md:text-3xl font-extrabold tracking-tight text-secondary mt-2">
-                                {achievedGoals} <span className="text-sm font-normal text-text-secondary/60">/ {goals.length}</span>
-                            </p>
-                        </div>
-                        <div className="mt-5 pt-3 border-t border-border-color/25 space-y-1.5">
-                            <div className="flex justify-between text-[10px]">
-                                <span className="text-text-secondary/50 font-medium">Aproveitamento:</span>
-                                <span className="text-text-primary font-mono font-medium">{goals.length > 0 ? ((achievedGoals / goals.length) * 100).toFixed(0) : '0'}% das Metas</span>
-                            </div>
-                            <div className="flex justify-between text-[10px]">
-                                <span className="text-text-secondary/50 font-medium">Acompanhamento:</span>
-                                <span className="text-text-primary font-medium">{goals.length - achievedGoals} pendentes</span>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
 
-            <div className="bg-surface/80 border border-border-color/0 shadow-[0_8px_30px_rgb(0,0,0,0.35)] rounded-xl p-6 space-y-6">
+            {/* SEÇÃO 2: POSIÇÃO FINANCEIRA */}
+            <div className="bg-surface/80 border border-border-color/40 rounded-xl p-6 shadow-[0_8px_30px_rgb(0,0,0,0.35)]">
+                <div className="flex justify-between items-center mb-6 pb-4 border-b border-border-color/20 animate-fade-in">
+                    <div>
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary/60">Posição Consolidada</h3>
+                        <p className="text-lg font-extrabold tracking-tight text-text-primary">Posição Financeira (Liquidez)</p>
+                    </div>
+                    <div>
+                        <Button 
+                            onClick={() => setShowProjection(!showProjection)} 
+                            variant={showProjection ? "primary" : "secondary"} 
+                            className="text-xs py-1.5 px-3 h-9 animate-none flex items-center gap-1"
+                            title="Projetar fluxo para os próximos 12 meses baseado em histórico robusto"
+                        >
+                            <svg className="w-4 h-4 text-text-secondary" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline><polyline points="16 7 22 7 22 13"></polyline></svg>
+                            {showProjection ? "Ocultar Projeção" : "Projetar 12m"}
+                        </Button>
+                    </div>
+                </div>
+
+                <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 flex items-start gap-3 mb-6 text-[#10b981]">
+                    <svg className="w-5 h-5 shrink-0 mt-0.5 text-emerald-400" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                    <span className="text-xs sm:text-sm font-medium">
+                        <strong>Posição Financeira:</strong> Mede capacidade financeira e fôlego da empresa (incluindo aportes societários/investimentos que não constam como receita de vendas no DRE, e subtraindo a reserva de impostos).
+                    </span>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+                    {/* Saldo Gross em Conta */}
+                    <div className="bg-surface border border-border-color/40 rounded-xl p-6 flex flex-col justify-between shadow-[0_4px_20px_rgba(0,0,0,0.2)] hover:border-slate-800 transition-all duration-300">
+                        <div>
+                            <span className="text-[10px] font-bold text-text-secondary/60 uppercase tracking-wider block">Saldo em Conta</span>
+                            <p className={`text-2xl font-extrabold tracking-tight mt-2 ${saldoHoje >= 0 ? 'text-[#f8fafc]' : 'text-danger'}`}>{formatCurrency(saldoHoje)}</p>
+                        </div>
+                        <div className="mt-4 pt-3 border-t border-border-color/25">
+                            <span className="text-[10px] text-text-secondary/50 block font-medium">Saldo bruto total (Entradas - Saídas pagas)</span>
+                        </div>
+                    </div>
+
+                    {/* Aportes / Incentivos */}
+                    <div className="bg-surface border border-border-color/40 rounded-xl p-6 flex flex-col justify-between shadow-[0_4px_20px_rgba(0,0,0,0.2)] hover:border-slate-800 transition-all duration-300">
+                        <div>
+                            <span className="text-[10px] font-bold text-text-secondary/60 uppercase tracking-wider block">+ Aportes / Incentivos</span>
+                            <p className="text-2xl font-extrabold tracking-tight mt-2 text-primary">{formatCurrency(financePosition.totalAportes)}</p>
+                        </div>
+                        <div className="mt-4 pt-3 border-t border-border-color/25">
+                            <span className="text-[10px] text-text-secondary/50 block font-medium">Investimentos/Aportes recebidos</span>
+                        </div>
+                    </div>
+
+                    {/* Saídas Realizadas */}
+                    <div className="bg-surface border border-border-color/40 rounded-xl p-6 flex flex-col justify-between shadow-[0_4px_20px_rgba(0,0,0,0.2)] hover:border-slate-800 transition-all duration-300">
+                        <div>
+                            <span className="text-[10px] font-bold text-text-secondary/60 uppercase tracking-wider block">- Saídas Realizadas</span>
+                            <p className="text-2xl font-extrabold tracking-tight mt-2 text-danger/80">{formatCurrency(financePosition.totalSaidasRealizadas)}</p>
+                        </div>
+                        <div className="mt-4 pt-3 border-t border-border-color/25">
+                            <span className="text-[10px] text-text-secondary/50 block font-medium">Total de despesas pagas acumuladas</span>
+                        </div>
+                    </div>
+
+                    {/* Caixa Disponível */}
+                    <div className="bg-surface border border-secondary/50 rounded-xl p-6 flex flex-col justify-between shadow-[0_4px_20px_rgba(16,185,129,0.05)] hover:border-emerald-600 transition-all duration-300">
+                        <div>
+                            <div className="flex justify-between items-start">
+                                <span className="text-[10px] font-bold text-secondary uppercase tracking-wider block">(=) Caixa Disponível</span>
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-secondary/10 text-secondary border border-secondary/20">Livre</span>
+                            </div>
+                            <p className={`text-2xl font-extrabold tracking-tight mt-2 ${saldoDisponivel >= 0 ? 'text-[#10b981]' : 'text-danger'}`}>{formatCurrency(saldoDisponivel)}</p>
+                        </div>
+                        <div className="mt-4 pt-3 border-t border-border-color/25 flex justify-between items-center text-[10px]">
+                            <span className="text-text-secondary/50 font-medium font-mono">Fôlego de caixa:</span>
+                            <span className="font-mono font-bold text-secondary">{mesesSobrevivencia}</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Sub-informação de Provisão */}
+                {saldoProvisaoHoje > 0 && (
+                    <div className="mt-4 p-3 bg-yellow-500/5 border border-yellow-500/10 rounded-lg flex items-center justify-between text-xs text-text-secondary">
+                        <div className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                            <span>Possui uma reserva de <strong>{formatCurrency(saldoProvisaoHoje)}</strong> provisionada para impostos acumulados de lançamentos.</span>
+                        </div>
+                        <span className="text-[10px] font-mono text-amber-500 font-medium">Deduzido do Caixa Disponível</span>
+                    </div>
+                )}
+            </div>
+
+            <div className="bg-surface/80 border border-border-color/40 shadow-[0_8px_30px_rgb(0,0,0,0.35)] rounded-xl p-6 space-y-6">
                 <div className="flex justify-between items-center pb-4 border-b border-border-color/20">
                     <div>
                         <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary/60 font-mono">Controle de Saídas</h3>
