@@ -997,6 +997,7 @@ const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ advisors, 
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [editingProspect, setEditingProspect] = useState<Prospect | null>(null);
     const [selectedProspect, setSelectedProspect] = useState<Prospect | null>(null);
+    const [copyFeedback, setCopyFeedback] = useState<'phone' | 'email' | null>(null);
 
     // Import states
     const [importText, setImportText] = useState(INITIAL_IMPORT_LIST_TEMPLATE);
@@ -1373,33 +1374,29 @@ const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ advisors, 
                             <tr>
                                 <th className="p-4">Nome completo</th>
                                 <th className="p-4">Empresa / Cargo</th>
-                                <th className="p-4">Email / Telefone</th>
                                 <th className="p-4 text-center">Origem</th>
                                 <th className="p-4 text-center">Data 1º Contato</th>
                                 <th className="p-4">Última Interação</th>
                                 <th className="p-4">Responsável</th>
                                 <th className="p-4 text-center">Status</th>
-                                <th className="p-4 text-right">Ações</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border-color/30">
                             {filteredProspects.map(p => (
                                 <tr key={p.id} className="hover:bg-background/50 transition-colors">
-                                    <td className="p-4 font-bold text-text-primary">
+                                    <td className="p-4">
                                         <button 
                                             onClick={() => { setSelectedProspect(p); setIsDetailsModalOpen(true); }}
-                                            className="text-left font-bold text-text-primary hover:text-primary transition-all underline decoration-dotted"
+                                            className="text-left font-bold text-text-primary hover:text-primary transition-all underline decoration-dotted text-xs sm:text-sm flex items-center gap-2 group"
+                                            title="Clique para abrir a Ficha Completa, ver contatos e interagir"
                                         >
-                                            {p.name}
+                                            <span>{p.name}</span>
+                                            <span className="text-[9px] font-normal text-secondary opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap bg-secondary/10 px-1.5 py-0.5 rounded border border-secondary/20 font-sans">⚡ Ver Ficha</span>
                                         </button>
                                     </td>
                                     <td className="p-4">
                                         <div className="font-medium text-text-primary">{p.company || '-'}</div>
                                         <div className="text-[10px] text-text-secondary">{p.role || '-'}</div>
-                                    </td>
-                                    <td className="p-4">
-                                        <div className="text-text-primary font-medium">{p.phone || '-'}</div>
-                                        <div className="text-[10px] text-text-secondary">{p.email || '-'}</div>
                                     </td>
                                     <td className="p-4 text-center">
                                         <span className="px-2 py-0.5 rounded bg-surface border border-border-color/60 font-medium text-[10px]">
@@ -1418,24 +1415,11 @@ const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ advisors, 
                                             {p.status}
                                         </span>
                                     </td>
-                                    <td className="p-4 text-right">
-                                        <div className="flex justify-end items-center gap-1">
-                                            <Button 
-                                                variant="secondary" 
-                                                className="p-1 px-2 text-[10px] font-bold uppercase flex items-center gap-1"
-                                                onClick={() => { setSelectedProspectForInteraction(p); setIsInteractionModalOpen(true); }}
-                                            >
-                                                <span>💬</span> Interagir
-                                            </Button>
-                                            <Button variant="ghost" className="p-1" onClick={() => openEditModal(p)}><EditIcon className="w-3.5 h-3.5"/></Button>
-                                            <Button variant="ghostDanger" className="p-1" onClick={() => handleDelete(p.id)}><TrashIcon className="w-3.5 h-3.5"/></Button>
-                                        </div>
-                                    </td>
                                 </tr>
                             ))}
                             {filteredProspects.length === 0 && (
                                 <tr>
-                                    <td colSpan={9} className="p-10 text-center text-text-secondary italic">Nenhum prospecto encontrado no filtro selecionado.</td>
+                                    <td colSpan={7} className="p-10 text-center text-text-secondary italic">Nenhum prospecto encontrado no filtro selecionado.</td>
                                 </tr>
                             )}
                         </tbody>
@@ -1610,13 +1594,78 @@ const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ advisors, 
                                     {selectedProspect.status}
                                 </span>
                             </div>
-                            <div>
+                            <div className="col-span-2 sm:col-span-1">
                                 <span className="block text-[10px] font-bold text-text-secondary uppercase">Celular</span>
-                                <p className="text-xs font-mono font-bold">{selectedProspect.phone || '-'}</p>
+                                <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 mt-1">
+                                    <p className="text-xs font-mono font-bold text-text-primary">{selectedProspect.phone || '-'}</p>
+                                    {selectedProspect.phone && (
+                                        <div className="flex items-center gap-1">
+                                            <a 
+                                                href={`tel:${selectedProspect.phone}`} 
+                                                className="p-1 px-1.5 text-[10px] font-semibold bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded transition-all flex items-center gap-0.5"
+                                                title="Ligar para este número"
+                                            >
+                                                📞 Ligar
+                                            </a>
+                                            {(() => {
+                                                const waNumber = selectedProspect.phone.replace(/\D/g, '');
+                                                const waFormatted = waNumber.startsWith('55') ? waNumber : `55${waNumber}`;
+                                                return (
+                                                    <a 
+                                                        href={`https://wa.me/${waFormatted}`} 
+                                                        target="_blank" 
+                                                        rel="noopener noreferrer" 
+                                                        className="p-1 px-1.5 text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 rounded transition-all flex items-center gap-0.5"
+                                                        title="Conversar via WhatsApp"
+                                                    >
+                                                        💬 WhatsApp
+                                                    </a>
+                                                );
+                                            })()}
+                                            <button 
+                                                type="button"
+                                                onClick={() => {
+                                                    navigator.clipboard.writeText(selectedProspect.phone || '');
+                                                    setCopyFeedback('phone');
+                                                    setTimeout(() => setCopyFeedback(null), 1500);
+                                                }}
+                                                className="p-1 px-1.5 text-[10px] bg-background border border-border-color/60 hover:border-slate-700 text-text-secondary rounded transition-all"
+                                                title="Copiar celular"
+                                            >
+                                                {copyFeedback === 'phone' ? '✓ Copiado!' : '📋 Copiar'}
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                            <div>
+                            <div className="col-span-2 sm:col-span-1">
                                 <span className="block text-[10px] font-bold text-text-secondary uppercase">E-mail</span>
-                                <p className="text-xs text-text-secondary">{selectedProspect.email || '-'}</p>
+                                <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 mt-1">
+                                    <p className="text-xs text-text-secondary font-medium truncate max-w-[160px]" title={selectedProspect.email}>{selectedProspect.email || '-'}</p>
+                                    {selectedProspect.email && (
+                                        <div className="flex items-center gap-1">
+                                            <a 
+                                                href={`mailto:${selectedProspect.email}`} 
+                                                className="p-1 px-1.5 text-[10px] font-semibold bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 rounded transition-all flex items-center gap-0.5"
+                                                title="Enviar um e-mail"
+                                            >
+                                                ✉️ Enviar
+                                            </a>
+                                            <button 
+                                                type="button"
+                                                onClick={() => {
+                                                    navigator.clipboard.writeText(selectedProspect.email || '');
+                                                    setCopyFeedback('email');
+                                                    setTimeout(() => setCopyFeedback(null), 1500);
+                                                }}
+                                                className="p-1 px-1.5 text-[10px] bg-background border border-border-color/60 hover:border-slate-700 text-text-secondary rounded transition-all"
+                                                title="Copiar e-mail"
+                                            >
+                                                {copyFeedback === 'email' ? '✓ Copiado!' : '📋 Copiar'}
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                             <div>
                                 <span className="block text-[10px] font-bold text-text-secondary uppercase">Origem</span>
@@ -1642,9 +1691,55 @@ const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ advisors, 
                             </div>
                         </div>
 
-                        <div className="flex justify-end pt-2 border-t border-border-color">
-                            <Button variant="secondary" onClick={() => { setIsDetailsModalOpen(false); openEditModal(selectedProspect); }}>Editar Dados</Button>
-                            <Button variant="ghost" onClick={() => { setIsDetailsModalOpen(false); setSelectedProspect(null); }}>Fechar</Button>
+                        <div className="flex flex-wrap gap-3 pt-4 border-t border-border-color justify-between items-center mt-6">
+                            <div className="flex flex-wrap gap-2">
+                                <Button 
+                                    variant="primary" 
+                                    className="px-3 py-1.5 text-xs font-bold uppercase flex items-center gap-1.5"
+                                    onClick={() => { 
+                                        setIsDetailsModalOpen(false); 
+                                        setSelectedProspectForInteraction(selectedProspect); 
+                                        setIsInteractionModalOpen(true); 
+                                    }}
+                                    title="Registrar nova interação"
+                                >
+                                    <span>💬</span> Interagir
+                                </Button>
+                                <Button 
+                                    variant="secondary" 
+                                    className="px-3 py-1.5 text-xs font-bold uppercase flex items-center gap-1.5 border border-border-color/60"
+                                    onClick={() => { 
+                                        setIsDetailsModalOpen(false); 
+                                        openEditModal(selectedProspect); 
+                                    }}
+                                    title="Alterar dados cadastrais"
+                                >
+                                    <span>✏️</span> Editar Cadastro
+                                </Button>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                <Button 
+                                    variant="danger" 
+                                    className="px-3 py-1.5 text-xs font-bold uppercase flex items-center gap-1.5 border border-red-500/20"
+                                    onClick={() => { 
+                                        setIsDetailsModalOpen(false); 
+                                        handleDelete(selectedProspect.id); 
+                                    }}
+                                    title="Remover prospecto"
+                                >
+                                    <span>🗑️</span> Excluir
+                                </Button>
+                                <Button 
+                                    variant="ghost" 
+                                    className="px-3 py-1.5 text-xs uppercase"
+                                    onClick={() => { 
+                                        setIsDetailsModalOpen(false); 
+                                        setSelectedProspect(null); 
+                                    }}
+                                >
+                                    Fechar
+                                </Button>
+                            </div>
                         </div>
                     </div>
                 )}
