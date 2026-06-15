@@ -5943,20 +5943,16 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
         const todayStart = new Date();
         todayStart.setHours(0, 0, 0, 0);
 
-        const pendingExpenses = transactions.filter(
-            t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PENDING
-        );
-
-        const vencidas = pendingExpenses.filter(t => new Date(t.date) < todayStart);
+        const vencidas = upcomingBills.filter(t => new Date(t.date) < todayStart);
         const vencidasCount = vencidas.length;
         const vencidasTotal = round(vencidas.reduce((sum, t) => sum + t.amount, 0));
 
-        const pendentes = pendingExpenses.filter(t => new Date(t.date) >= todayStart);
+        const pendentes = upcomingBills.filter(t => new Date(t.date) >= todayStart);
         const pendentesCount = pendentes.length;
         const pendentesTotal = round(pendentes.reduce((sum, t) => sum + t.amount, 0));
 
-        const totalCount = pendingExpenses.length;
-        const totalAmount = round(pendingExpenses.reduce((sum, t) => sum + t.amount, 0));
+        const totalCount = upcomingBills.length;
+        const totalAmount = round(upcomingBills.reduce((sum, t) => sum + t.amount, 0));
 
         return {
             vencidasCount,
@@ -5966,7 +5962,7 @@ const DashboardView: FC<DashboardViewProps> = ({ transactions, goals, onSetPaid,
             totalCount,
             totalAmount
         };
-    }, [transactions]);
+    }, [upcomingBills]);
 
     const expenseSubcategoryData = useMemo(() => {
         const expenses = filteredTransactions.filter(t => t.type === TransactionType.EXPENSE && t.status === ExpenseStatus.PAID);
