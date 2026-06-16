@@ -214,3 +214,56 @@ export interface Prospect {
 }
 
 export type AspectRatio = "1:1" | "3:4" | "4:3" | "9:16" | "16:9";
+
+export interface TransactionFormValues {
+    description: string;
+    amount: number;
+    date: string;
+    type: TransactionType;
+    category: string;
+    clientSupplier: string;
+    paymentMethod: string;
+    status?: ExpenseStatus;
+    nature?: ExpenseNature;
+    costCenter?: string;
+    origin?: 'manual' | 'importado' | 'comissoes';
+    taxAmount?: number;
+    grossAmount?: number;
+    commissionAmount?: number;
+    advisorId?: string;
+    recurringCount?: number;
+    recurringId?: string;
+    splits?: AdvisorSplit[];
+    taxRate?: number;
+}
+
+export interface TransactionFormProps { 
+    onSubmit: (data: TransactionFormValues) => void;
+    onClose: () => void; 
+    initialData?: Transaction | null; 
+    defaultType?: TransactionType | null;
+    incomeCategories: IncomeCategory[];
+    expenseCategories: ExpenseCategory[];
+    paymentMethods: string[];
+    costCenters: CostCenter[];
+    advisors: Advisor[];
+    globalTaxRate: number;
+    transactions?: Transaction[];
+    importedRevenues?: ImportedRevenue[];
+    userId?: string;
+}
+
+export interface DashboardViewProps {
+    transactions: Transaction[];
+    goals: Goal[];
+    onSetPaid: (id: string) => void;
+    onEdit: (id: string, data: TransactionFormValues) => void;
+    incomeCategories: IncomeCategory[];
+    expenseCategories: ExpenseCategory[];
+    paymentMethods: string[];
+    costCenters: CostCenter[];
+    advisors: Advisor[];
+    globalTaxRate: number;
+    estimatedTaxRate: number;
+    importedRevenues: ImportedRevenue[];
+}
