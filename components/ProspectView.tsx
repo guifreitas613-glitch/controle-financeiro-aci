@@ -350,7 +350,17 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
 
     const filteredProspects = useMemo(() => {
         return prospects.filter(p => {
-            const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
+            let matchesStatus = false;
+            if (statusFilter === 'all') {
+                matchesStatus = true;
+            } else if (statusFilter === 'em_negociacao') {
+                matchesStatus = p.status === 'Em análise' || 
+                                p.status === 'Reunião marcada' || 
+                                p.status === 'Primeiro contato realizado';
+            } else {
+                matchesStatus = p.status === statusFilter;
+            }
+
             const matchesAdvisor = advisorFilter === 'all' || p.responsible === advisorFilter;
             const matchesSource = sourceFilter === 'all' || p.source === sourceFilter;
             const matchesSearch = !searchQuery || 
@@ -417,7 +427,12 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
 
             {/* Totalizadores Counters */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="bg-surface border border-border-color p-4 rounded-xl flex items-center gap-4">
+                <div 
+                    onClick={() => setStatusFilter('all')}
+                    className={`bg-surface border p-4 rounded-xl flex items-center gap-4 cursor-pointer hover:bg-surface/80 transition-all duration-200 active:scale-[0.98] ${
+                        statusFilter === 'all' ? 'border-primary shadow-lg shadow-primary/5' : 'border-border-color'
+                    }`}
+                >
                     <div className="bg-primary/10 p-3 rounded-full text-primary">
                         <PartnershipIcon className="w-6 h-6" />
                     </div>
@@ -426,7 +441,12 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                         <p className="text-2xl font-extrabold text-text-primary mt-0.5 font-mono">{totalCount}</p>
                     </div>
                 </div>
-                <div className="bg-surface border border-border-color p-4 rounded-xl flex items-center gap-4">
+                <div 
+                    onClick={() => setStatusFilter('em_negociacao')}
+                    className={`bg-surface border p-4 rounded-xl flex items-center gap-4 cursor-pointer hover:bg-surface/80 transition-all duration-200 active:scale-[0.98] ${
+                        statusFilter === 'em_negociacao' ? 'border-amber-500 shadow-lg shadow-amber-500/5' : 'border-border-color'
+                    }`}
+                >
                     <div className="bg-amber-500/10 p-3 rounded-full text-amber-500">
                         <GoalsIcon className="w-6 h-6" />
                     </div>
@@ -435,7 +455,12 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                         <p className="text-2xl font-extrabold text-amber-500 mt-0.5 font-mono">{inNegotiationCount}</p>
                     </div>
                 </div>
-                <div className="bg-surface border border-border-color p-4 rounded-xl flex items-center gap-4">
+                <div 
+                    onClick={() => setStatusFilter('Cliente convertido')}
+                    className={`bg-surface border p-4 rounded-xl flex items-center gap-4 cursor-pointer hover:bg-surface/80 transition-all duration-200 active:scale-[0.98] ${
+                        statusFilter === 'Cliente convertido' ? 'border-green-500 shadow-lg shadow-green-500/5' : 'border-border-color'
+                    }`}
+                >
                     <div className="bg-green-500/10 p-3 rounded-full text-green-500">
                         <svg className="w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                     </div>
@@ -457,6 +482,7 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                             className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary outline-none"
                         >
                             <option value="all">Todos os Status</option>
+                            <option value="em_negociacao">Em Negociação</option>
                             <option value="Novo contato">Novo contato</option>
                             <option value="Primeiro contato realizado">Primeiro contato realizado</option>
                             <option value="Reunião marcada">Reunião marcada</option>
