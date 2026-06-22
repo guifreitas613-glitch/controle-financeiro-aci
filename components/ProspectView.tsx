@@ -593,7 +593,7 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                                 <th className="p-4 text-center">Origem</th>
                                 <th className="p-4 text-center">Transmissão</th>
                                 <th className="p-4 text-center">Data 1º Contato</th>
-                                <th className="p-4">Última Interação</th>
+                                <th className="p-4 text-center">Última Interação</th>
                                 <th className="p-4">Responsável</th>
                                 <th className="p-4 text-center">Status</th>
                             </tr>
@@ -634,8 +634,12 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                                     <td className="p-4 text-center font-mono">
                                         {p.firstContactDate ? new Date(p.firstContactDate + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
                                     </td>
-                                    <td className="p-4 max-w-[200px] truncate" title={p.lastInteraction}>
-                                        {p.lastInteraction || <span className="text-text-secondary italic">Nenhuma interação registrada</span>}
+                                    <td className="p-4 text-center font-mono text-xs text-text-primary" title={p.lastInteraction || 'Nenhuma interação registrada'}>
+                                        {(() => {
+                                            if (!p.lastInteraction) return <span className="text-text-secondary italic font-sans text-xs">-</span>;
+                                            const match = p.lastInteraction.match(/^\[([^\]]+)\]/);
+                                            return match ? match[1] : (p.lastInteraction.length > 10 ? p.lastInteraction.substring(0, 10) + '...' : p.lastInteraction);
+                                        })()}
                                     </td>
                                     <td className="p-4 font-semibold text-text-secondary">{p.responsible}</td>
                                     <td className="p-4 text-center">
