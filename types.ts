@@ -211,6 +211,7 @@ export interface Prospect {
   lastInteraction?: string;
   responsible: string;
   notes?: string;
+  broadcastAccepted?: boolean;
 }
 
 export type AspectRatio = "1:1" | "3:4" | "4:3" | "9:16" | "16:9";

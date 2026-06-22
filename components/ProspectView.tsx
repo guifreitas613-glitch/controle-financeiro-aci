@@ -130,6 +130,7 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
     const [advisorFilter, setAdvisorFilter] = useState<string>('all');
     const [sourceFilter, setSourceFilter] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState<string>('');
+    const [broadcastFilter, setBroadcastFilter] = useState<string>('all');
 
     // Modal states
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -164,6 +165,7 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
     const [formFirstContactDate, setFormFirstContactDate] = useState('');
     const [formResponsible, setFormResponsible] = useState('');
     const [formNotes, setFormNotes] = useState('');
+    const [formBroadcastAccepted, setFormBroadcastAccepted] = useState(false);
 
     // Log Interaction states
     const [selectedProspectForInteraction, setSelectedProspectForInteraction] = useState<Prospect | null>(null);
@@ -200,7 +202,8 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
             firstContactDate: formFirstContactDate || new Date().toISOString().split('T')[0],
             responsible: formResponsible,
             notes: formNotes || '',
-            lastInteraction: editingProspect?.lastInteraction || ''
+            lastInteraction: editingProspect?.lastInteraction || '',
+            broadcastAccepted: formBroadcastAccepted
         };
 
         try {
@@ -325,6 +328,7 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
         setFormFirstContactDate(p.firstContactDate || '');
         setFormResponsible(p.responsible);
         setFormNotes(p.notes || '');
+        setFormBroadcastAccepted(!!p.broadcastAccepted);
         setIsModalOpen(true);
     };
 
@@ -340,6 +344,7 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
         setFormFirstContactDate(new Date().toISOString().split('T')[0]);
         setFormResponsible('');
         setFormNotes('');
+        setFormBroadcastAccepted(false);
     };
 
     const handleDelete = async (id: string) => {
@@ -363,14 +368,17 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
 
             const matchesAdvisor = advisorFilter === 'all' || p.responsible === advisorFilter;
             const matchesSource = sourceFilter === 'all' || p.source === sourceFilter;
+            const matchesBroadcast = broadcastFilter === 'all' ||
+                (broadcastFilter === 'yes' && p.broadcastAccepted === true) ||
+                (broadcastFilter === 'no' && !p.broadcastAccepted);
             const matchesSearch = !searchQuery || 
                 p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 (p.company && p.company.toLowerCase().includes(searchQuery.toLowerCase())) ||
                 (p.responsible && p.responsible.toLowerCase().includes(searchQuery.toLowerCase()));
 
-            return matchesStatus && matchesAdvisor && matchesSource && matchesSearch;
+            return matchesStatus && matchesAdvisor && matchesSource && matchesBroadcast && matchesSearch;
         });
-    }, [prospects, statusFilter, advisorFilter, sourceFilter, searchQuery]);
+    }, [prospects, statusFilter, advisorFilter, sourceFilter, broadcastFilter, searchQuery]);
 
     const totalCount = prospects.length;
     const inNegotiationCount = prospects.filter(p => 
@@ -379,6 +387,7 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
         p.status === 'Primeiro contato realizado'
     ).length;
     const convertedCount = prospects.filter(p => p.status === 'Cliente convertido').length;
+    const broadcastAcceptedCount = prospects.filter(p => p.broadcastAccepted).length;
 
     const getStatusBadgeStyle = (status: Prospect['status']) => {
         switch (status) {
@@ -426,11 +435,14 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
             </div>
 
             {/* Totalizadores Counters */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                 <div 
-                    onClick={() => setStatusFilter('all')}
+                    onClick={() => {
+                        setStatusFilter('all');
+                        setBroadcastFilter('all');
+                    }}
                     className={`bg-surface border p-4 rounded-xl flex items-center gap-4 cursor-pointer hover:bg-surface/80 transition-all duration-200 active:scale-[0.98] ${
-                        statusFilter === 'all' ? 'border-primary shadow-lg shadow-primary/5' : 'border-border-color'
+                        statusFilter === 'all' && broadcastFilter === 'all' ? 'border-primary shadow-lg shadow-primary/5' : 'border-border-color'
                     }`}
                 >
                     <div className="bg-primary/10 p-3 rounded-full text-primary">
@@ -442,9 +454,12 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                     </div>
                 </div>
                 <div 
-                    onClick={() => setStatusFilter('em_negociacao')}
+                    onClick={() => {
+                        setStatusFilter('em_negociacao');
+                        setBroadcastFilter('all');
+                    }}
                     className={`bg-surface border p-4 rounded-xl flex items-center gap-4 cursor-pointer hover:bg-surface/80 transition-all duration-200 active:scale-[0.98] ${
-                        statusFilter === 'em_negociacao' ? 'border-amber-500 shadow-lg shadow-amber-500/5' : 'border-border-color'
+                        statusFilter === 'em_negociacao' && broadcastFilter === 'all' ? 'border-amber-500 shadow-lg shadow-amber-500/5' : 'border-border-color'
                     }`}
                 >
                     <div className="bg-amber-500/10 p-3 rounded-full text-amber-500">
@@ -456,9 +471,12 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                     </div>
                 </div>
                 <div 
-                    onClick={() => setStatusFilter('Cliente convertido')}
+                    onClick={() => {
+                        setStatusFilter('Cliente convertido');
+                        setBroadcastFilter('all');
+                    }}
                     className={`bg-surface border p-4 rounded-xl flex items-center gap-4 cursor-pointer hover:bg-surface/80 transition-all duration-200 active:scale-[0.98] ${
-                        statusFilter === 'Cliente convertido' ? 'border-green-500 shadow-lg shadow-green-500/5' : 'border-border-color'
+                        statusFilter === 'Cliente convertido' && broadcastFilter === 'all' ? 'border-green-500 shadow-lg shadow-green-500/5' : 'border-border-color'
                     }`}
                 >
                     <div className="bg-green-500/10 p-3 rounded-full text-green-500">
@@ -469,11 +487,30 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                         <p className="text-2xl font-extrabold text-green-400 mt-0.5 font-mono">{convertedCount}</p>
                     </div>
                 </div>
+                <div 
+                    onClick={() => {
+                        setBroadcastFilter('yes');
+                        setStatusFilter('all');
+                    }}
+                    className={`bg-surface border p-4 rounded-xl flex items-center gap-4 cursor-pointer hover:bg-surface/80 transition-all duration-200 active:scale-[0.98] ${
+                        broadcastFilter === 'yes' ? 'border-indigo-500 shadow-lg shadow-indigo-500/5' : 'border-border-color'
+                    }`}
+                >
+                    <div className="bg-indigo-500/10 p-3 rounded-full text-indigo-400">
+                        <svg className="w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider block">Lista Transmissão (Sim)</span>
+                        <p className="text-2xl font-extrabold text-indigo-400 mt-0.5 font-mono">{broadcastAcceptedCount}</p>
+                    </div>
+                </div>
             </div>
 
             {/* Toolbar Filtros */}
             <Card className="p-4">
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                     <div>
                         <label className="block text-xs font-medium text-text-secondary mb-1">Status do Funil</label>
                         <select 
@@ -518,6 +555,18 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                         </select>
                     </div>
                     <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1">Lista de Transmissão</label>
+                        <select 
+                            value={broadcastFilter} 
+                            onChange={(e) => setBroadcastFilter(e.target.value)}
+                            className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary outline-none"
+                        >
+                            <option value="all">Todas as Opções</option>
+                            <option value="yes">Aceitou Receber ✅</option>
+                            <option value="no">Não Aceitou / Sem definição ❌</option>
+                        </select>
+                    </div>
+                    <div>
                         <label className="block text-xs font-medium text-text-secondary mb-1 font-sans">Buscar por Nome / Empresa</label>
                         <div className="relative">
                             <input 
@@ -542,6 +591,7 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                                 <th className="p-4">Nome completo</th>
                                 <th className="p-4">Empresa / Cargo</th>
                                 <th className="p-4 text-center">Origem</th>
+                                <th className="p-4 text-center">Transmissão</th>
                                 <th className="p-4 text-center">Data 1º Contato</th>
                                 <th className="p-4">Última Interação</th>
                                 <th className="p-4">Responsável</th>
@@ -570,6 +620,17 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                                             {getSourceLabel(p.source)}
                                         </span>
                                     </td>
+                                    <td className="p-4 text-center">
+                                        {p.broadcastAccepted ? (
+                                            <span className="px-2 py-0.5 rounded bg-green-500/10 text-green-400 border border-green-500/20 font-bold text-[10px]" title="Aceitou receber notícias do mercado">
+                                                Aceitou ✅
+                                            </span>
+                                        ) : (
+                                            <span className="px-2 py-0.5 rounded bg-zinc-500/10 text-zinc-400 border border-zinc-500/20 font-normal text-[10px]" title="Não aceitou ou sem resposta">
+                                                Não ❌
+                                            </span>
+                                        )}
+                                    </td>
                                     <td className="p-4 text-center font-mono">
                                         {p.firstContactDate ? new Date(p.firstContactDate + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
                                     </td>
@@ -586,7 +647,7 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                             ))}
                             {filteredProspects.length === 0 && (
                                 <tr>
-                                    <td colSpan={7} className="p-10 text-center text-text-secondary italic">Nenhum prospecto encontrado no filtro selecionado.</td>
+                                    <td colSpan={8} className="p-10 text-center text-text-secondary italic">Nenhum prospecto encontrado no filtro selecionado.</td>
                                 </tr>
                             )}
                         </tbody>
@@ -704,6 +765,21 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                                 placeholder="Descreva os passos e observações deste Lead comercial..." 
                                 className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary outline-none font-sans" 
                             />
+                        </div>
+                        <div className="col-span-2 bg-background/40 p-3.5 rounded-lg border border-border-color/60 flex items-center justify-between">
+                            <div className="pr-4">
+                                <label className="block text-sm font-bold text-text-primary">Lista de Transmissão</label>
+                                <span className="text-xs text-text-secondary select-none">O cliente aceitou receber análises, notícias e oportunidades do mercado financeiro?</span>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer select-none">
+                                <input 
+                                    type="checkbox" 
+                                    className="sr-only peer"
+                                    checked={formBroadcastAccepted}
+                                    onChange={(e) => setFormBroadcastAccepted(e.target.checked)}
+                                />
+                                <div className="w-11 h-6 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                            </label>
                         </div>
                     </div>
                     <div className="flex justify-end gap-2 pt-2">
@@ -841,6 +917,23 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                             <div>
                                 <span className="block text-[10px] font-bold text-text-secondary uppercase">Primeiro Contato</span>
                                 <p className="text-xs font-mono">{selectedProspect.firstContactDate ? new Date(selectedProspect.firstContactDate + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}</p>
+                            </div>
+                            <div className="col-span-2 bg-background/40 p-3 rounded-lg border border-border-color/60 flex items-center justify-between mt-1">
+                                <div>
+                                    <span className="block text-[10px] font-bold text-text-secondary uppercase font-sans">Informativos & Oportunidades</span>
+                                    <span className="text-[11px] text-text-secondary">Aceitou receber notícias do mercado financeiro</span>
+                                </div>
+                                <div>
+                                    {selectedProspect.broadcastAccepted ? (
+                                        <span className="px-2.5 py-1 rounded bg-green-500/10 text-green-400 border border-green-500/20 font-bold text-xs font-sans">
+                                            Autorizado ✅
+                                        </span>
+                                    ) : (
+                                        <span className="px-2.5 py-1 rounded bg-zinc-500/10 text-zinc-400 border border-zinc-500/20 font-semibold text-xs font-sans">
+                                            Não Autorizado ❌
+                                        </span>
+                                    )}
+                                </div>
                             </div>
                         </div>
 
