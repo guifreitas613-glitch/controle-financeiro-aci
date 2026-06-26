@@ -5739,6 +5739,13 @@ const App: FC = () => {
     const [estimatedTaxRate, setEstimatedTaxRate] = useState<number>(16.5);
     const [goals, setGoals] = useState<Goal[]>(getInitialGoals());
 
+    const [deletedFixedExpenses, setDeletedFixedExpenses] = useState<string[]>([]);
+    const deletedFixedExpensesRef = useRef<string[]>([]);
+
+    useEffect(() => {
+        deletedFixedExpensesRef.current = deletedFixedExpenses;
+    }, [deletedFixedExpenses]);
+
     const [partners, setPartners] = useState<Partner[]>([]);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [importedRevenues, setImportedRevenues] = useState<ImportedRevenue[]>([]);
@@ -5834,6 +5841,10 @@ const App: FC = () => {
 
             const instantiateMissing = async () => {
                 const missingExpenses = baseFixedExpenses.filter(f => {
+                    const signature = `${currentYear}-${currentMonth}-${f.description}-${f.category}`;
+                    if (deletedFixedExpensesRef.current.includes(signature)) {
+                        return false;
+                    }
                     return !transData.some(item => 
                         item.description === f.description && 
                         item.category === f.category && 
@@ -5926,6 +5937,10 @@ const App: FC = () => {
                 if (data.costCenters) setCostCenters(data.costCenters);
                 if (data.globalTaxRate !== undefined) setGlobalTaxRate(data.globalTaxRate);
                 if (data.estimatedTaxRate !== undefined) setEstimatedTaxRate(data.estimatedTaxRate);
+                if (data.deletedFixedExpenses) {
+                    setDeletedFixedExpenses(data.deletedFixedExpenses);
+                    deletedFixedExpensesRef.current = data.deletedFixedExpenses;
+                }
             } else {
                 // Initial save of defaults/localStorage to Firestore
                 const settings = {
@@ -5934,7 +5949,8 @@ const App: FC = () => {
                     paymentMethods: JSON.parse(localStorage.getItem('paymentMethods') || JSON.stringify(initialPaymentMethods)),
                     costCenters: JSON.parse(localStorage.getItem('costCenters') || JSON.stringify(initialCostCenters)),
                     globalTaxRate: JSON.parse(localStorage.getItem('globalTaxRate') || '6'),
-                    estimatedTaxRate: JSON.parse(localStorage.getItem('estimatedTaxRate') || '16.5')
+                    estimatedTaxRate: JSON.parse(localStorage.getItem('estimatedTaxRate') || '16.5'),
+                    deletedFixedExpenses: []
                 };
                 saveSettings(settings);
             }
@@ -6048,6 +6064,23 @@ const App: FC = () => {
              alert("Não é possível excluir um lançamento em fase de sincronização automática.");
              return;
          }
+         
+         const transactionToDelete = transactions.find(t => t.id === id);
+         if (transactionToDelete && transactionToDelete.type === TransactionType.EXPENSE && transactionToDelete.nature === ExpenseNature.FIXED) {
+             const d = new Date(transactionToDelete.date);
+             const year = d.getUTCFullYear();
+             const month = d.getUTCMonth();
+             const signature = `${year}-${month}-${transactionToDelete.description}-${transactionToDelete.category}`;
+             
+             if (!deletedFixedExpensesRef.current.includes(signature)) {
+                 const updatedDeleted = [...deletedFixedExpensesRef.current, signature];
+                 await saveSettings({
+                     deletedFixedExpenses: updatedDeleted
+                 });
+                 setDeletedFixedExpenses(updatedDeleted);
+             }
+         }
+
          await deleteTransactionFromDb(id);
          setTransactions(transactions.filter(t => t.id !== id));
     };
