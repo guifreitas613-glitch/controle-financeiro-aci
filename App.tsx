@@ -5741,6 +5741,7 @@ const App: FC = () => {
 
     const [deletedFixedExpenses, setDeletedFixedExpenses] = useState<string[]>([]);
     const deletedFixedExpensesRef = useRef<string[]>([]);
+    const [settingsLoaded, setSettingsLoaded] = useState(false);
 
     useEffect(() => {
         deletedFixedExpensesRef.current = deletedFixedExpenses;
@@ -5822,62 +5823,6 @@ const App: FC = () => {
         const unsubTransactions = onSnapshot(query(collection(db, "transacoes"), where("tipoInterno", "==", "transacao"), orderBy("date", "desc")), (snap) => {
             const transData = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
             setTransactions(transData);
-            
-            // Instanciação automática de gastos fixos para o mês atual
-            const now = new Date();
-            const currentYear = now.getUTCFullYear();
-            const currentMonth = now.getUTCMonth();
-            const refDate = new Date(Date.UTC(currentYear, currentMonth - 1, 1));
-            const refYear = refDate.getUTCFullYear();
-            const refMonth = refDate.getUTCMonth();
-
-            const baseFixedExpenses = transData.filter(t => {
-                const d = new Date(t.date);
-                return t.type === TransactionType.EXPENSE &&
-                       t.nature === ExpenseNature.FIXED &&
-                       d.getUTCFullYear() === refYear &&
-                       d.getUTCMonth() === refMonth;
-            });
-
-            const instantiateMissing = async () => {
-                const missingExpenses = baseFixedExpenses.filter(f => {
-                    const signature = `${currentYear}-${currentMonth}-${f.description}-${f.category}`;
-                    if (deletedFixedExpensesRef.current.includes(signature)) {
-                        return false;
-                    }
-                    return !transData.some(item => 
-                        item.description === f.description && 
-                        item.category === f.category && 
-                        item.nature === ExpenseNature.FIXED &&
-                        new Date(item.date).getUTCFullYear() === currentYear &&
-                        new Date(item.date).getUTCMonth() === currentMonth
-                    );
-                });
-
-                if (missingExpenses.length === 0) return;
-
-                await Promise.all(missingExpenses.map(async (f) => {
-                    const day = new Date(f.date).getUTCDate();
-                    const lastDayOfTarget = new Date(Date.UTC(currentYear, currentMonth + 1, 0)).getUTCDate();
-                    const targetDay = Math.min(day, lastDayOfTarget);
-                    const projectedDate = new Date(Date.UTC(currentYear, currentMonth, targetDay, 12, 0, 0)).toISOString();
-                    
-                    const newData = {
-                        ...f,
-                        date: projectedDate,
-                        status: ExpenseStatus.PENDING,
-                        reconciled: false,
-                        isProjection: false
-                    };
-                    delete (newData as any).id;
-                    await saveTransaction(newData as any, user.uid);
-                }));
-            };
-            
-            if (!fixedExpensesInstantiated.current && transData.length > 0) {
-                fixedExpensesInstantiated.current = true;
-                instantiateMissing();
-            }
         });
 
         const unsubRevenues = onSnapshot(query(collection(db, "transacoes"), where("tipoInterno", "==", "receita_importada"), orderBy("date", "desc")), (snap) => {
@@ -5941,6 +5886,7 @@ const App: FC = () => {
                     setDeletedFixedExpenses(data.deletedFixedExpenses);
                     deletedFixedExpensesRef.current = data.deletedFixedExpenses;
                 }
+                setSettingsLoaded(true);
             } else {
                 // Initial save of defaults/localStorage to Firestore
                 const settings = {
@@ -5952,7 +5898,9 @@ const App: FC = () => {
                     estimatedTaxRate: JSON.parse(localStorage.getItem('estimatedTaxRate') || '16.5'),
                     deletedFixedExpenses: []
                 };
-                saveSettings(settings);
+                saveSettings(settings).then(() => {
+                    setSettingsLoaded(true);
+                });
             }
         });
 
@@ -5967,6 +5915,64 @@ const App: FC = () => {
             unsubSettings();
         };
     }, [user]);
+
+    useEffect(() => {
+        if (!user || !settingsLoaded || transactions.length === 0 || fixedExpensesInstantiated.current) return;
+
+        fixedExpensesInstantiated.current = true;
+
+        const now = new Date();
+        const currentYear = now.getUTCFullYear();
+        const currentMonth = now.getUTCMonth();
+        const refDate = new Date(Date.UTC(currentYear, currentMonth - 1, 1));
+        const refYear = refDate.getUTCFullYear();
+        const refMonth = refDate.getUTCMonth();
+
+        const baseFixedExpenses = transactions.filter(t => {
+            const d = new Date(t.date);
+            return t.type === TransactionType.EXPENSE &&
+                   t.nature === ExpenseNature.FIXED &&
+                   d.getUTCFullYear() === refYear &&
+                   d.getUTCMonth() === refMonth;
+        });
+
+        const instantiateMissing = async () => {
+            const missingExpenses = baseFixedExpenses.filter(f => {
+                const signature = `${currentYear}-${currentMonth}-${f.description}-${f.category}`;
+                if (deletedFixedExpenses.includes(signature)) {
+                    return false;
+                }
+                return !transactions.some(item => 
+                    item.description === f.description && 
+                    item.category === f.category && 
+                    item.nature === ExpenseNature.FIXED &&
+                    new Date(item.date).getUTCFullYear() === currentYear &&
+                    new Date(item.date).getUTCMonth() === currentMonth
+                );
+            });
+
+            if (missingExpenses.length === 0) return;
+
+            await Promise.all(missingExpenses.map(async (f) => {
+                const day = new Date(f.date).getUTCDate();
+                const lastDayOfTarget = new Date(Date.UTC(currentYear, currentMonth + 1, 0)).getUTCDate();
+                const targetDay = Math.min(day, lastDayOfTarget);
+                const projectedDate = new Date(Date.UTC(currentYear, currentMonth, targetDay, 12, 0, 0)).toISOString();
+                
+                const newData = {
+                    ...f,
+                    date: projectedDate,
+                    status: ExpenseStatus.PENDING,
+                    reconciled: false,
+                    isProjection: false
+                };
+                delete (newData as any).id;
+                await saveTransaction(newData as any, user.uid);
+            }));
+        };
+
+        instantiateMissing();
+    }, [user, settingsLoaded, transactions, deletedFixedExpenses]);
 
     const handleAddTransaction = async (data: TransactionFormValues) => {
         if (!user) return;
