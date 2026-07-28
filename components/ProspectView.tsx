@@ -2011,7 +2011,7 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                                                 className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
                                                     broadcastFilteredList[activeQueueIndex].broadcastAccepted 
                                                         ? 'bg-green-600 text-white shadow-md shadow-green-950/40' 
-                                                        : 'bg-background hover:bg-green-500/20 border border-green-500/30 text-green-400'
+                                                        : 'bg-slate-800 hover:bg-green-500/20 border border-green-500/40 text-green-300'
                                                 }`}
                                             >
                                                 <span>Sim, Aceitou</span> ✅
@@ -2021,8 +2021,8 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                                                 onClick={() => handleToggleBroadcastAccepted(broadcastFilteredList[activeQueueIndex], false)}
                                                 className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
                                                     !broadcastFilteredList[activeQueueIndex].broadcastAccepted 
-                                                        ? 'bg-zinc-700 text-white border border-zinc-600' 
-                                                        : 'bg-background hover:bg-zinc-500/20 border border-border-color text-zinc-400'
+                                                        ? 'bg-slate-700 text-white border border-slate-500 shadow-sm' 
+                                                        : 'bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200'
                                                 }`}
                                             >
                                                 <span>Não Aceitou</span> ❌
@@ -2045,7 +2045,7 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                                             <button
                                                 type="button"
                                                 onClick={() => setActiveQueueIndex(prev => prev + 1)}
-                                                className="w-full py-2.5 bg-background hover:bg-border-color/30 text-text-primary border border-border-color font-semibold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                                                className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white border border-slate-600 hover:border-slate-500 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
                                             >
                                                 <span>Próximo Lead → ({broadcastFilteredList[activeQueueIndex + 1].name.split(' ')[0]})</span>
                                             </button>

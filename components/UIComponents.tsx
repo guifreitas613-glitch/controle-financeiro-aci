@@ -55,18 +55,18 @@ export const Button: FC<{
     htmlFor?: string; 
     title?: string 
 }> = ({ onClick, children, variant = 'primary', className = '', type = 'button', disabled = false, as = 'button', htmlFor, title }) => {
-  const baseClasses = 'px-4 py-2 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transform';
+  const baseClasses = 'px-4 py-2 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transform cursor-pointer';
   const variantClasses = {
-    primary: 'bg-primary hover:bg-opacity-90 text-white shadow-md shadow-primary/30 hover:scale-105',
-    secondary: 'bg-text-secondary bg-opacity-20 hover:bg-opacity-30 text-text-primary hover:scale-105',
-    danger: 'bg-danger hover:bg-red-500 text-white hover:scale-105',
-    success: 'bg-green-500 hover:bg-green-600 text-white hover:scale-105',
-    ghost: 'bg-transparent hover:bg-white/5 text-text-secondary hover:text-text-primary',
-    ghostDanger: 'bg-transparent hover:bg-red-500/10 text-text-secondary hover:text-danger',
+    primary: 'bg-primary hover:bg-opacity-90 text-white shadow-md shadow-primary/30 hover:scale-105 active:scale-95',
+    secondary: 'bg-slate-700 hover:bg-slate-600 text-white border border-slate-500/80 shadow-md hover:scale-105 active:scale-95 font-bold',
+    danger: 'bg-danger hover:bg-red-500 text-white shadow-md shadow-red-900/30 hover:scale-105 active:scale-95 font-bold',
+    success: 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-900/30 hover:scale-105 active:scale-95 font-bold',
+    ghost: 'bg-slate-800/80 hover:bg-slate-700 text-slate-100 hover:text-white border border-slate-600/70 hover:border-slate-500 hover:scale-105 active:scale-95 font-semibold',
+    ghostDanger: 'bg-red-500/20 hover:bg-red-500/30 text-red-300 hover:text-red-100 border border-red-500/40 hover:scale-105 active:scale-95 font-semibold',
   };
   
   if (as === 'label') {
-    return <label htmlFor={htmlFor} className={`${baseClasses} ${variantClasses[variant]} ${className} cursor-pointer`} title={title}>{children}</label>
+    return <label htmlFor={htmlFor} className={`${baseClasses} ${variantClasses[variant]} ${className}`} title={title}>{children}</label>
   }
 
   return <button type={type} onClick={onClick} className={`${baseClasses} ${variantClasses[variant]} ${className}`} disabled={disabled} title={title}>{children}</button>;
