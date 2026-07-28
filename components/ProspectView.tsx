@@ -395,6 +395,34 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
         }
     };
 
+    const getInteractionDateIso = (p: Prospect): string | null => {
+        if (p.lastInteraction) {
+            const text = p.lastInteraction.trim();
+            const bracketMatch = text.match(/^\[(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2})\]/);
+            if (bracketMatch) {
+                const val = bracketMatch[1];
+                if (val.includes('/')) {
+                    const [d, m, y] = val.split('/');
+                    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+                }
+                return val;
+            }
+            const brMatch = text.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+            if (brMatch) {
+                const [, d, m, y] = brMatch;
+                return `${y}-${m}-${d}`;
+            }
+            const isoMatch = text.match(/(\d{4})-(\d{2})-(\d{2})/);
+            if (isoMatch) {
+                return isoMatch[0];
+            }
+        }
+        if (p.firstContactDate) {
+            return p.firstContactDate;
+        }
+        return null;
+    };
+
     const filteredProspects = useMemo(() => {
         return prospects.filter(p => {
             let matchesStatus = false;
@@ -413,8 +441,9 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
             const matchesBroadcast = broadcastFilter === 'all' ||
                 (broadcastFilter === 'yes' && p.broadcastAccepted === true) ||
                 (broadcastFilter === 'no' && !p.broadcastAccepted);
-            const matchesStartDate = !startDateFilter || (p.firstContactDate && p.firstContactDate >= startDateFilter);
-            const matchesEndDate = !endDateFilter || (p.firstContactDate && p.firstContactDate <= endDateFilter);
+            const interactionDate = getInteractionDateIso(p);
+            const matchesStartDate = !startDateFilter || (interactionDate !== null && interactionDate >= startDateFilter);
+            const matchesEndDate = !endDateFilter || (interactionDate !== null && interactionDate <= endDateFilter);
             const matchesSearch = !searchQuery || 
                 p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 (p.company && p.company.toLowerCase().includes(searchQuery.toLowerCase())) ||
@@ -467,8 +496,9 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                 (exportBroadcastFilter === 'no' && !p.broadcastAccepted);
 
             const matchesAdvisor = exportAdvisorFilter === 'all' || p.responsible === exportAdvisorFilter;
-            const matchesStartDate = !startDateFilter || (p.firstContactDate && p.firstContactDate >= startDateFilter);
-            const matchesEndDate = !endDateFilter || (p.firstContactDate && p.firstContactDate <= endDateFilter);
+            const interactionDate = getInteractionDateIso(p);
+            const matchesStartDate = !startDateFilter || (interactionDate !== null && interactionDate >= startDateFilter);
+            const matchesEndDate = !endDateFilter || (interactionDate !== null && interactionDate <= endDateFilter);
 
             const digits = p.phone ? p.phone.replace(/\D/g, '') : '';
             const hasValidPhone = !exportOnlyWithPhone || digits.length >= 8;
@@ -596,8 +626,9 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                 (broadcastBroadcastFilter === 'no' && !p.broadcastAccepted);
 
             const matchesAdvisor = broadcastAdvisorFilter === 'all' || p.responsible === broadcastAdvisorFilter;
-            const matchesStartDate = !startDateFilter || (p.firstContactDate && p.firstContactDate >= startDateFilter);
-            const matchesEndDate = !endDateFilter || (p.firstContactDate && p.firstContactDate <= endDateFilter);
+            const interactionDate = getInteractionDateIso(p);
+            const matchesStartDate = !startDateFilter || (interactionDate !== null && interactionDate >= startDateFilter);
+            const matchesEndDate = !endDateFilter || (interactionDate !== null && interactionDate <= endDateFilter);
 
             const digits = p.phone ? p.phone.replace(/\D/g, '') : '';
             const hasValidPhone = digits.length >= 8;
@@ -869,7 +900,7 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                         </select>
                     </div>
                     <div>
-                        <label className="block text-xs font-medium text-text-secondary mb-1">Data De (Início)</label>
+                        <label className="block text-xs font-medium text-text-secondary mb-1">Interação (De)</label>
                         <div className="relative flex items-center">
                             <input 
                                 id="startDateFilterInput"
@@ -889,14 +920,14 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                                     }
                                 }}
                                 className="absolute left-2 text-text-secondary hover:text-primary transition-colors cursor-pointer"
-                                title="Abrir Calendário de Início"
+                                title="Abrir Calendário de Data de Interação (Início)"
                             >
                                 <CalendarIcon className="w-4 h-4" />
                             </button>
                         </div>
                     </div>
                     <div>
-                        <label className="block text-xs font-medium text-text-secondary mb-1">Data Até (Fim)</label>
+                        <label className="block text-xs font-medium text-text-secondary mb-1">Interação (Até)</label>
                         <div className="relative flex items-center">
                             <input 
                                 id="endDateFilterInput"
@@ -916,7 +947,7 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                                     }
                                 }}
                                 className="absolute left-2 text-text-secondary hover:text-primary transition-colors cursor-pointer"
-                                title="Abrir Calendário de Fim"
+                                title="Abrir Calendário de Data de Interação (Fim)"
                             >
                                 <CalendarIcon className="w-4 h-4" />
                             </button>
