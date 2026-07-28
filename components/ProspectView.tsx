@@ -13,7 +13,9 @@ import {
     PartnershipIcon, 
     GoalsIcon,
     DownloadIcon,
-    ExportIcon
+    ExportIcon,
+    SendIcon,
+    MessageSquareIcon
 } from './UIComponents';
 
 const INITIAL_IMPORT_LIST_TEMPLATE = `Nome;Empresa;Cargo;Email;Celular
@@ -158,6 +160,23 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
     const [exportPreset, setExportPreset] = useState<'whatsapp_bulk' | 'phone_only' | 'phone_raw_only' | 'complete'>('whatsapp_bulk');
     const [exportOnlyWithPhone, setExportOnlyWithPhone] = useState<boolean>(true);
     const [csvSeparator, setCsvSeparator] = useState<';' | ','>(';');
+
+    // WhatsApp Broadcast Disparador states
+    const [isBroadcastModalOpen, setIsBroadcastModalOpen] = useState(false);
+    const [broadcastStatusFilter, setBroadcastStatusFilter] = useState<string>('current');
+    const [broadcastBroadcastFilter, setBroadcastBroadcastFilter] = useState<string>('all');
+    const [broadcastAdvisorFilter, setBroadcastAdvisorFilter] = useState<string>('all');
+    const [broadcastTemplate, setBroadcastTemplate] = useState<string>(
+        'Olá, {primeiro_nome}! Tudo bem? Me chamo {assessor}. Estou entrando em contato referente a oportunidades para a {empresa}. Teria alguns minutinhos para conversarmos?'
+    );
+    const [broadcastAutoUpdateStatus, setBroadcastAutoUpdateStatus] = useState<boolean>(true);
+    const [broadcastRegisterInteraction, setBroadcastRegisterInteraction] = useState<boolean>(true);
+    const [broadcastDelaySeconds, setBroadcastDelaySeconds] = useState<number>(5);
+    const [autoAdvanceEnabled, setAutoAdvanceEnabled] = useState<boolean>(true);
+    const [isQueueActive, setIsQueueActive] = useState<boolean>(false);
+    const [activeQueueIndex, setActiveQueueIndex] = useState<number>(0);
+    const [dispatchedIds, setDispatchedIds] = useState<string[]>([]);
+    const [countdownRemaining, setCountdownRemaining] = useState<number | null>(null);
 
     useEffect(() => {
         if (advisors && advisors.length > 0 && !importResponsible) {
@@ -537,6 +556,135 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
         setIsExportModalOpen(false);
     };
 
+    // WhatsApp Broadcast Disparador Logic
+    const broadcastFilteredList = useMemo(() => {
+        return prospects.filter(p => {
+            let effStatus = broadcastStatusFilter;
+            if (effStatus === 'current') {
+                effStatus = statusFilter;
+            }
+
+            let matchesStatus = false;
+            if (effStatus === 'all') {
+                matchesStatus = true;
+            } else if (effStatus === 'em_negociacao') {
+                matchesStatus = p.status === 'Em análise' || 
+                                p.status === 'Reunião marcada' || 
+                                p.status === 'Primeiro contato realizado';
+            } else {
+                matchesStatus = p.status === effStatus;
+            }
+
+            const matchesBroadcast = broadcastBroadcastFilter === 'all' ||
+                (broadcastBroadcastFilter === 'yes' && p.broadcastAccepted === true) ||
+                (broadcastBroadcastFilter === 'no' && !p.broadcastAccepted);
+
+            const matchesAdvisor = broadcastAdvisorFilter === 'all' || p.responsible === broadcastAdvisorFilter;
+
+            const digits = p.phone ? p.phone.replace(/\D/g, '') : '';
+            const hasValidPhone = digits.length >= 8;
+
+            return matchesStatus && matchesBroadcast && matchesAdvisor && hasValidPhone;
+        });
+    }, [prospects, broadcastStatusFilter, statusFilter, broadcastBroadcastFilter, broadcastAdvisorFilter]);
+
+    // Intervalo de disparo anti-bloqueio WhatsApp
+    useEffect(() => {
+        if (countdownRemaining === null || countdownRemaining <= 0) return;
+
+        const timer = setInterval(() => {
+            setCountdownRemaining(prev => {
+                if (prev === null || prev <= 1) {
+                    clearInterval(timer);
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+
+        return () => clearInterval(timer);
+    }, [countdownRemaining]);
+
+    useEffect(() => {
+        if (countdownRemaining === 0) {
+            setCountdownRemaining(null);
+            if (activeQueueIndex < broadcastFilteredList.length - 1) {
+                setActiveQueueIndex(prev => prev + 1);
+            }
+        }
+    }, [countdownRemaining, activeQueueIndex, broadcastFilteredList]);
+
+    const compileMessage = (template: string, p: Prospect | undefined) => {
+        if (!p) return '';
+        let msg = template;
+        const nameParts = (p.name || '').trim().split(' ');
+        const firstName = nameParts[0] || p.name || 'Cliente';
+        const assessorName = p.responsible || 'Assessor de Negócios';
+        const companyName = p.company || 'sua empresa';
+        const roleTitle = p.role || 'Gestor';
+
+        msg = msg.replace(/{nome}/g, p.name || 'Cliente');
+        msg = msg.replace(/{primeiro_nome}/g, firstName);
+        msg = msg.replace(/{empresa}/g, companyName);
+        msg = msg.replace(/{cargo}/g, roleTitle);
+        msg = msg.replace(/{assessor}/g, assessorName);
+
+        return msg;
+    };
+
+    const handleDispatchMessageForProspect = async (p: Prospect, isFromQueue = false) => {
+        if (!p || !p.phone) {
+            alert("Este prospect não possui número de telefone cadastrado.");
+            return;
+        }
+        const cleanPhone = cleanPhoneNumber(p.phone);
+        if (!cleanPhone) {
+            alert("Telefone inválido para envio de WhatsApp.");
+            return;
+        }
+
+        const msgText = compileMessage(broadcastTemplate, p);
+        const encoded = encodeURIComponent(msgText);
+        const waUrl = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encoded}`;
+
+        window.open(waUrl, '_blank');
+
+        // Adicionar ID à lista de disparados nesta sessão
+        if (!dispatchedIds.includes(p.id)) {
+            setDispatchedIds(prev => [...prev, p.id]);
+        }
+
+        // Atualizar status e registrar no histórico se ativado
+        const todayStr = new Date().toLocaleDateString('pt-BR');
+        const updates: Partial<Prospect> = {
+            lastInteraction: `[${todayStr}] Disparo WhatsApp enviado`
+        };
+
+        if (broadcastAutoUpdateStatus && (p.status === 'Novo contato' || !p.status)) {
+            updates.status = 'Primeiro contato realizado';
+        }
+
+        if (broadcastRegisterInteraction) {
+            const shortNote = msgText.length > 90 ? msgText.substring(0, 90) + '...' : msgText;
+            const newNotes = `${p.notes || ''}\n[${todayStr}] WhatsApp: "${shortNote}"`.trim();
+            updates.notes = newNotes;
+        }
+
+        try {
+            await updateProspect(p.id, updates);
+        } catch (err) {
+            console.error("Erro ao registrar envio no prospecto:", err);
+        }
+
+        if (isFromQueue && activeQueueIndex < broadcastFilteredList.length - 1) {
+            if (broadcastDelaySeconds > 0) {
+                setCountdownRemaining(broadcastDelaySeconds);
+            } else {
+                setActiveQueueIndex(prev => prev + 1);
+            }
+        }
+    };
+
     const getStatusBadgeStyle = (status: Prospect['status']) => {
         switch (status) {
             case 'Novo contato': return 'bg-blue-500/10 text-blue-400 border border-blue-500/20';
@@ -573,6 +721,18 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                     <p className="text-text-secondary">Controle de funil comercial e novos clientes associados.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                    <Button 
+                        onClick={() => {
+                            setBroadcastStatusFilter('current');
+                            setIsBroadcastModalOpen(true);
+                            setIsQueueActive(false);
+                            setActiveQueueIndex(0);
+                        }} 
+                        className="text-sm bg-green-600 hover:bg-green-700 hover:text-white text-white border-none shadow-md shadow-green-900/30 font-bold"
+                        title="Criar e enviar mensagens personalizadas via WhatsApp para seus prospects"
+                    >
+                        <SendIcon className="w-4 h-4 mr-1.5" /> Disparador WhatsApp
+                    </Button>
                     <Button 
                         onClick={() => {
                             setExportStatusFilter('current');
@@ -769,6 +929,7 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                                 <th className="p-4 text-center">Última Interação</th>
                                 <th className="p-4">Responsável</th>
                                 <th className="p-4 text-center">Status</th>
+                                <th className="p-4 text-center">Ações WhatsApp</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border-color/30">
@@ -820,11 +981,25 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                                             {p.status}
                                         </span>
                                     </td>
+                                    <td className="p-4 text-center">
+                                        {p.phone ? (
+                                            <button
+                                                onClick={() => handleDispatchMessageForProspect(p)}
+                                                className="p-1.5 px-2.5 rounded-lg bg-green-500/10 text-green-400 hover:bg-green-500/20 border border-green-500/20 transition-all font-semibold text-[11px] flex items-center gap-1 mx-auto cursor-pointer"
+                                                title={`Enviar mensagem via WhatsApp para ${p.name}`}
+                                            >
+                                                <SendIcon className="w-3.5 h-3.5" />
+                                                <span>Enviar</span>
+                                            </button>
+                                        ) : (
+                                            <span className="text-[10px] text-zinc-500 italic">Sem fone</span>
+                                        )}
+                                    </td>
                                 </tr>
                             ))}
                             {filteredProspects.length === 0 && (
                                 <tr>
-                                    <td colSpan={8} className="p-10 text-center text-text-secondary italic">Nenhum prospecto encontrado no filtro selecionado.</td>
+                                    <td colSpan={9} className="p-10 text-center text-text-secondary italic">Nenhum prospecto encontrado no filtro selecionado.</td>
                                 </tr>
                             )}
                         </tbody>
@@ -1413,6 +1588,430 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                             <DownloadIcon className="w-4 h-4 mr-1.5" /> Baixar Arquivo CSV
                         </Button>
                     </div>
+                </div>
+            </Modal>
+
+            {/* Modal: Disparador de Mensagens WhatsApp */}
+            <Modal isOpen={isBroadcastModalOpen} onClose={() => setIsBroadcastModalOpen(false)} title="Disparador de Mensagens WhatsApp" size="xl">
+                <div className="space-y-5 text-text-primary">
+                    {!isQueueActive ? (
+                        /* Estágio 1: Configuração e Personalização da Mensagem */
+                        <div className="space-y-5">
+                            {/* Banner Header */}
+                            <div className="bg-gradient-to-r from-green-600/20 via-emerald-600/10 to-transparent border border-green-500/30 p-4 rounded-xl flex items-start gap-3">
+                                <div className="p-2.5 bg-green-500/20 text-green-400 rounded-lg shrink-0 mt-0.5">
+                                    <SendIcon className="w-6 h-6" />
+                                </div>
+                                <div className="space-y-1">
+                                    <h3 className="font-bold text-sm text-green-400 flex items-center gap-2">
+                                        Campanha & Disparo Direto para WhatsApp
+                                    </h3>
+                                    <p className="text-xs text-text-secondary leading-relaxed">
+                                        Crie mensagens personalizadas com tags automáticas (como o primeiro nome e a empresa do prospect) e envie em sequência 1 a 1 via WhatsApp Web ou Aplicativo sem risco de bloqueio.
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Filtros da Campanha */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-background/50 p-3.5 rounded-xl border border-border-color/60">
+                                <div>
+                                    <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1">Filtrar por Status</label>
+                                    <select 
+                                        value={broadcastStatusFilter} 
+                                        onChange={(e) => setBroadcastStatusFilter(e.target.value)}
+                                        className="w-full bg-background border border-border-color rounded-md px-2.5 py-1.5 text-xs focus:ring-primary focus:border-primary outline-none"
+                                    >
+                                        <option value="current">Filtro Atual da Tela ({statusFilter})</option>
+                                        <option value="all">Todos os Status</option>
+                                        <option value="Novo contato">Novo contato</option>
+                                        <option value="Primeiro contato realizado">Primeiro contato realizado</option>
+                                        <option value="Reunião marcada">Reunião marcada</option>
+                                        <option value="Em análise">Em análise</option>
+                                        <option value="em_negociacao">Em Negociação (Em análise / Reunião / 1º Contato)</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1">Transmissão</label>
+                                    <select 
+                                        value={broadcastBroadcastFilter} 
+                                        onChange={(e) => setBroadcastBroadcastFilter(e.target.value)}
+                                        className="w-full bg-background border border-border-color rounded-md px-2.5 py-1.5 text-xs focus:ring-primary focus:border-primary outline-none"
+                                    >
+                                        <option value="all">Todos os Leads</option>
+                                        <option value="yes">Apenas Autorizados ✅</option>
+                                        <option value="no">Não Autorizados / Sem Resposta</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1">Assessor Responsável</label>
+                                    <select 
+                                        value={broadcastAdvisorFilter} 
+                                        onChange={(e) => setBroadcastAdvisorFilter(e.target.value)}
+                                        className="w-full bg-background border border-border-color rounded-md px-2.5 py-1.5 text-xs focus:ring-primary focus:border-primary outline-none"
+                                    >
+                                        <option value="all">Todos os Assessores</option>
+                                        {advisors.map(adv => <option key={adv.id} value={adv.name}>{adv.name}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+
+                            {/* Modelos / Presets Prontos */}
+                            <div>
+                                <label className="block text-xs font-bold text-text-secondary uppercase mb-2">Modelos Prontos de Mensagem</label>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                    <button 
+                                        type="button"
+                                        onClick={() => setBroadcastTemplate('Olá, {primeiro_nome}! Tudo bem? Me chamo {assessor}. Estou entrando em contato referente a oportunidades para a {empresa}. Teria alguns minutinhos para conversarmos?')}
+                                        className="p-2 text-left bg-background/60 hover:bg-green-500/10 border border-border-color hover:border-green-500/40 rounded-lg text-xs transition-all cursor-pointer group"
+                                    >
+                                        <div className="font-bold text-text-primary group-hover:text-green-400">1. Apresentação</div>
+                                        <div className="text-[10px] text-text-secondary truncate mt-0.5">Primeiro contato inicial</div>
+                                    </button>
+
+                                    <button 
+                                        type="button"
+                                        onClick={() => setBroadcastTemplate('Olá, {primeiro_nome}! Passando para dar um acompanhamento sobre nossa conversa em relação à {empresa}. Como estão os projetos por aí?')}
+                                        className="p-2 text-left bg-background/60 hover:bg-green-500/10 border border-border-color hover:border-green-500/40 rounded-lg text-xs transition-all cursor-pointer group"
+                                    >
+                                        <div className="font-bold text-text-primary group-hover:text-green-400">2. Follow-up</div>
+                                        <div className="text-[10px] text-text-secondary truncate mt-0.5">Acompanhamento pós reunião</div>
+                                    </button>
+
+                                    <button 
+                                        type="button"
+                                        onClick={() => setBroadcastTemplate('Olá, {primeiro_nome}! Preparamos um resumo exclusivo das melhores oportunidades do mercado financeiro para a {empresa}. Gostaria que eu te enviasse o relatório completo?')}
+                                        className="p-2 text-left bg-background/60 hover:bg-green-500/10 border border-border-color hover:border-green-500/40 rounded-lg text-xs transition-all cursor-pointer group"
+                                    >
+                                        <div className="font-bold text-text-primary group-hover:text-green-400">3. Análise Mercado</div>
+                                        <div className="text-[10px] text-text-secondary truncate mt-0.5">Transmissão de conteúdo</div>
+                                    </button>
+
+                                    <button 
+                                        type="button"
+                                        onClick={() => setBroadcastTemplate('Olá, {primeiro_nome}! Faz um tempo que não nos falamos. Como estão as novidades na {empresa}? Gostaria de agendar um café virtual rápido esta semana.')}
+                                        className="p-2 text-left bg-background/60 hover:bg-green-500/10 border border-border-color hover:border-green-500/40 rounded-lg text-xs transition-all cursor-pointer group"
+                                    >
+                                        <div className="font-bold text-text-primary group-hover:text-green-400">4. Reativação</div>
+                                        <div className="text-[10px] text-text-secondary truncate mt-0.5">Recuperar prospect antigo</div>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Campo de Texto da Mensagem */}
+                            <div className="space-y-1.5">
+                                <div className="flex justify-between items-center">
+                                    <label className="block text-xs font-bold text-text-secondary uppercase">Texto da Mensagem</label>
+                                    <span className="text-[10px] text-text-secondary">Clique nas tags para inserir no texto</span>
+                                </div>
+
+                                {/* Tags Dinâmicas Clicáveis */}
+                                <div className="flex flex-wrap gap-1.5 pb-1">
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setBroadcastTemplate(prev => prev + ' {primeiro_nome}')}
+                                        className="px-2 py-1 bg-green-500/10 text-green-400 border border-green-500/30 rounded text-xs font-mono font-semibold hover:bg-green-500/20 transition-all cursor-pointer"
+                                    >
+                                        + {'{primeiro_nome}'}
+                                    </button>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setBroadcastTemplate(prev => prev + ' {empresa}')}
+                                        className="px-2 py-1 bg-green-500/10 text-green-400 border border-green-500/30 rounded text-xs font-mono font-semibold hover:bg-green-500/20 transition-all cursor-pointer"
+                                    >
+                                        + {'{empresa}'}
+                                    </button>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setBroadcastTemplate(prev => prev + ' {cargo}')}
+                                        className="px-2 py-1 bg-green-500/10 text-green-400 border border-green-500/30 rounded text-xs font-mono font-semibold hover:bg-green-500/20 transition-all cursor-pointer"
+                                    >
+                                        + {'{cargo}'}
+                                    </button>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setBroadcastTemplate(prev => prev + ' {assessor}')}
+                                        className="px-2 py-1 bg-green-500/10 text-green-400 border border-green-500/30 rounded text-xs font-mono font-semibold hover:bg-green-500/20 transition-all cursor-pointer"
+                                    >
+                                        + {'{assessor}'}
+                                    </button>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setBroadcastTemplate(prev => prev + ' {nome}')}
+                                        className="px-2 py-1 bg-green-500/10 text-green-400 border border-green-500/30 rounded text-xs font-mono font-semibold hover:bg-green-500/20 transition-all cursor-pointer"
+                                    >
+                                        + {'{nome}'}
+                                    </button>
+                                </div>
+
+                                <textarea 
+                                    rows={4} 
+                                    value={broadcastTemplate} 
+                                    onChange={(e) => setBroadcastTemplate(e.target.value)} 
+                                    placeholder="Digite a mensagem..." 
+                                    className="w-full bg-background border border-border-color rounded-xl p-3 text-sm focus:ring-green-500 focus:border-green-500 outline-none leading-relaxed" 
+                                />
+                            </div>
+
+                            {/* Pré-visualização ao Vivo (Simulação Balão do WhatsApp) */}
+                            <div>
+                                <label className="block text-xs font-bold text-text-secondary uppercase mb-1.5">
+                                    Pré-visualização do Envio (Exemplo com 1º prospect da fila)
+                                </label>
+                                <div className="bg-[#0b141a] p-4 rounded-xl border border-zinc-800 relative overflow-hidden">
+                                    <div className="flex items-center gap-2 mb-3 pb-2 border-b border-zinc-800 text-xs text-zinc-400">
+                                        <div className="w-6 h-6 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center text-[10px]">
+                                            {broadcastFilteredList[0] ? broadcastFilteredList[0].name.substring(0, 1) : 'P'}
+                                        </div>
+                                        <span className="font-semibold text-zinc-200">
+                                            {broadcastFilteredList[0] ? broadcastFilteredList[0].name : 'Nenhum prospecto encontrado no filtro'}
+                                        </span>
+                                        <span className="text-[10px] text-emerald-400 ml-auto font-mono">
+                                            {broadcastFilteredList[0] ? broadcastFilteredList[0].phone : ''}
+                                        </span>
+                                    </div>
+
+                                    <div className="bg-[#005c4b] text-emerald-50 text-xs p-3.5 rounded-2xl rounded-tr-none max-w-[90%] ml-auto whitespace-pre-line shadow-md leading-relaxed">
+                                        {broadcastFilteredList[0] 
+                                            ? compileMessage(broadcastTemplate, broadcastFilteredList[0])
+                                            : compileMessage(broadcastTemplate, { id: 'preview', name: 'Carlos Eduardo', company: 'Empresa Exemplo', role: 'Diretor', responsible: 'Assessor', phone: '41999999999', source: 'networking', status: 'Novo contato' })
+                                        }
+                                        <div className="text-[9px] text-emerald-200/60 text-right mt-1 font-mono">
+                                            12:00 ✓✓
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Opções de Automação e Anti-bloqueio */}
+                            <div className="space-y-3 pt-2 border-t border-border-color/40">
+                                <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                                    <div className="space-y-0.5">
+                                        <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5 uppercase tracking-wider">
+                                            🛡️ Intervalo Anti-Bloqueio (Pausa entre Envios)
+                                        </div>
+                                        <p className="text-[11px] text-text-secondary leading-snug">
+                                            Evita que o WhatsApp detecte padrões repetitivos de spam e bloqueie sua conta.
+                                        </p>
+                                    </div>
+                                    <select 
+                                        value={broadcastDelaySeconds} 
+                                        onChange={(e) => setBroadcastDelaySeconds(Number(e.target.value))}
+                                        className="bg-background border border-amber-500/30 rounded-lg px-3 py-1.5 text-xs font-bold text-amber-300 focus:ring-amber-500 outline-none shrink-0"
+                                    >
+                                        <option value={0}>0s (Sem pausa)</option>
+                                        <option value={5}>5s (Rápido)</option>
+                                        <option value={10}>10s (Recomendado ⭐)</option>
+                                        <option value={15}>15s (Seguro)</option>
+                                        <option value={30}>30s (Proteção Máxima)</option>
+                                    </select>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    <label className="flex items-center gap-2 text-xs text-text-primary cursor-pointer select-none">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={broadcastAutoUpdateStatus} 
+                                            onChange={(e) => setBroadcastAutoUpdateStatus(e.target.checked)}
+                                            className="rounded border-border-color text-green-500 focus:ring-green-500 w-4 h-4"
+                                        />
+                                        <span>Atualizar para <strong className="text-indigo-400 font-semibold">"Primeiro contato realizado"</strong></span>
+                                    </label>
+
+                                    <label className="flex items-center gap-2 text-xs text-text-primary cursor-pointer select-none">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={broadcastRegisterInteraction} 
+                                            onChange={(e) => setBroadcastRegisterInteraction(e.target.checked)}
+                                            className="rounded border-border-color text-green-500 focus:ring-green-500 w-4 h-4"
+                                        />
+                                        <span>Registrar envio no histórico de notas</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            {/* Resumo e Botão de Iniciar Fila */}
+                            <div className="pt-3 border-t border-border-color/40 flex flex-col sm:flex-row items-center justify-between gap-3">
+                                <div>
+                                    <span className="text-xs text-text-secondary font-medium">Audiência da Campanha:</span>
+                                    <span className="ml-2 px-3 py-1 rounded-full bg-green-500/10 text-green-400 border border-green-500/20 font-bold font-mono text-xs">
+                                        🎯 {broadcastFilteredList.length} destinatário(s) pronto(s)
+                                    </span>
+                                </div>
+
+                                <div className="flex gap-2 w-full sm:w-auto justify-end">
+                                    <Button type="button" variant="ghost" onClick={() => setIsBroadcastModalOpen(false)}>
+                                        Cancelar
+                                    </Button>
+                                    <Button 
+                                        type="button" 
+                                        onClick={() => {
+                                            if (broadcastFilteredList.length === 0) {
+                                                alert("Nenhum prospecto atende aos filtros com telefone cadastrado.");
+                                                return;
+                                            }
+                                            setIsQueueActive(true);
+                                            setActiveQueueIndex(0);
+                                        }}
+                                        disabled={broadcastFilteredList.length === 0}
+                                        className="bg-green-600 hover:bg-green-700 text-white font-bold px-5 border-none shadow-lg shadow-green-900/30 flex items-center gap-2 cursor-pointer"
+                                    >
+                                        <SendIcon className="w-4 h-4" /> Iniciar Fila de Disparos (1 a 1)
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        /* Estágio 2: Fila Ativa de Disparo 1 a 1 */
+                        <div className="space-y-6">
+                            {/* Barra de Progresso */}
+                            <div className="space-y-2">
+                                <div className="flex justify-between items-center text-xs font-bold uppercase">
+                                    <span className="text-green-400 flex items-center gap-1.5">
+                                        <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-ping inline-block"></span>
+                                        Fila de Disparo Ativa
+                                    </span>
+                                    <span className="text-text-secondary font-mono">
+                                        {activeQueueIndex + 1} de {broadcastFilteredList.length} ({Math.round(((activeQueueIndex + 1) / broadcastFilteredList.length) * 100)}%)
+                                    </span>
+                                </div>
+                                <div className="w-full bg-background border border-border-color rounded-full h-3 overflow-hidden p-0.5">
+                                    <div 
+                                        className="bg-gradient-to-r from-green-500 to-emerald-400 h-full rounded-full transition-all duration-300"
+                                        style={{ width: `${((activeQueueIndex + 1) / broadcastFilteredList.length) * 100}%` }}
+                                    ></div>
+                                </div>
+                            </div>
+
+                            {/* Card do Prospecto Atual na Fila */}
+                            {broadcastFilteredList[activeQueueIndex] ? (
+                                <div className="bg-background/80 border border-green-500/30 rounded-2xl p-5 space-y-4 shadow-xl">
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-3 border-b border-border-color/40">
+                                        <div>
+                                            <div className="text-[10px] font-bold uppercase text-green-400 tracking-wider">Destinatário Atual</div>
+                                            <h4 className="text-lg font-bold text-text-primary flex items-center gap-2">
+                                                {broadcastFilteredList[activeQueueIndex].name}
+                                                {dispatchedIds.includes(broadcastFilteredList[activeQueueIndex].id) && (
+                                                    <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded border border-green-500/30 font-normal">✓ Já disparado</span>
+                                                )}
+                                            </h4>
+                                            <p className="text-xs text-text-secondary">
+                                                {broadcastFilteredList[activeQueueIndex].company || 'Empresa não informada'} • {broadcastFilteredList[activeQueueIndex].role || 'Cargo não informado'}
+                                            </p>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-lg border border-emerald-500/20">
+                                                📱 {broadcastFilteredList[activeQueueIndex].phone}
+                                            </div>
+                                            <div className="text-[10px] text-text-secondary mt-1">
+                                                Assessor: {broadcastFilteredList[activeQueueIndex].responsible}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Caixinha da Mensagem Gerada para ESTE prospect */}
+                                    <div>
+                                        <div className="text-[10px] font-bold uppercase text-text-secondary mb-1">
+                                            Mensagem Pronta para Envio:
+                                        </div>
+                                        <div className="bg-[#0b141a] p-4 rounded-xl border border-zinc-800 text-xs text-emerald-100 whitespace-pre-line leading-relaxed font-sans">
+                                            {compileMessage(broadcastTemplate, broadcastFilteredList[activeQueueIndex])}
+                                        </div>
+                                    </div>
+
+                                    {/* Botão de Disparo ou Countdown de Pausa Anti-Bloqueio */}
+                                    {countdownRemaining !== null && countdownRemaining > 0 ? (
+                                        <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-xl text-center space-y-2.5 animate-pulse">
+                                            <div className="flex items-center justify-center gap-2 text-amber-400 font-bold text-sm">
+                                                <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping inline-block"></span>
+                                                Pausa de Segurança Anti-Bloqueio Ativa
+                                            </div>
+                                            <div className="text-3xl font-black font-mono text-amber-300">
+                                                {countdownRemaining}s
+                                            </div>
+                                            <p className="text-[11px] text-text-secondary">
+                                                Simulando intervalo humano para proteger sua conta do WhatsApp. O próximo destinatário abrirá em instantes...
+                                            </p>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setCountdownRemaining(null);
+                                                    if (activeQueueIndex < broadcastFilteredList.length - 1) {
+                                                        setActiveQueueIndex(prev => prev + 1);
+                                                    }
+                                                }}
+                                                className="px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-xs font-semibold rounded-lg border border-amber-500/40 transition-all cursor-pointer mt-1"
+                                            >
+                                                ⚡ Pular Pausa e Ir para o Próximo Agora
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="pt-2 text-center">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDispatchMessageForProspect(broadcastFilteredList[activeQueueIndex], true)}
+                                                className="w-full py-4 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold text-base rounded-xl shadow-xl shadow-green-950/50 hover:shadow-green-900/60 transition-all flex items-center justify-center gap-2 cursor-pointer transform active:scale-95"
+                                            >
+                                                <SendIcon className="w-5 h-5" /> 
+                                                <span>Disparar Mensagem para {broadcastFilteredList[activeQueueIndex].name.split(' ')[0]} no WhatsApp</span>
+                                            </button>
+                                            <p className="text-[10px] text-text-secondary mt-2">
+                                                Abre a conversa no WhatsApp Web com a mensagem preenchida {broadcastDelaySeconds > 0 ? `e inicia pausa de ${broadcastDelaySeconds}s de segurança` : 'e avança para o próximo'}.
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="p-8 text-center bg-background/50 rounded-xl border border-border-color">
+                                    <div className="text-3xl mb-2">🎉</div>
+                                    <h4 className="font-bold text-base text-green-400">Fila Concluída com Sucesso!</h4>
+                                    <p className="text-xs text-text-secondary mt-1">Você passou por todos os destinatários da campanha.</p>
+                                </div>
+                            )}
+
+                            {/* Navegação da Fila */}
+                            <div className="flex flex-wrap justify-between items-center gap-3 pt-3 border-t border-border-color/40">
+                                <Button 
+                                    type="button" 
+                                    variant="ghost" 
+                                    onClick={() => setIsQueueActive(false)}
+                                    className="text-xs"
+                                >
+                                    ⚙️ Alterar Texto ou Filtros
+                                </Button>
+
+                                <div className="flex items-center gap-2">
+                                    <button 
+                                        type="button"
+                                        disabled={activeQueueIndex === 0}
+                                        onClick={() => setActiveQueueIndex(prev => Math.max(0, prev - 1))}
+                                        className="px-3 py-1.5 bg-background border border-border-color text-text-secondary hover:text-text-primary rounded-lg text-xs font-semibold disabled:opacity-40 cursor-pointer"
+                                    >
+                                        ← Anterior
+                                    </button>
+
+                                    <button 
+                                        type="button"
+                                        disabled={activeQueueIndex >= broadcastFilteredList.length - 1}
+                                        onClick={() => setActiveQueueIndex(prev => Math.min(broadcastFilteredList.length - 1, prev + 1))}
+                                        className="px-3 py-1.5 bg-background border border-border-color text-text-secondary hover:text-text-primary rounded-lg text-xs font-semibold disabled:opacity-40 cursor-pointer"
+                                    >
+                                        Pular (Próximo) →
+                                    </button>
+
+                                    <Button 
+                                        type="button" 
+                                        variant="ghost" 
+                                        onClick={() => setIsBroadcastModalOpen(false)}
+                                        className="text-xs ml-2"
+                                    >
+                                        Fechar Disparador
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </Modal>
         </div>
