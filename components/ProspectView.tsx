@@ -171,12 +171,9 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
     );
     const [broadcastAutoUpdateStatus, setBroadcastAutoUpdateStatus] = useState<boolean>(true);
     const [broadcastRegisterInteraction, setBroadcastRegisterInteraction] = useState<boolean>(true);
-    const [broadcastDelaySeconds, setBroadcastDelaySeconds] = useState<number>(5);
-    const [autoAdvanceEnabled, setAutoAdvanceEnabled] = useState<boolean>(true);
     const [isQueueActive, setIsQueueActive] = useState<boolean>(false);
     const [activeQueueIndex, setActiveQueueIndex] = useState<number>(0);
     const [dispatchedIds, setDispatchedIds] = useState<string[]>([]);
-    const [countdownRemaining, setCountdownRemaining] = useState<number | null>(null);
 
     useEffect(() => {
         if (advisors && advisors.length > 0 && !importResponsible) {
@@ -588,32 +585,6 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
         });
     }, [prospects, broadcastStatusFilter, statusFilter, broadcastBroadcastFilter, broadcastAdvisorFilter]);
 
-    // Intervalo de disparo anti-bloqueio WhatsApp
-    useEffect(() => {
-        if (countdownRemaining === null || countdownRemaining <= 0) return;
-
-        const timer = setInterval(() => {
-            setCountdownRemaining(prev => {
-                if (prev === null || prev <= 1) {
-                    clearInterval(timer);
-                    return 0;
-                }
-                return prev - 1;
-            });
-        }, 1000);
-
-        return () => clearInterval(timer);
-    }, [countdownRemaining]);
-
-    useEffect(() => {
-        if (countdownRemaining === 0) {
-            setCountdownRemaining(null);
-            if (activeQueueIndex < broadcastFilteredList.length - 1) {
-                setActiveQueueIndex(prev => prev + 1);
-            }
-        }
-    }, [countdownRemaining, activeQueueIndex, broadcastFilteredList]);
-
     const compileMessage = (template: string, p: Prospect | undefined) => {
         if (!p) return '';
         let msg = template;
@@ -632,7 +603,7 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
         return msg;
     };
 
-    const handleDispatchMessageForProspect = async (p: Prospect, isFromQueue = false) => {
+    const handleDispatchMessageForProspect = async (p: Prospect) => {
         if (!p || !p.phone) {
             alert("Este prospect não possui número de telefone cadastrado.");
             return;
@@ -674,14 +645,6 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
             await updateProspect(p.id, updates);
         } catch (err) {
             console.error("Erro ao registrar envio no prospecto:", err);
-        }
-
-        if (isFromQueue && activeQueueIndex < broadcastFilteredList.length - 1) {
-            if (broadcastDelaySeconds > 0) {
-                setCountdownRemaining(broadcastDelaySeconds);
-            } else {
-                setActiveQueueIndex(prev => prev + 1);
-            }
         }
     };
 
@@ -1784,30 +1747,8 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                                 </div>
                             </div>
 
-                            {/* Opções de Automação e Anti-bloqueio */}
+                            {/* Opções de Automação */}
                             <div className="space-y-3 pt-2 border-t border-border-color/40">
-                                <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                                    <div className="space-y-0.5">
-                                        <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5 uppercase tracking-wider">
-                                            🛡️ Intervalo Anti-Bloqueio (Pausa entre Envios)
-                                        </div>
-                                        <p className="text-[11px] text-text-secondary leading-snug">
-                                            Evita que o WhatsApp detecte padrões repetitivos de spam e bloqueie sua conta.
-                                        </p>
-                                    </div>
-                                    <select 
-                                        value={broadcastDelaySeconds} 
-                                        onChange={(e) => setBroadcastDelaySeconds(Number(e.target.value))}
-                                        className="bg-background border border-amber-500/30 rounded-lg px-3 py-1.5 text-xs font-bold text-amber-300 focus:ring-amber-500 outline-none shrink-0"
-                                    >
-                                        <option value={0}>0s (Sem pausa)</option>
-                                        <option value={5}>5s (Rápido)</option>
-                                        <option value={10}>10s (Recomendado ⭐)</option>
-                                        <option value={15}>15s (Seguro)</option>
-                                        <option value={30}>30s (Proteção Máxima)</option>
-                                    </select>
-                                </div>
-
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                     <label className="flex items-center gap-2 text-xs text-text-primary cursor-pointer select-none">
                                         <input 
@@ -1920,47 +1861,31 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                                         </div>
                                     </div>
 
-                                    {/* Botão de Disparo ou Countdown de Pausa Anti-Bloqueio */}
-                                    {countdownRemaining !== null && countdownRemaining > 0 ? (
-                                        <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-xl text-center space-y-2.5 animate-pulse">
-                                            <div className="flex items-center justify-center gap-2 text-amber-400 font-bold text-sm">
-                                                <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping inline-block"></span>
-                                                Pausa de Segurança Anti-Bloqueio Ativa
-                                            </div>
-                                            <div className="text-3xl font-black font-mono text-amber-300">
-                                                {countdownRemaining}s
-                                            </div>
-                                            <p className="text-[11px] text-text-secondary">
-                                                Simulando intervalo humano para proteger sua conta do WhatsApp. O próximo destinatário abrirá em instantes...
-                                            </p>
+                                    {/* Botão de Disparo Manual no WhatsApp */}
+                                    <div className="pt-2 text-center space-y-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDispatchMessageForProspect(broadcastFilteredList[activeQueueIndex])}
+                                            className="w-full py-4 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold text-base rounded-xl shadow-xl shadow-green-950/50 hover:shadow-green-900/60 transition-all flex items-center justify-center gap-2 cursor-pointer transform active:scale-95"
+                                        >
+                                            <SendIcon className="w-5 h-5" /> 
+                                            <span>Disparar Mensagem para {broadcastFilteredList[activeQueueIndex].name.split(' ')[0]} no WhatsApp</span>
+                                        </button>
+
+                                        {activeQueueIndex < broadcastFilteredList.length - 1 && (
                                             <button
                                                 type="button"
-                                                onClick={() => {
-                                                    setCountdownRemaining(null);
-                                                    if (activeQueueIndex < broadcastFilteredList.length - 1) {
-                                                        setActiveQueueIndex(prev => prev + 1);
-                                                    }
-                                                }}
-                                                className="px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-xs font-semibold rounded-lg border border-amber-500/40 transition-all cursor-pointer mt-1"
+                                                onClick={() => setActiveQueueIndex(prev => prev + 1)}
+                                                className="w-full py-2.5 bg-background hover:bg-border-color/30 text-text-primary border border-border-color font-semibold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                                             >
-                                                ⚡ Pular Pausa e Ir para o Próximo Agora
+                                                <span>Próximo Lead → ({broadcastFilteredList[activeQueueIndex + 1].name.split(' ')[0]})</span>
                                             </button>
-                                        </div>
-                                    ) : (
-                                        <div className="pt-2 text-center">
-                                            <button
-                                                type="button"
-                                                onClick={() => handleDispatchMessageForProspect(broadcastFilteredList[activeQueueIndex], true)}
-                                                className="w-full py-4 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold text-base rounded-xl shadow-xl shadow-green-950/50 hover:shadow-green-900/60 transition-all flex items-center justify-center gap-2 cursor-pointer transform active:scale-95"
-                                            >
-                                                <SendIcon className="w-5 h-5" /> 
-                                                <span>Disparar Mensagem para {broadcastFilteredList[activeQueueIndex].name.split(' ')[0]} no WhatsApp</span>
-                                            </button>
-                                            <p className="text-[10px] text-text-secondary mt-2">
-                                                Abre a conversa no WhatsApp Web com a mensagem preenchida {broadcastDelaySeconds > 0 ? `e inicia pausa de ${broadcastDelaySeconds}s de segurança` : 'e avança para o próximo'}.
-                                            </p>
-                                        </div>
-                                    )}
+                                        )}
+
+                                        <p className="text-[10px] text-text-secondary">
+                                            Abre a conversa no WhatsApp Web com a mensagem preenchida. Quando enviar, clique em "Próximo Lead" para avançar.
+                                        </p>
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="p-8 text-center bg-background/50 rounded-xl border border-border-color">
@@ -1988,7 +1913,7 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                                         onClick={() => setActiveQueueIndex(prev => Math.max(0, prev - 1))}
                                         className="px-3 py-1.5 bg-background border border-border-color text-text-secondary hover:text-text-primary rounded-lg text-xs font-semibold disabled:opacity-40 cursor-pointer"
                                     >
-                                        ← Anterior
+                                        ← Lead Anterior
                                     </button>
 
                                     <button 
@@ -1997,7 +1922,7 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                                         onClick={() => setActiveQueueIndex(prev => Math.min(broadcastFilteredList.length - 1, prev + 1))}
                                         className="px-3 py-1.5 bg-background border border-border-color text-text-secondary hover:text-text-primary rounded-lg text-xs font-semibold disabled:opacity-40 cursor-pointer"
                                     >
-                                        Pular (Próximo) →
+                                        Próximo Lead →
                                     </button>
 
                                     <Button 
