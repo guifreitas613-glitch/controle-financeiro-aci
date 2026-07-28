@@ -11,7 +11,9 @@ import {
     PlusIcon, 
     UploadIcon, 
     PartnershipIcon, 
-    GoalsIcon 
+    GoalsIcon,
+    DownloadIcon,
+    ExportIcon
 } from './UIComponents';
 
 const INITIAL_IMPORT_LIST_TEMPLATE = `Nome;Empresa;Cargo;Email;Celular
@@ -147,6 +149,15 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
     const [importSource, setImportSource] = useState<'indicacao' | 'evento' | 'networking' | 'Instagram' | 'outro'>('networking');
     const [importStatus, setImportStatus] = useState<Prospect['status']>('Novo contato');
     const [isImporting, setIsImporting] = useState(false);
+
+    // CSV Export states
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+    const [exportStatusFilter, setExportStatusFilter] = useState<string>('current');
+    const [exportBroadcastFilter, setExportBroadcastFilter] = useState<string>('all');
+    const [exportAdvisorFilter, setExportAdvisorFilter] = useState<string>('all');
+    const [exportPreset, setExportPreset] = useState<'whatsapp_bulk' | 'phone_only' | 'phone_raw_only' | 'complete'>('whatsapp_bulk');
+    const [exportOnlyWithPhone, setExportOnlyWithPhone] = useState<boolean>(true);
+    const [csvSeparator, setCsvSeparator] = useState<';' | ','>(';');
 
     useEffect(() => {
         if (advisors && advisors.length > 0 && !importResponsible) {
@@ -389,6 +400,143 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
     const convertedCount = prospects.filter(p => p.status === 'Cliente convertido').length;
     const broadcastAcceptedCount = prospects.filter(p => p.broadcastAccepted).length;
 
+    // CSV Phone Export Logic
+    const cleanPhoneNumber = (phone: string | undefined | null) => {
+        if (!phone) return '';
+        const digits = phone.replace(/\D/g, '');
+        if (!digits) return '';
+        if (digits.length === 10 || digits.length === 11) {
+            return `55${digits}`;
+        }
+        return digits;
+    };
+
+    const exportFilteredList = useMemo(() => {
+        return prospects.filter(p => {
+            let effStatus = exportStatusFilter;
+            if (effStatus === 'current') {
+                effStatus = statusFilter;
+            }
+
+            let matchesStatus = false;
+            if (effStatus === 'all') {
+                matchesStatus = true;
+            } else if (effStatus === 'em_negociacao') {
+                matchesStatus = p.status === 'Em análise' || 
+                                p.status === 'Reunião marcada' || 
+                                p.status === 'Primeiro contato realizado';
+            } else {
+                matchesStatus = p.status === effStatus;
+            }
+
+            const matchesBroadcast = exportBroadcastFilter === 'all' ||
+                (exportBroadcastFilter === 'yes' && p.broadcastAccepted === true) ||
+                (exportBroadcastFilter === 'no' && !p.broadcastAccepted);
+
+            const matchesAdvisor = exportAdvisorFilter === 'all' || p.responsible === exportAdvisorFilter;
+
+            const digits = p.phone ? p.phone.replace(/\D/g, '') : '';
+            const hasValidPhone = !exportOnlyWithPhone || digits.length >= 8;
+
+            return matchesStatus && matchesBroadcast && matchesAdvisor && hasValidPhone;
+        });
+    }, [prospects, exportStatusFilter, statusFilter, exportBroadcastFilter, exportAdvisorFilter, exportOnlyWithPhone]);
+
+    const handleDownloadCsv = () => {
+        if (exportFilteredList.length === 0) {
+            alert("Nenhum prospecto com número de telefone foi encontrado para os filtros selecionados.");
+            return;
+        }
+
+        const sep = csvSeparator;
+
+        const escapeCsvField = (val: string | undefined | null | boolean) => {
+            if (val === undefined || val === null) return '';
+            let str = String(val).trim();
+            if (str.includes(sep) || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+                str = `"${str.replace(/"/g, '""')}"`;
+            }
+            return str;
+        };
+
+        let headers: string[] = [];
+        if (exportPreset === 'whatsapp_bulk') {
+            headers = ['Nome', 'Telefone_WhatsApp', 'Telefone_Original', 'Empresa', 'Status', 'Responsavel', 'Lista_Transmissao'];
+        } else if (exportPreset === 'phone_only') {
+            headers = ['Nome', 'Telefone_WhatsApp'];
+        } else if (exportPreset === 'phone_raw_only') {
+            headers = ['Telefone_WhatsApp'];
+        } else {
+            headers = ['Nome', 'Telefone_WhatsApp', 'Telefone_Original', 'Empresa', 'Cargo', 'Email', 'Origem', 'Status', 'Responsavel', 'Lista_Transmissao', 'Data_Primeiro_Contato', 'Ultima_Interacao'];
+        }
+
+        const rows: string[][] = exportFilteredList.map(p => {
+            const phoneClean = cleanPhoneNumber(p.phone);
+            const phoneFormatted = p.phone || '';
+            const broadcastStr = p.broadcastAccepted ? 'Sim' : 'Nao';
+
+            if (exportPreset === 'whatsapp_bulk') {
+                return [
+                    p.name,
+                    phoneClean,
+                    phoneFormatted,
+                    p.company || '',
+                    p.status,
+                    p.responsible,
+                    broadcastStr
+                ];
+            } else if (exportPreset === 'phone_only') {
+                return [
+                    p.name,
+                    phoneClean || phoneFormatted
+                ];
+            } else if (exportPreset === 'phone_raw_only') {
+                return [
+                    phoneClean || phoneFormatted
+                ];
+            } else {
+                return [
+                    p.name,
+                    phoneClean,
+                    phoneFormatted,
+                    p.company || '',
+                    p.role || '',
+                    p.email || '',
+                    getSourceLabel(p.source),
+                    p.status,
+                    p.responsible,
+                    broadcastStr,
+                    p.firstContactDate || '',
+                    p.lastInteraction || ''
+                ];
+            }
+        });
+
+        const csvLines = [
+            headers.map(h => escapeCsvField(h)).join(sep),
+            ...rows.map(row => row.map(cell => escapeCsvField(cell)).join(sep))
+        ];
+
+        // UTF-8 BOM prefix for Excel Brazilian accent compatibility
+        const csvBlob = new Blob(['\uFEFF' + csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(csvBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        
+        const todayStr = new Date().toISOString().split('T')[0];
+        const statusClean = (exportStatusFilter === 'current' ? statusFilter : exportStatusFilter)
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, '_');
+        
+        link.setAttribute('download', `telefones_prospects_${statusClean}_${todayStr}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        setIsExportModalOpen(false);
+    };
+
     const getStatusBadgeStyle = (status: Prospect['status']) => {
         switch (status) {
             case 'Novo contato': return 'bg-blue-500/10 text-blue-400 border border-blue-500/20';
@@ -425,6 +573,16 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                     <p className="text-text-secondary">Controle de funil comercial e novos clientes associados.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                    <Button 
+                        onClick={() => {
+                            setExportStatusFilter('current');
+                            setIsExportModalOpen(true);
+                        }} 
+                        className="text-sm bg-emerald-600 hover:bg-emerald-700 hover:text-white text-white border-none shadow-md shadow-emerald-900/20"
+                        title="Baixar lista de telefones em formato .csv para envio de mensagens em massa"
+                    >
+                        <DownloadIcon className="w-4 h-4 mr-1.5" /> Baixar Telefones (CSV)
+                    </Button>
                     <Button onClick={() => setIsImportModalOpen(true)} className="text-sm bg-blue-600 hover:bg-blue-700 hover:text-white text-white border-none">
                         <UploadIcon className="w-4 h-4 mr-1.5" /> Importar Lista
                     </Button>
@@ -579,6 +737,21 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                             <SearchIcon className="w-4 h-4 text-text-secondary absolute left-2.5 top-2.5" />
                         </div>
                     </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row justify-between items-center gap-2 mt-3 pt-3 border-t border-border-color/30 text-xs text-text-secondary">
+                    <span>
+                        Mostrando <strong className="text-text-primary font-mono">{filteredProspects.length}</strong> de <strong className="text-text-primary font-mono">{totalCount}</strong> prospectos no filtro selecionado.
+                    </span>
+                    <button 
+                        onClick={() => {
+                            setExportStatusFilter('current');
+                            setIsExportModalOpen(true);
+                        }}
+                        className="text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1.5 transition-all hover:underline cursor-pointer"
+                    >
+                        <DownloadIcon className="w-3.5 h-3.5" /> Baixar telefones desta listagem (.CSV)
+                    </button>
                 </div>
             </Card>
 
@@ -1097,6 +1270,150 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                         </div>
                     </div>
                 </form>
+            </Modal>
+
+            {/* Modal: Exportar Telefones em CSV */}
+            <Modal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} title="Exportar Telefones dos Prospects (.CSV)" size="lg">
+                <div className="space-y-5 text-text-primary">
+                    <div className="bg-emerald-500/10 border border-emerald-500/20 p-4 rounded-xl flex items-start gap-3">
+                        <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-lg shrink-0 mt-0.5">
+                            <DownloadIcon className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <h4 className="text-sm font-bold text-emerald-400">Exportação para Disparo de Mensagens em Massa</h4>
+                            <p className="text-xs text-text-secondary mt-0.5">
+                                Baixe o arquivo .CSV pronto com os números de telefone formatados para disparo no WhatsApp/SMS (com DDI 55). Selecione os filtros abaixo para definir exatamente quais prospects serão exportados.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {/* Filtro por Status */}
+                        <div>
+                            <label className="block text-xs font-bold uppercase text-text-secondary mb-1">
+                                Filtrar por Status Comercial *
+                            </label>
+                            <select 
+                                value={exportStatusFilter} 
+                                onChange={(e) => setExportStatusFilter(e.target.value)}
+                                className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary outline-none font-medium"
+                            >
+                                <option value="current">Usar filtro atual da tela ({statusFilter === 'all' ? 'Todos' : statusFilter})</option>
+                                <option value="all">Todos os Status</option>
+                                <option value="em_negociacao">Em Negociação (Análise, Reunião, 1º Contato)</option>
+                                <option value="Novo contato">Novo contato</option>
+                                <option value="Primeiro contato realizado">Primeiro contato realizado</option>
+                                <option value="Reunião marcada">Reunião marcada</option>
+                                <option value="Em análise">Em análise</option>
+                                <option value="Cliente convertido">Cliente convertido</option>
+                                <option value="Perdido">Perdido</option>
+                            </select>
+                        </div>
+
+                        {/* Filtro por Lista de Transmissão */}
+                        <div>
+                            <label className="block text-xs font-bold uppercase text-text-secondary mb-1">
+                                Autorização Lista de Transmissão
+                            </label>
+                            <select 
+                                value={exportBroadcastFilter} 
+                                onChange={(e) => setExportBroadcastFilter(e.target.value)}
+                                className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary outline-none font-medium"
+                            >
+                                <option value="all">Todas as Opções (Indiferente)</option>
+                                <option value="yes">Apenas que Aceitaram Receber ✅</option>
+                                <option value="no">Apenas Não Aceitou / Sem Definição ❌</option>
+                            </select>
+                        </div>
+
+                        {/* Filtro por Assessor */}
+                        <div>
+                            <label className="block text-xs font-bold uppercase text-text-secondary mb-1">
+                                Assessor Responsável
+                            </label>
+                            <select 
+                                value={exportAdvisorFilter} 
+                                onChange={(e) => setExportAdvisorFilter(e.target.value)}
+                                className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary outline-none font-medium"
+                            >
+                                <option value="all">Todos os Assessores</option>
+                                {advisors.map(adv => <option key={adv.id} value={adv.name}>{adv.name}</option>)}
+                            </select>
+                        </div>
+
+                        {/* Modelo de Colunas / Layout do CSV */}
+                        <div>
+                            <label className="block text-xs font-bold uppercase text-text-secondary mb-1">
+                                Formato das Colunas no CSV
+                            </label>
+                            <select 
+                                value={exportPreset} 
+                                onChange={(e) => setExportPreset(e.target.value as any)}
+                                className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary outline-none font-medium"
+                            >
+                                <option value="phone_raw_only">Somente Telefone (1 coluna apenas com o número)</option>
+                                <option value="phone_only">Nome e Telefone WhatsApp (2 colunas)</option>
+                                <option value="whatsapp_bulk">Envio em Massa Completo (Nome, Telefone, Empresa, Status...)</option>
+                                <option value="complete">Ficha Completa em CSV (Todos os dados)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="bg-background/50 p-3.5 rounded-xl border border-border-color/60 space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-semibold text-text-primary">
+                                <input 
+                                    type="checkbox" 
+                                    checked={exportOnlyWithPhone} 
+                                    onChange={(e) => setExportOnlyWithPhone(e.target.checked)}
+                                    className="rounded border-border-color text-primary focus:ring-primary w-4 h-4"
+                                />
+                                Exportar apenas registros com telefone cadastrado
+                            </label>
+
+                            <div className="flex items-center gap-2 text-xs">
+                                <span className="text-text-secondary font-medium">Separador:</span>
+                                <button 
+                                    type="button" 
+                                    onClick={() => setCsvSeparator(';')} 
+                                    className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold transition-all cursor-pointer ${csvSeparator === ';' ? 'bg-primary text-white' : 'bg-surface border border-border-color text-text-secondary'}`}
+                                >
+                                    ; (Ponto e Vírgula)
+                                </button>
+                                <button 
+                                    type="button" 
+                                    onClick={() => setCsvSeparator(',')} 
+                                    className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold transition-all cursor-pointer ${csvSeparator === ',' ? 'bg-primary text-white' : 'bg-surface border border-border-color text-text-secondary'}`}
+                                >
+                                    , (Vírgula)
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Resumo da Seleção */}
+                        <div className="pt-2 border-t border-border-color/40 flex items-center justify-between text-xs">
+                            <span className="text-text-secondary font-medium">Contatos prontos para exportar:</span>
+                            <span className="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold font-mono text-xs">
+                                📱 {exportFilteredList.length} telefone(s) selecionado(s)
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-3 border-t border-border-color/40">
+                        <Button type="button" variant="ghost" onClick={() => setIsExportModalOpen(false)}>
+                            Cancelar
+                        </Button>
+                        <Button 
+                            type="button" 
+                            variant="success" 
+                            onClick={handleDownloadCsv}
+                            disabled={exportFilteredList.length === 0}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 border-none shadow-lg shadow-emerald-900/30"
+                        >
+                            <DownloadIcon className="w-4 h-4 mr-1.5" /> Baixar Arquivo CSV
+                        </Button>
+                    </div>
+                </div>
             </Modal>
         </div>
     );
