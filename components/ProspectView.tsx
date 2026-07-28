@@ -15,7 +15,8 @@ import {
     DownloadIcon,
     ExportIcon,
     SendIcon,
-    MessageSquareIcon
+    MessageSquareIcon,
+    CalendarIcon
 } from './UIComponents';
 
 const INITIAL_IMPORT_LIST_TEMPLATE = `Nome;Empresa;Cargo;Email;Celular
@@ -135,6 +136,8 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
     const [sourceFilter, setSourceFilter] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState<string>('');
     const [broadcastFilter, setBroadcastFilter] = useState<string>('all');
+    const [startDateFilter, setStartDateFilter] = useState<string>('');
+    const [endDateFilter, setEndDateFilter] = useState<string>('');
 
     // Modal states
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -380,6 +383,18 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
         }
     };
 
+    const handleToggleBroadcastAccepted = async (p: Prospect, newValue: boolean) => {
+        try {
+            await updateProspect(p.id, { broadcastAccepted: newValue });
+            if (selectedProspect && selectedProspect.id === p.id) {
+                setSelectedProspect(prev => prev ? { ...prev, broadcastAccepted: newValue } : null);
+            }
+        } catch (err) {
+            console.error("Erro ao atualizar lista de transmissão:", err);
+            alert("Erro ao atualizar permissão da lista de transmissão.");
+        }
+    };
+
     const filteredProspects = useMemo(() => {
         return prospects.filter(p => {
             let matchesStatus = false;
@@ -398,14 +413,16 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
             const matchesBroadcast = broadcastFilter === 'all' ||
                 (broadcastFilter === 'yes' && p.broadcastAccepted === true) ||
                 (broadcastFilter === 'no' && !p.broadcastAccepted);
+            const matchesStartDate = !startDateFilter || (p.firstContactDate && p.firstContactDate >= startDateFilter);
+            const matchesEndDate = !endDateFilter || (p.firstContactDate && p.firstContactDate <= endDateFilter);
             const matchesSearch = !searchQuery || 
                 p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 (p.company && p.company.toLowerCase().includes(searchQuery.toLowerCase())) ||
                 (p.responsible && p.responsible.toLowerCase().includes(searchQuery.toLowerCase()));
 
-            return matchesStatus && matchesAdvisor && matchesSource && matchesBroadcast && matchesSearch;
+            return matchesStatus && matchesAdvisor && matchesSource && matchesBroadcast && matchesStartDate && matchesEndDate && matchesSearch;
         });
-    }, [prospects, statusFilter, advisorFilter, sourceFilter, broadcastFilter, searchQuery]);
+    }, [prospects, statusFilter, advisorFilter, sourceFilter, broadcastFilter, startDateFilter, endDateFilter, searchQuery]);
 
     const totalCount = prospects.length;
     const inNegotiationCount = prospects.filter(p => 
@@ -450,13 +467,15 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                 (exportBroadcastFilter === 'no' && !p.broadcastAccepted);
 
             const matchesAdvisor = exportAdvisorFilter === 'all' || p.responsible === exportAdvisorFilter;
+            const matchesStartDate = !startDateFilter || (p.firstContactDate && p.firstContactDate >= startDateFilter);
+            const matchesEndDate = !endDateFilter || (p.firstContactDate && p.firstContactDate <= endDateFilter);
 
             const digits = p.phone ? p.phone.replace(/\D/g, '') : '';
             const hasValidPhone = !exportOnlyWithPhone || digits.length >= 8;
 
-            return matchesStatus && matchesBroadcast && matchesAdvisor && hasValidPhone;
+            return matchesStatus && matchesBroadcast && matchesAdvisor && matchesStartDate && matchesEndDate && hasValidPhone;
         });
-    }, [prospects, exportStatusFilter, statusFilter, exportBroadcastFilter, exportAdvisorFilter, exportOnlyWithPhone]);
+    }, [prospects, exportStatusFilter, statusFilter, exportBroadcastFilter, exportAdvisorFilter, exportOnlyWithPhone, startDateFilter, endDateFilter]);
 
     const handleDownloadCsv = () => {
         if (exportFilteredList.length === 0) {
@@ -577,13 +596,15 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                 (broadcastBroadcastFilter === 'no' && !p.broadcastAccepted);
 
             const matchesAdvisor = broadcastAdvisorFilter === 'all' || p.responsible === broadcastAdvisorFilter;
+            const matchesStartDate = !startDateFilter || (p.firstContactDate && p.firstContactDate >= startDateFilter);
+            const matchesEndDate = !endDateFilter || (p.firstContactDate && p.firstContactDate <= endDateFilter);
 
             const digits = p.phone ? p.phone.replace(/\D/g, '') : '';
             const hasValidPhone = digits.length >= 8;
 
-            return matchesStatus && matchesBroadcast && matchesAdvisor && hasValidPhone;
+            return matchesStatus && matchesBroadcast && matchesAdvisor && matchesStartDate && matchesEndDate && hasValidPhone;
         });
-    }, [prospects, broadcastStatusFilter, statusFilter, broadcastBroadcastFilter, broadcastAdvisorFilter]);
+    }, [prospects, broadcastStatusFilter, statusFilter, broadcastBroadcastFilter, broadcastAdvisorFilter, startDateFilter, endDateFilter]);
 
     const compileMessage = (template: string, p: Prospect | undefined) => {
         if (!p) return '';
@@ -791,13 +812,13 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
 
             {/* Toolbar Filtros */}
             <Card className="p-4">
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
                     <div>
                         <label className="block text-xs font-medium text-text-secondary mb-1">Status do Funil</label>
                         <select 
                             value={statusFilter} 
                             onChange={(e) => setStatusFilter(e.target.value)}
-                            className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary outline-none"
+                            className="w-full bg-background border border-border-color rounded-md px-2.5 py-2 text-sm focus:ring-primary focus:border-primary outline-none"
                         >
                             <option value="all">Todos os Status</option>
                             <option value="em_negociacao">Em Negociação</option>
@@ -814,7 +835,7 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                         <select 
                             value={advisorFilter} 
                             onChange={(e) => setAdvisorFilter(e.target.value)}
-                            className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary outline-none"
+                            className="w-full bg-background border border-border-color rounded-md px-2.5 py-2 text-sm focus:ring-primary focus:border-primary outline-none"
                         >
                             <option value="all">Todos os Assessores</option>
                             {advisors.map(adv => <option key={adv.id} value={adv.name}>{adv.name}</option>)}
@@ -825,7 +846,7 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                         <select 
                             value={sourceFilter} 
                             onChange={(e) => setSourceFilter(e.target.value)}
-                            className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary outline-none"
+                            className="w-full bg-background border border-border-color rounded-md px-2.5 py-2 text-sm focus:ring-primary focus:border-primary outline-none"
                         >
                             <option value="all">Todas as Origens</option>
                             <option value="indicacao">Indicação</option>
@@ -836,11 +857,11 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                         </select>
                     </div>
                     <div>
-                        <label className="block text-xs font-medium text-text-secondary mb-1">Lista de Transmissão</label>
+                        <label className="block text-xs font-medium text-text-secondary mb-1">Lista Transmissão</label>
                         <select 
                             value={broadcastFilter} 
                             onChange={(e) => setBroadcastFilter(e.target.value)}
-                            className="w-full bg-background border border-border-color rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary outline-none"
+                            className="w-full bg-background border border-border-color rounded-md px-2.5 py-2 text-sm focus:ring-primary focus:border-primary outline-none"
                         >
                             <option value="all">Todas as Opções</option>
                             <option value="yes">Aceitou Receber ✅</option>
@@ -848,14 +869,68 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                         </select>
                     </div>
                     <div>
-                        <label className="block text-xs font-medium text-text-secondary mb-1 font-sans">Buscar por Nome / Empresa</label>
+                        <label className="block text-xs font-medium text-text-secondary mb-1">Data De (Início)</label>
+                        <div className="relative flex items-center">
+                            <input 
+                                id="startDateFilterInput"
+                                type="date" 
+                                value={startDateFilter} 
+                                onChange={(e) => setStartDateFilter(e.target.value)}
+                                className="w-full bg-background border border-border-color rounded-md pl-8 pr-2 py-1.5 text-xs focus:ring-primary focus:border-primary outline-none cursor-pointer"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const el = document.getElementById('startDateFilterInput') as HTMLInputElement | null;
+                                    if (el && typeof (el as any).showPicker === 'function') {
+                                        (el as any).showPicker();
+                                    } else if (el) {
+                                        el.focus();
+                                    }
+                                }}
+                                className="absolute left-2 text-text-secondary hover:text-primary transition-colors cursor-pointer"
+                                title="Abrir Calendário de Início"
+                            >
+                                <CalendarIcon className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1">Data Até (Fim)</label>
+                        <div className="relative flex items-center">
+                            <input 
+                                id="endDateFilterInput"
+                                type="date" 
+                                value={endDateFilter} 
+                                onChange={(e) => setEndDateFilter(e.target.value)}
+                                className="w-full bg-background border border-border-color rounded-md pl-8 pr-2 py-1.5 text-xs focus:ring-primary focus:border-primary outline-none cursor-pointer"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const el = document.getElementById('endDateFilterInput') as HTMLInputElement | null;
+                                    if (el && typeof (el as any).showPicker === 'function') {
+                                        (el as any).showPicker();
+                                    } else if (el) {
+                                        el.focus();
+                                    }
+                                }}
+                                className="absolute left-2 text-text-secondary hover:text-primary transition-colors cursor-pointer"
+                                title="Abrir Calendário de Fim"
+                            >
+                                <CalendarIcon className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1 font-sans">Buscar por Nome/Empresa</label>
                         <div className="relative">
                             <input 
                                 type="text" 
                                 value={searchQuery} 
                                 onChange={(e) => setSearchQuery(e.target.value)} 
                                 placeholder="Buscar..." 
-                                className="w-full bg-background border border-border-color rounded-md pl-8 pr-3 py-2 text-sm focus:ring-primary focus:border-primary outline-none" 
+                                className="w-full bg-background border border-border-color rounded-md pl-8 pr-2 py-2 text-sm focus:ring-primary focus:border-primary outline-none" 
                             />
                             <SearchIcon className="w-4 h-4 text-text-secondary absolute left-2.5 top-2.5" />
                         </div>
@@ -863,9 +938,20 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                 </div>
 
                 <div className="flex flex-col sm:flex-row justify-between items-center gap-2 mt-3 pt-3 border-t border-border-color/30 text-xs text-text-secondary">
-                    <span>
-                        Mostrando <strong className="text-text-primary font-mono">{filteredProspects.length}</strong> de <strong className="text-text-primary font-mono">{totalCount}</strong> prospectos no filtro selecionado.
-                    </span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <span>
+                            Mostrando <strong className="text-text-primary font-mono">{filteredProspects.length}</strong> de <strong className="text-text-primary font-mono">{totalCount}</strong> prospectos no filtro selecionado.
+                        </span>
+                        {(startDateFilter || endDateFilter) && (
+                            <button
+                                onClick={() => { setStartDateFilter(''); setEndDateFilter(''); }}
+                                className="text-[10px] text-amber-400 hover:text-amber-300 font-semibold bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded cursor-pointer transition-all flex items-center gap-1"
+                                title="Limpar filtro de datas"
+                            >
+                                ✕ Limpar Data
+                            </button>
+                        )}
+                    </div>
                     <button 
                         onClick={() => {
                             setExportStatusFilter('current');
@@ -918,15 +1004,18 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                                         </span>
                                     </td>
                                     <td className="p-4 text-center">
-                                        {p.broadcastAccepted ? (
-                                            <span className="px-2 py-0.5 rounded bg-green-500/10 text-green-400 border border-green-500/20 font-bold text-[10px]" title="Aceitou receber notícias do mercado">
-                                                Aceitou ✅
-                                            </span>
-                                        ) : (
-                                            <span className="px-2 py-0.5 rounded bg-zinc-500/10 text-zinc-400 border border-zinc-500/20 font-normal text-[10px]" title="Não aceitou ou sem resposta">
-                                                Não ❌
-                                            </span>
-                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() => handleToggleBroadcastAccepted(p, !p.broadcastAccepted)}
+                                            className={`px-2 py-0.5 rounded font-bold text-[10px] transition-all cursor-pointer flex items-center justify-center gap-1 mx-auto ${
+                                                p.broadcastAccepted 
+                                                    ? 'bg-green-500/15 text-green-400 hover:bg-green-500/25 border border-green-500/30' 
+                                                    : 'bg-zinc-500/15 text-zinc-400 hover:bg-zinc-500/25 border border-zinc-500/30'
+                                            }`}
+                                            title="Clique para alterar se o prospect aceitou entrar na lista de transmissão"
+                                        >
+                                            {p.broadcastAccepted ? 'Aceitou ✅' : 'Não ❌'}
+                                        </button>
                                     </td>
                                     <td className="p-4 text-center font-mono">
                                         {p.firstContactDate ? new Date(p.firstContactDate + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
@@ -1233,21 +1322,34 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                                 <span className="block text-[10px] font-bold text-text-secondary uppercase">Primeiro Contato</span>
                                 <p className="text-xs font-mono">{selectedProspect.firstContactDate ? new Date(selectedProspect.firstContactDate + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}</p>
                             </div>
-                            <div className="col-span-2 bg-background/40 p-3 rounded-lg border border-border-color/60 flex items-center justify-between mt-1">
+                            <div className="col-span-2 bg-background/40 p-3 rounded-lg border border-border-color/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-1">
                                 <div>
                                     <span className="block text-[10px] font-bold text-text-secondary uppercase font-sans">Informativos & Oportunidades</span>
-                                    <span className="text-[11px] text-text-secondary">Aceitou receber notícias do mercado financeiro</span>
+                                    <span className="text-[11px] text-text-secondary">Aceitou entrar na lista de transmissão do WhatsApp</span>
                                 </div>
-                                <div>
-                                    {selectedProspect.broadcastAccepted ? (
-                                        <span className="px-2.5 py-1 rounded bg-green-500/10 text-green-400 border border-green-500/20 font-bold text-xs font-sans">
-                                            Autorizado ✅
-                                        </span>
-                                    ) : (
-                                        <span className="px-2.5 py-1 rounded bg-zinc-500/10 text-zinc-400 border border-zinc-500/20 font-semibold text-xs font-sans">
-                                            Não Autorizado ❌
-                                        </span>
-                                    )}
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleToggleBroadcastAccepted(selectedProspect, true)}
+                                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                            selectedProspect.broadcastAccepted 
+                                                ? 'bg-green-600 text-white shadow-md shadow-green-900/30' 
+                                                : 'bg-background hover:bg-green-500/20 border border-green-500/30 text-green-400'
+                                        }`}
+                                    >
+                                        Aceitou ✅
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleToggleBroadcastAccepted(selectedProspect, false)}
+                                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                            !selectedProspect.broadcastAccepted 
+                                                ? 'bg-zinc-700 text-white border border-zinc-600' 
+                                                : 'bg-background hover:bg-zinc-500/20 border border-border-color text-zinc-400'
+                                        }`}
+                                    >
+                                        Não Aceitou ❌
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -1858,6 +1960,42 @@ export const ProspectsView: FC<{ advisors: Advisor[]; userId: string }> = ({ adv
                                         </div>
                                         <div className="bg-[#0b141a] p-4 rounded-xl border border-zinc-800 text-xs text-emerald-100 whitespace-pre-line leading-relaxed font-sans">
                                             {compileMessage(broadcastTemplate, broadcastFilteredList[activeQueueIndex])}
+                                        </div>
+                                    </div>
+
+                                    {/* Status de Aceite da Lista de Transmissão */}
+                                    <div className="bg-background/60 p-3 rounded-xl border border-border-color/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                                        <div>
+                                            <div className="text-xs font-bold text-text-primary flex items-center gap-1.5">
+                                                <span>📢</span> Lista de Transmissão WhatsApp
+                                            </div>
+                                            <p className="text-[11px] text-text-secondary mt-0.5">
+                                                Este lead autorizou receber mensagens e informativos da sua lista?
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleToggleBroadcastAccepted(broadcastFilteredList[activeQueueIndex], true)}
+                                                className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                                    broadcastFilteredList[activeQueueIndex].broadcastAccepted 
+                                                        ? 'bg-green-600 text-white shadow-md shadow-green-950/40' 
+                                                        : 'bg-background hover:bg-green-500/20 border border-green-500/30 text-green-400'
+                                                }`}
+                                            >
+                                                <span>Sim, Aceitou</span> ✅
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleToggleBroadcastAccepted(broadcastFilteredList[activeQueueIndex], false)}
+                                                className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                                    !broadcastFilteredList[activeQueueIndex].broadcastAccepted 
+                                                        ? 'bg-zinc-700 text-white border border-zinc-600' 
+                                                        : 'bg-background hover:bg-zinc-500/20 border border-border-color text-zinc-400'
+                                                }`}
+                                            >
+                                                <span>Não Aceitou</span> ❌
+                                            </button>
                                         </div>
                                     </div>
 
